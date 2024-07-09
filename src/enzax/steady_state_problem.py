@@ -128,7 +128,7 @@ def main():
         log_km=jnp.log(jnp.array([0.7, 0.2])),
     )
     # guesses
-    bad_guess = jnp.array([0.01, 0.01])
+    bad_guess = jnp.array([2.0, 0.01])
     good_guess = jnp.array([0.37, 1.64])
     # solve once for jitting
     solve(params, constants, good_guess)
@@ -137,10 +137,10 @@ def main():
         start = time.time()
         conc_steady = solve(params, constants, guess)
         sv = dcdt(jnp.array(0.0), conc_steady, (params, constants))
-        runtime = (time.time() - start) * 1e6
+        runtime = (time.time() - start) * 1e3
         jac = jax.jacrev(solve)(params, constants, guess)
         print(f"Results with starting guess {guess}:")
-        print(f"\tRun time in microseconds: {round(runtime, 4)}")
+        print(f"\tRun time in milliseconds: {round(runtime, 4)}")
         print(f"\tSteady state concentration: {conc_steady}")
         print(f"\tSv: {sv}")
         print(f"\tJacobian: {jac}")
