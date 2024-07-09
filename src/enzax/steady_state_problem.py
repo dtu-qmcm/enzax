@@ -132,13 +132,14 @@ def main():
     good_guess = jnp.array([0.37, 1.64])
     # solve once for jitting
     solve(params, constants, good_guess)
+    jac = jax.jacrev(solve)(params, constants, good_guess)
     # compare good and bad guess
     for guess in [bad_guess, good_guess]:
         start = time.time()
         conc_steady = solve(params, constants, guess)
         sv = dcdt(jnp.array(0.0), conc_steady, (params, constants))
-        runtime = (time.time() - start) * 1e3
         jac = jax.jacrev(solve)(params, constants, guess)
+        runtime = (time.time() - start) * 1e3
         print(f"Results with starting guess {guess}:")
         print(f"\tRun time in milliseconds: {round(runtime, 4)}")
         print(f"\tSteady state concentration: {conc_steady}")
