@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.2"
-content_hash = "sha256:186558e546c1b66f90a695315505fcc5c1fdd8a048e039164f47a2e5ca1d3710"
+content_hash = "sha256:e9b20467b0244dc3735577e756a122703356e9d3366d8f2140ae0739af1caabe"
 
 [[package]]
 name = "absl-py"
@@ -31,7 +31,7 @@ files = [
 
 [[package]]
 name = "blackjax"
-version = "1.2.1"
+version = "1.2.2"
 requires_python = ">=3.9"
 summary = "Flexible and fast sampling in Python"
 groups = ["default"]
@@ -44,8 +44,8 @@ dependencies = [
     "typing-extensions>=4.4.0",
 ]
 files = [
-    {file = "blackjax-1.2.1-py3-none-any.whl", hash = "sha256:c016b011967fbfa43f2c131300cb4664365e6e25d9d98c59f027db0c6e574df7"},
-    {file = "blackjax-1.2.1.tar.gz", hash = "sha256:ef0f278103b7f20bdf161450f8f696326692af588713e1904b4dbffd7b8438f6"},
+    {file = "blackjax-1.2.2-py3-none-any.whl", hash = "sha256:25ef1e9a85723e2bb81b3e3d5cc0ce18c07fa4b8d2991a80a12b505abb54da30"},
+    {file = "blackjax-1.2.2.tar.gz", hash = "sha256:a786dabab9b6b76df57dabcaa1eaa8f493e3c767d25949597aea6bd4f8c635e6"},
 ]
 
 [[package]]
