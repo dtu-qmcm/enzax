@@ -87,7 +87,6 @@ def main():
         conc_steady = solve(parameters, structure, guess)
         sv = dcdt(jnp.array(0.0), conc_steady, model)
         jac = jax.jacrev(solve)(parameters, structure, guess)
-        __import__("pdb").set_trace()
         runtime = (time.time() - start) * 1e3
         print(f"Results with starting guess {guess}:")
         print(f"\tRun time in milliseconds: {round(runtime, 4)}")
