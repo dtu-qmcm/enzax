@@ -1,16 +1,20 @@
-from functools import partial
+from typing import Type
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar
 
-from enzax.rate_equations import RateEquation, ReversibleMichaelisMenten
+from enzax.rate_equations import (
+    RateEquation,
+    IrreversibleMichaelisMenten,
+    ReversibleMichaelisMenten,
+)
 
 
 class KineticModelStructure(eqx.Module):
     """Structural information about a kinetic model."""
 
     S: Float[Array, " m n"]
+    rate_equation_classes: list[Type[RateEquation]]
     ix_balanced: Int[Array, " n_balanced"]
     ix_unbalanced: Int[Array, " n_unbalanced"]
     ix_substrate: Int[Array, " n _"]
@@ -39,10 +43,32 @@ class KineticModel(eqx.Module):
     def __init__(self, parameters, structure):
         self.parameters = parameters
         self.structure = structure
-        self.rate_equations = [
-            ReversibleMichaelisMenten(self.parameters, self.structure, r)
-            for r in range(self.structure.S.shape[1])
-        ]
+        rate_equations = []
+        for r, rec in enumerate(self.structure.rate_equation_classes):
+            if rec == ReversibleMichaelisMenten:
+                re = ReversibleMichaelisMenten(
+                    dgf=parameters.dgf[structure.ix_reactant[r]],
+                    log_km=parameters.log_km[structure.ix_reactant_to_km[r]],
+                    log_enzyme=parameters.log_enzyme[r],
+                    log_kcat=parameters.log_kcat[r],
+                    temperature=parameters.temperature,
+                    stoich=structure.stoich_by_rate[r],
+                    ix_substrate=structure.ix_substrate[r],
+                    ix_product=structure.ix_product[r],
+                )
+                rate_equations.append(re)
+            elif rec == IrreversibleMichaelisMenten:
+                re = IrreversibleMichaelisMenten(
+                    dgf=parameters.dgf[structure.ix_reactant[r]],
+                    log_km=parameters.log_km[structure.ix_reactant_to_km[r]],
+                    log_enzyme=parameters.log_enzyme[r],
+                    log_kcat=parameters.log_kcat[r],
+                    temperature=parameters.temperature,
+                    stoich=structure.stoich_by_rate[r],
+                    ix_substrate=structure.ix_substrate[r],
+                )
+                rate_equations.append(re)
+        self.rate_equations = rate_equations
 
 
 @eqx.filter_jit

@@ -27,3 +27,5 @@ distribution = true
 [tool.ruff.lint]
 ignore = ["F722"]
 
+[tool.ruff.lint.isort]
+known_first_party = ["enzax"]

@@ -1,23 +1,10 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
-from typing import Any, Protocol
-
 import equinox as eqx
-import jax
 from jax import numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar
 
 
-MicArray = Float[Array, " n_mic"]
-
-
-class RateEquation(Protocol):
-    def __call__(
-        self, conc: MicArray, stoich: MicArray, *args: Any, **kwargs
-    ) -> Scalar: ...
-
-
-@jax.jit
 def reversibility(
     conc: Float[Array, " n"],
     stoich: Float[Array, " n"],
@@ -38,16 +25,8 @@ class ReversibleMichaelisMenten(eqx.Module):
     log_kcat: Scalar
     temperature: Scalar
     stoich: Float[Array, " n"]
+    ix_substrate: Int[Array, " n_substrate"]
     ix_product: Int[Array, " n_product"]
-
-    def __init__(self, parameters, structure, r):
-        self.dgf = parameters.dgf[structure.ix_reactant[r]]
-        self.log_km = parameters.log_km[structure.ix_reactant_to_km[r]]
-        self.log_enzyme = parameters.log_enzyme[r]
-        self.log_kcat = parameters.log_kcat[r]
-        self.temperature = parameters.temperature
-        self.stoich = structure.stoich_by_rate[r]
-        self.ix_product = structure.ix_product[r]
 
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         """Get flux of a reaction with reversible Michaelis Menten kinetics."""
@@ -55,8 +34,44 @@ class ReversibleMichaelisMenten(eqx.Module):
         kcat: Scalar = jnp.exp(self.log_kcat)
         enzyme: Float[Array, " n"] = jnp.exp(self.log_enzyme)
         rev: Scalar = reversibility(conc, self.stoich, self.temperature, self.dgf)
-        sat: Scalar = jnp.prod((conc[self.ix_product] / km[self.ix_product])) / (
-            jnp.prod(((conc / km) + 1) ** jnp.abs(self.stoich)) - 1.0
+        sat: Scalar = jnp.prod((conc[self.ix_substrate] / km[self.ix_substrate])) / (
+            -1
+            + jnp.prod(
+                ((conc[self.ix_substrate] / km[self.ix_substrate]) + 1)
+                ** jnp.abs(self.stoich[self.ix_substrate])
+            )
+            + jnp.prod(
+                ((conc[self.ix_product] / km[self.ix_product]) + 1)
+                ** jnp.abs(self.stoich[self.ix_product])
+            )
         )
         out = kcat * enzyme * rev * sat
         return out
+
+
+class IrreversibleMichaelisMenten(eqx.Module):
+    dgf: Float[Array, " n"]
+    log_km: Float[Array, " n_substrate"]
+    log_enzyme: Scalar
+    log_kcat: Scalar
+    temperature: Scalar
+    stoich: Float[Array, " n"]
+    ix_substrate: Int[Array, " n_substrate"]
+
+    def __call__(self, conc: Float[Array, " n"]) -> Scalar:
+        """Get flux of a reaction with reversible Michaelis Menten kinetics."""
+        km: Float[Array, " n"] = jnp.exp(self.log_km)
+        kcat: Scalar = jnp.exp(self.log_kcat)
+        enzyme: Float[Array, " n"] = jnp.exp(self.log_enzyme)
+        # add exponent in the numerator
+        sat: Scalar = jnp.prod((conc[self.ix_substrate] / km[self.ix_substrate])) / (
+            jnp.prod(
+                ((conc[self.ix_substrate] / km[self.ix_substrate]) + 1)
+                ** jnp.abs(self.stoich[self.ix_substrate])
+            )
+        )
+        out = kcat * enzyme * sat
+        return out
+
+
+RateEquation = ReversibleMichaelisMenten | IrreversibleMichaelisMenten

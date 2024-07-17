@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import lineax as lx
 from jaxtyping import Array, Float
 from jax import config
+import numpy as np
 
 from enzax.kinetic_model import (
     KineticModel,
@@ -16,6 +17,7 @@ from enzax.kinetic_model import (
     KineticModelStructure,
     dcdt,
 )
+from enzax.rate_equations import IrreversibleMichaelisMenten, ReversibleMichaelisMenten
 
 config.update("jax_enable_x64", True)
 
@@ -66,6 +68,11 @@ def main():
     )
     structure = KineticModelStructure(
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
+        rate_equation_classes=[
+            ReversibleMichaelisMenten,
+            IrreversibleMichaelisMenten,
+            ReversibleMichaelisMenten,
+        ],
         ix_balanced=jnp.array([1, 2]),
         ix_substrate=jnp.array([[0], [1], [2]]),
         ix_product=jnp.array([[1], [2], [3]]),
@@ -93,6 +100,7 @@ def main():
         print(f"\tSteady state concentration: {conc_steady}")
         print(f"\tSv: {sv}")
         print(f"\tJacobian: {jac}")
+        print(f"\tLog Km Jacobian: {jac.log_km}")
 
 
 if __name__ == "__main__":
