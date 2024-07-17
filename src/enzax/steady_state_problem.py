@@ -16,6 +16,7 @@ from enzax.kinetic_model import (
     KineticModelParameters,
     KineticModelStructure,
     dcdt,
+    get_flux,
 )
 from enzax.rate_equations import IrreversibleMichaelisMenten, ReversibleMichaelisMenten
 
@@ -61,8 +62,8 @@ def main():
     parameters = KineticModelParameters(
         log_kcat=jnp.array([0.0, 0.0, 0.0]),
         log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
-        dgf=jnp.array([-1.0, -2.0]),
-        log_km=jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        dgf=jnp.array([-3, -1.0]),
+        log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
         log_conc_unbalanced=jnp.array([0.5, 0.1]),
         temperature=jnp.array(310.0),
     )
@@ -70,14 +71,15 @@ def main():
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
         rate_equation_classes=[
             ReversibleMichaelisMenten,
-            IrreversibleMichaelisMenten,
+            ReversibleMichaelisMenten,
             ReversibleMichaelisMenten,
         ],
         ix_balanced=jnp.array([1, 2]),
-        ix_substrate=jnp.array([[0], [1], [2]]),
-        ix_product=jnp.array([[1], [2], [3]]),
         ix_reactant=jnp.array([[0, 1], [1, 2], [2, 3]]),
-        ix_reactant_to_km=jnp.array([[0, 1], [2, 3], [4, 5]]),
+        ix_substrate=jnp.array([[0], [0], [0]]),
+        ix_product=jnp.array([[1], [1], [1]]),
+        ix_rate_to_km=jnp.array([[0, 1], [2, 3], [4, 5]]),
+        ix_mic_to_metabolite=jnp.array([0, 0, 1, 1]),
         ix_unbalanced=jnp.array([0, 3]),
         stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
     )
@@ -86,21 +88,24 @@ def main():
     good_guess = jnp.array([2.1, 1.1])
     model = KineticModel(parameters, structure)
     # solve once for jitting
-    solve(parameters, structure, good_guess)
+    sol = solve(parameters, structure, good_guess)
     jac = jax.jacrev(solve)(parameters, structure, good_guess)
     # compare good and bad guess
     for guess in [bad_guess, good_guess]:
         start = time.time()
         conc_steady = solve(parameters, structure, guess)
-        sv = dcdt(jnp.array(0.0), conc_steady, model)
         jac = jax.jacrev(solve)(parameters, structure, guess)
         runtime = (time.time() - start) * 1e3
+        sv = dcdt(jnp.array(0.0), conc_steady, model)
+        flux = get_flux(conc_steady, model)
         print(f"Results with starting guess {guess}:")
         print(f"\tRun time in milliseconds: {round(runtime, 4)}")
         print(f"\tSteady state concentration: {conc_steady}")
+        print(f"\tFlux: {flux}")
         print(f"\tSv: {sv}")
         print(f"\tJacobian: {jac}")
         print(f"\tLog Km Jacobian: {jac.log_km}")
+        print(f"\tDgf Jacobian: {jac.dgf}")
 
 
 if __name__ == "__main__":

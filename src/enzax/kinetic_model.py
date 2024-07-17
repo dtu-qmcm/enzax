@@ -20,7 +20,8 @@ class KineticModelStructure(eqx.Module):
     ix_substrate: Int[Array, " n _"]
     ix_product: Int[Array, " n _"]
     ix_reactant: Int[Array, " n _"]
-    ix_reactant_to_km: Int[Array, " n _"]
+    ix_rate_to_km: Int[Array, " n _"]
+    ix_mic_to_metabolite: Int[Array, " m"]
     stoich_by_rate: Float[Array, "n _"]
 
 
@@ -45,10 +46,12 @@ class KineticModel(eqx.Module):
         self.structure = structure
         rate_equations = []
         for r, rec in enumerate(self.structure.rate_equation_classes):
+            ix_km = structure.ix_rate_to_km[r]
+            ix_dgf = structure.ix_mic_to_metabolite[structure.ix_reactant[r]]
             if rec == ReversibleMichaelisMenten:
                 re = ReversibleMichaelisMenten(
-                    dgf=parameters.dgf[structure.ix_reactant[r]],
-                    log_km=parameters.log_km[structure.ix_reactant_to_km[r]],
+                    dgf=parameters.dgf[ix_dgf],
+                    log_km=parameters.log_km[ix_km],
                     log_enzyme=parameters.log_enzyme[r],
                     log_kcat=parameters.log_kcat[r],
                     temperature=parameters.temperature,
@@ -59,8 +62,8 @@ class KineticModel(eqx.Module):
                 rate_equations.append(re)
             elif rec == IrreversibleMichaelisMenten:
                 re = IrreversibleMichaelisMenten(
-                    dgf=parameters.dgf[structure.ix_reactant[r]],
-                    log_km=parameters.log_km[structure.ix_reactant_to_km[r]],
+                    dgf=parameters.dgf[ix_dgf],
+                    log_km=parameters.log_km[ix_km],
                     log_enzyme=parameters.log_enzyme[r],
                     log_kcat=parameters.log_kcat[r],
                     temperature=parameters.temperature,
@@ -71,7 +74,7 @@ class KineticModel(eqx.Module):
         self.rate_equations = rate_equations
 
 
-@eqx.filter_jit
+# @eqx.filter_jit
 def get_flux(
     conc_balanced: Float[Array, " m"],
     model: KineticModel,
@@ -87,7 +90,7 @@ def get_flux(
     )
 
 
-@eqx.filter_jit
+# @eqx.filter_jit
 def dcdt(
     t: Scalar, conc: Float[Array, " n_balanced"], args: KineticModel
 ) -> Float[Array, " n_balanced"]:

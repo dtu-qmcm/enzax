@@ -1,6 +1,7 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
 import equinox as eqx
+import jax
 from jax import numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar
 
@@ -15,7 +16,8 @@ def reversibility(
     RT = temperature * 0.008314
     dgr = stoich @ dgf
     quotient = stoich @ jnp.log(conc)
-    return 1.0 - ((dgr + RT * quotient) / RT)
+    out = 1.0 - ((dgr + RT * quotient) / RT)
+    return out
 
 
 class ReversibleMichaelisMenten(eqx.Module):
