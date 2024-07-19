@@ -1,7 +1,7 @@
 from typing import Type
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Array, Float, Int, Scalar
+from jaxtyping import Array, Float, Int, Scalar, ScalarLike
 
 from enzax.rate_equations import (
     RateEquation,
@@ -92,7 +92,7 @@ def get_flux(
 
 # @eqx.filter_jit
 def dcdt(
-    t: Scalar, conc: Float[Array, " n_balanced"], args: KineticModel
+    t: ScalarLike, conc: Float[Array, " n_balanced"], args: KineticModel
 ) -> Float[Array, " n_balanced"]:
     model = args
     v = get_flux(conc, model)

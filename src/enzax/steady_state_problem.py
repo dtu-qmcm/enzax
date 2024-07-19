@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import lineax as lx
 from jaxtyping import Array, Float
 from jax import config
-import numpy as np
 
 from enzax.kinetic_model import (
     KineticModel,
@@ -18,7 +17,7 @@ from enzax.kinetic_model import (
     dcdt,
     get_flux,
 )
-from enzax.rate_equations import IrreversibleMichaelisMenten, ReversibleMichaelisMenten
+from enzax.rate_equations import ReversibleMichaelisMenten
 
 config.update("jax_enable_x64", True)
 
@@ -59,6 +58,7 @@ def solve(
 
 
 def main():
+    """Function for testing the steady state solver."""
     parameters = KineticModelParameters(
         log_kcat=jnp.array([0.0, 0.0, 0.0]),
         log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
