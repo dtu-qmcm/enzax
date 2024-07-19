@@ -193,7 +193,5 @@ def main():
     print(samples)
 
 
-from inspect import isframe
-
 if __name__ == "__main__":
     main()
