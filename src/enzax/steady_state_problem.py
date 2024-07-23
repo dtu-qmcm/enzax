@@ -15,7 +15,6 @@ from enzax.kinetic_model import (
     KineticModelParameters,
     KineticModelStructure,
     dcdt,
-    get_flux,
 )
 from enzax.rate_equations import ReversibleMichaelisMenten
 
@@ -35,7 +34,7 @@ def solve(
     t1 = jnp.inf
     dt0 = None
     max_steps = None
-    controller = diffrax.PIDController(rtol=1e-7, atol=1e-7)
+    controller = diffrax.PIDController(pcoeff=0.3, icoeff=0.4, rtol=1e-8, atol=1e-8)
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint(
@@ -97,7 +96,7 @@ def main():
         jac = jax.jacrev(solve)(parameters, structure, guess)
         runtime = (time.time() - start) * 1e3
         sv = dcdt(jnp.array(0.0), conc_steady, model)
-        flux = get_flux(conc_steady, model)
+        flux = model(conc_steady)
         print(f"Results with starting guess {guess}:")
         print(f"\tRun time in milliseconds: {round(runtime, 4)}")
         print(f"\tSteady state concentration: {conc_steady}")

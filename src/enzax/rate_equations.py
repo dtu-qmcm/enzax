@@ -1,5 +1,6 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
+from enzax.kinetic_model import KineticModelParameters, KineticModelStructure
 import equinox as eqx
 import jax
 from jax import numpy as jnp
@@ -29,6 +30,22 @@ class ReversibleMichaelisMenten(eqx.Module):
     stoich: Float[Array, " n"]
     ix_substrate: Int[Array, " n_substrate"]
     ix_product: Int[Array, " n_product"]
+
+    def __init__(
+        self,
+        parameters: KineticModelParameters,
+        structure: KineticModelStructure,
+        ix: int,
+    ):
+        ix_dgf = structure.ix_mic_to_metabolite[structure.ix_reactant[ix]]
+        self.dgf = parameters.dgf[ix_dgf]
+        self.log_km = parameters.log_km[structure.ix_rate_to_km[ix]]
+        self.log_enzyme = parameters.log_enzyme[ix]
+        self.log_kcat = parameters.log_kcat[ix]
+        self.temperature = parameters.temperature
+        self.stoich = structure.stoich_by_rate[ix]
+        self.ix_substrate = structure.ix_substrate[ix]
+        self.ix_product = structure.ix_product[ix]
 
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         """Get flux of a reaction with reversible Michaelis Menten kinetics."""
@@ -60,6 +77,21 @@ class IrreversibleMichaelisMenten(eqx.Module):
     stoich: Float[Array, " n"]
     ix_substrate: Int[Array, " n_substrate"]
 
+    def __init__(
+        self,
+        parameters: KineticModelParameters,
+        structure: KineticModelStructure,
+        ix: int,
+    ):
+        ix_dgf = structure.ix_mic_to_metabolite[structure.ix_reactant[ix]]
+        self.dgf = parameters.dgf[ix_dgf]
+        self.log_km = parameters.log_km[structure.ix_rate_to_km[ix]]
+        self.log_enzyme = parameters.log_enzyme[ix]
+        self.log_kcat = parameters.log_kcat[ix]
+        self.temperature = parameters.temperature
+        self.stoich = structure.stoich_by_rate[ix]
+        self.ix_substrate = structure.ix_substrate[ix]
+
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         """Get flux of a reaction with reversible Michaelis Menten kinetics."""
         km: Float[Array, " n"] = jnp.exp(self.log_km)
@@ -74,6 +106,3 @@ class IrreversibleMichaelisMenten(eqx.Module):
         )
         out = kcat * enzyme * sat
         return out
-
-
-RateEquation = ReversibleMichaelisMenten | IrreversibleMichaelisMenten

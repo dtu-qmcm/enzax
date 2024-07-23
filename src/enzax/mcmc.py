@@ -13,7 +13,6 @@ from enzax.kinetic_model import (
     KineticModelStructure,
     KineticModelParameters,
     KineticModel,
-    get_flux,
 )
 from enzax.rate_equations import ReversibleMichaelisMenten
 from enzax.steady_state_problem import solve
@@ -56,7 +55,7 @@ def posterior_logdensity_fn(
 ):
     model = KineticModel(parameters, structure)
     steady = solve(parameters, structure, guess)
-    flux = get_flux(steady, model)
+    flux = model(steady)
     conc = jnp.zeros(structure.S.shape[0])
     conc = conc.at[structure.ix_balanced].set(steady)
     conc = conc.at[structure.ix_unbalanced].set(jnp.exp(parameters.log_conc_unbalanced))
@@ -97,7 +96,9 @@ def sample(logdensity_fn, rng_key, init_parameters):
         logdensity_fn,
         progress_bar=True,
         initial_step_size=0.0001,
-        max_num_doublings=4,
+        max_num_doublings=6,
+        is_mass_matrix_diagonal=False,
+        target_acceptance_rate=0.95,
     )
     rng_key, warmup_key = jax.random.split(rng_key)
     (initial_state, tuned_parameters), _ = warmup.run(
@@ -163,7 +164,7 @@ def main():
         jnp.exp(true_parameters.log_conc_unbalanced)
     )
     # get true flux
-    true_flux = get_flux(true_states, true_model)
+    true_flux = true_model(true_states)
     # simulate observations
     error_conc = 0.03
     error_flux = 0.05
