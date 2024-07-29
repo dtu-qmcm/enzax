@@ -1,7 +1,10 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
-from enzax.kinetic_model import KineticModelParameters, KineticModelStructure
-import equinox as eqx
+from enzax.kinetic_model import (
+    KineticModelParameters,
+    KineticModelStructure,
+    RateEquation,
+)
 import jax
 from jax import numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar
@@ -21,7 +24,8 @@ def reversibility(
     return out
 
 
-class ReversibleMichaelisMenten(eqx.Module):
+@jax.jit
+class ReversibleMichaelisMenten(RateEquation):
     dgf: Float[Array, " n"]
     log_km: Float[Array, " n"]
     log_enzyme: Scalar
@@ -52,8 +56,12 @@ class ReversibleMichaelisMenten(eqx.Module):
         km: Float[Array, " n"] = jnp.exp(self.log_km)
         kcat: Scalar = jnp.exp(self.log_kcat)
         enzyme: Float[Array, " n"] = jnp.exp(self.log_enzyme)
-        rev: Scalar = reversibility(conc, self.stoich, self.temperature, self.dgf)
-        sat: Scalar = jnp.prod((conc[self.ix_substrate] / km[self.ix_substrate])) / (
+        rev: Scalar = reversibility(
+            conc, self.stoich, self.temperature, self.dgf
+        )
+        sat: Scalar = jnp.prod(
+            (conc[self.ix_substrate] / km[self.ix_substrate])
+        ) / (
             -1
             + jnp.prod(
                 ((conc[self.ix_substrate] / km[self.ix_substrate]) + 1)
@@ -68,7 +76,8 @@ class ReversibleMichaelisMenten(eqx.Module):
         return out
 
 
-class IrreversibleMichaelisMenten(eqx.Module):
+@jax.jit
+class IrreversibleMichaelisMenten(RateEquation):
     dgf: Float[Array, " n"]
     log_km: Float[Array, " n_substrate"]
     log_enzyme: Scalar
@@ -98,7 +107,9 @@ class IrreversibleMichaelisMenten(eqx.Module):
         kcat: Scalar = jnp.exp(self.log_kcat)
         enzyme: Float[Array, " n"] = jnp.exp(self.log_enzyme)
         # add exponent in the numerator
-        sat: Scalar = jnp.prod((conc[self.ix_substrate] / km[self.ix_substrate])) / (
+        sat: Scalar = jnp.prod(
+            (conc[self.ix_substrate] / km[self.ix_substrate])
+        ) / (
             jnp.prod(
                 ((conc[self.ix_substrate] / km[self.ix_substrate]) + 1)
                 ** jnp.abs(self.stoich[self.ix_substrate])

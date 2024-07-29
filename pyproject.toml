@@ -24,8 +24,11 @@ build-backend = "hatchling.build"
 [tool.pdm]
 distribution = true
 
+[tool.ruff]
+line-length = 80
+
 [tool.ruff.lint]
 ignore = ["F722"]
 
 [tool.ruff.lint.isort]
-known_first_party = ["enzax"]
+known-first-party = ["enzax"]

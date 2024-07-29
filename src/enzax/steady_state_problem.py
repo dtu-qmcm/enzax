@@ -14,6 +14,7 @@ from enzax.kinetic_model import (
     KineticModel,
     KineticModelParameters,
     KineticModelStructure,
+    UnparameterisedKineticModel,
     dcdt,
 )
 from enzax.rate_equations import ReversibleMichaelisMenten
@@ -24,17 +25,19 @@ config.update("jax_enable_x64", True)
 @eqx.filter_jit
 def solve(
     parameters: KineticModelParameters,
-    structure: KineticModelStructure,
+    unparameterised_model: UnparameterisedKineticModel,
     guess: Float[Array, " n"],
 ):
-    model = KineticModel(parameters, structure)
+    model = KineticModel(parameters, unparameterised_model)
     term = diffrax.ODETerm(dcdt)
     solver = diffrax.Kvaerno5()
     t0 = 0
     t1 = jnp.inf
     dt0 = None
     max_steps = None
-    controller = diffrax.PIDController(pcoeff=0.3, icoeff=0.4, rtol=1e-8, atol=1e-8)
+    controller = diffrax.PIDController(
+        pcoeff=0.3, icoeff=0.4, rtol=1e-8, atol=1e-8
+    )
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint(
@@ -68,11 +71,6 @@ def main():
     )
     structure = KineticModelStructure(
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
-        rate_equation_classes=[
-            ReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
-        ],
         ix_balanced=jnp.array([1, 2]),
         ix_reactant=jnp.array([[0, 1], [1, 2], [2, 3]]),
         ix_substrate=jnp.array([[0], [0], [0]]),
@@ -82,17 +80,25 @@ def main():
         ix_unbalanced=jnp.array([0, 3]),
         stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
     )
+    unparameterised_model = UnparameterisedKineticModel(
+        structure,
+        rate_equation_classes=[  # type: ignore
+            ReversibleMichaelisMenten,
+            ReversibleMichaelisMenten,
+            ReversibleMichaelisMenten,
+        ],
+    )
     # guesses
     bad_guess = jnp.array([0.1, 2.0])
     good_guess = jnp.array([2.1, 1.1])
     model = KineticModel(parameters, structure)
     # solve once for jitting
-    sol = solve(parameters, structure, good_guess)
+    _ = solve(parameters, unparameterised_model, good_guess)
     jac = jax.jacrev(solve)(parameters, structure, good_guess)
     # compare good and bad guess
     for guess in [bad_guess, good_guess]:
         start = time.time()
-        conc_steady = solve(parameters, structure, guess)
+        conc_steady = solve(parameters, unparameterised_model, guess)
         jac = jax.jacrev(solve)(parameters, structure, guess)
         runtime = (time.time() - start) * 1e3
         sv = dcdt(jnp.array(0.0), conc_steady, model)

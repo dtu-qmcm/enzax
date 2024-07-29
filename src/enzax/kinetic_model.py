@@ -1,22 +1,7 @@
-from typing import Protocol, Any
+from abc import abstractmethod, ABC
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar, ScalarLike
-
-
-class KineticModelStructure(eqx.Module):
-    """Structural information about a kinetic model."""
-
-    S: Float[Array, " m n"]
-    rate_equation_classes: list[Any]
-    ix_balanced: Int[Array, " n_balanced"]
-    ix_unbalanced: Int[Array, " n_unbalanced"]
-    ix_substrate: Int[Array, " n _"]
-    ix_product: Int[Array, " n _"]
-    ix_reactant: Int[Array, " n _"]
-    ix_rate_to_km: Int[Array, " n _"]
-    ix_mic_to_metabolite: Int[Array, " m"]
-    stoich_by_rate: Float[Array, "n _"]
 
 
 class KineticModelParameters(eqx.Module):
@@ -30,8 +15,22 @@ class KineticModelParameters(eqx.Module):
     temperature: Scalar
 
 
-class RateEquation(Protocol):
+class KineticModelStructure(eqx.Module):
+    """Structural information about a kinetic model."""
 
+    S: Float[Array, " m n"]
+    ix_balanced: Int[Array, " n_balanced"]
+    ix_unbalanced: Int[Array, " n_unbalanced"]
+    ix_substrate: Int[Array, " n _"]
+    ix_product: Int[Array, " n _"]
+    ix_reactant: Int[Array, " n _"]
+    ix_rate_to_km: Int[Array, " n _"]
+    ix_mic_to_metabolite: Int[Array, " m"]
+    stoich_by_rate: Float[Array, "n _"]
+
+
+class RateEquation(ABC, eqx.Module):
+    @abstractmethod
     def __init__(
         self,
         global_parameters: KineticModelParameters,
@@ -39,31 +38,41 @@ class RateEquation(Protocol):
         ix: int,
     ): ...
 
+    @abstractmethod
     def __call__(self, conc: Float[Array, " n"]) -> Scalar: ...
+
+
+class UnparameterisedKineticModel(eqx.Module):
+    structure: KineticModelStructure
+    rate_equation_classes: list[type[RateEquation]]
 
 
 class KineticModel(eqx.Module):
     parameters: KineticModelParameters
-    structure: KineticModelStructure
+    unparameterised_model: UnparameterisedKineticModel
     rate_equations: list[RateEquation]
 
-    def __init__(self, parameters, structure):
+    def __init__(self, parameters, unparameterised_model):
         self.parameters = parameters
-        self.structure = structure
+        self.unparameterised_model = unparameterised_model
         self.rate_equations = [
-            cls(self.parameters, self.structure, ix)
-            for ix, cls in enumerate(self.structure.rate_equation_classes)
+            cls(self.parameters, self.unparameterised_model.structure, ix)
+            for ix, cls in enumerate(
+                self.unparameterised_model.rate_equation_classes
+            )
         ]
 
     def __call__(self, conc_balanced: Float[Array, " m"]) -> Float[Array, " n"]:
-        conc = jnp.zeros(self.structure.S.shape[0])
-        conc = conc.at[self.structure.ix_balanced].set(conc_balanced)
-        conc = conc.at[self.structure.ix_unbalanced].set(
+        conc = jnp.zeros(self.unparameterised_model.structure.S.shape[0])
+        conc = conc.at[self.unparameterised_model.structure.ix_balanced].set(
+            conc_balanced
+        )
+        conc = conc.at[self.unparameterised_model.structure.ix_unbalanced].set(
             jnp.exp(self.parameters.log_conc_unbalanced)
         )
         return jnp.array(
             [
-                f(conc[self.structure.ix_reactant[r]])
+                f(conc[self.unparameterised_model.structure.ix_reactant[r]])
                 for r, f in enumerate(self.rate_equations)
             ]
         )
@@ -74,4 +83,6 @@ def dcdt(
     t: ScalarLike, conc: Float[Array, " n_balanced"], args: KineticModel
 ) -> Float[Array, " n_balanced"]:
     model = args
-    return (model.structure.S @ model(conc))[model.structure.ix_balanced]
+    return (model.unparameterised_model.structure.S @ model(conc))[
+        model.unparameterised_model.structure.ix_balanced
+    ]

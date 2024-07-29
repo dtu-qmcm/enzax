@@ -13,6 +13,7 @@ from enzax.kinetic_model import (
     KineticModelStructure,
     KineticModelParameters,
     KineticModel,
+    UnparameterisedKineticModel,
 )
 from enzax.rate_equations import ReversibleMichaelisMenten
 from enzax.steady_state_problem import solve
@@ -48,21 +49,25 @@ def ind_normal_prior_logdensity(param, prior):
 @eqx.filter_jit
 def posterior_logdensity_fn(
     parameters: KineticModelParameters,
-    structure: KineticModelStructure,
+    unparameterised_model: UnparameterisedKineticModel,
     obs: ObservationSet,
     prior: PriorSet,
     guess: Float[Array, " n_balanced"],
 ):
-    model = KineticModel(parameters, structure)
-    steady = solve(parameters, structure, guess)
+    model = KineticModel(parameters, unparameterised_model)
+    steady = solve(parameters, unparameterised_model, guess)
     flux = model(steady)
-    conc = jnp.zeros(structure.S.shape[0])
-    conc = conc.at[structure.ix_balanced].set(steady)
-    conc = conc.at[structure.ix_unbalanced].set(jnp.exp(parameters.log_conc_unbalanced))
+    conc = jnp.zeros(unparameterised_model.structure.S.shape[0])
+    conc = conc.at[unparameterised_model.structure.ix_balanced].set(steady)
+    conc = conc.at[unparameterised_model.structure.ix_unbalanced].set(
+        jnp.exp(parameters.log_conc_unbalanced)
+    )
     likelihood_logdensity = (
         norm.pdf(jnp.log(obs.conc), conc, obs.conc_scale).sum()
         + norm.pdf(obs.flux, flux[0], obs.flux_scale).sum()
-        + norm.pdf(jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale).sum()
+        + norm.pdf(
+            jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale
+        ).sum()
     )
     prior_logdensity = (
         ind_normal_prior_logdensity(parameters.log_kcat, prior.log_kcat)
@@ -109,7 +114,10 @@ def sample(logdensity_fn, rng_key, init_parameters):
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
     states = inference_loop(
-        sample_key, kernel=nuts_kernel, initial_state=initial_state, num_samples=150
+        sample_key,
+        kernel=nuts_kernel,
+        initial_state=initial_state,
+        num_samples=150,
     )
     return states
 
@@ -122,11 +130,6 @@ def main():
     """Demonstrate the functionality of the mcmc module."""
     structure = KineticModelStructure(
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
-        rate_equation_classes=[
-            ReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
-        ],
         ix_balanced=jnp.array([1, 2]),
         ix_reactant=jnp.array([[0, 1], [1, 2], [2, 3]]),
         ix_substrate=jnp.array([[0], [0], [0]]),
@@ -144,9 +147,21 @@ def main():
         log_conc_unbalanced=jnp.array([0.5, 0.1]),
         temperature=jnp.array(310.0),
     )
+    unparameterised_model = UnparameterisedKineticModel(
+        structure=structure,
+        rate_equation_classes=[
+            ReversibleMichaelisMenten,
+            ReversibleMichaelisMenten,
+            ReversibleMichaelisMenten,
+        ],
+    )
     default_state_guess = jnp.array([0.1, 0.1])
-    true_model = KineticModel(parameters=true_parameters, structure=structure)
-    true_states = solve(true_parameters, structure, default_state_guess)
+    true_model = KineticModel(
+        parameters=true_parameters, unparameterised_model=unparameterised_model
+    )
+    true_states = solve(
+        true_parameters, unparameterised_model, default_state_guess
+    )
     prior = PriorSet(
         log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
@@ -172,7 +187,8 @@ def main():
     key = jax.random.key(SEED)
     obs_conc = jnp.exp(jnp.log(true_conc) + jax.random.normal(key) * error_conc)
     obs_enzyme = jnp.exp(
-        jnp.log(true_parameters.log_enzyme) + jax.random.normal(key) * error_enzyme
+        jnp.log(true_parameters.log_enzyme)
+        + jax.random.normal(key) * error_enzyme
     )
     obs_flux = true_flux + jax.random.normal(key) * error_conc
     obs = ObservationSet(
@@ -187,7 +203,7 @@ def main():
         posterior_logdensity_fn,
         obs=obs,
         prior=prior,
-        structure=structure,
+        unparameterised_model=unparameterised_model,
         guess=default_state_guess,
     )
     samples = sample(log_M, key, true_parameters)
