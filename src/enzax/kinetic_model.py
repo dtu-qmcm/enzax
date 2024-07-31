@@ -49,30 +49,26 @@ class UnparameterisedKineticModel(eqx.Module):
 
 class KineticModel(eqx.Module):
     parameters: KineticModelParameters
-    unparameterised_model: UnparameterisedKineticModel
+    structure: KineticModelStructure
     rate_equations: list[RateEquation]
 
     def __init__(self, parameters, unparameterised_model):
         self.parameters = parameters
-        self.unparameterised_model = unparameterised_model
+        self.structure = unparameterised_model.structure
         self.rate_equations = [
-            cls(self.parameters, self.unparameterised_model.structure, ix)
-            for ix, cls in enumerate(
-                self.unparameterised_model.rate_equation_classes
-            )
+            cls(self.parameters, self.structure, ix)
+            for ix, cls in enumerate(unparameterised_model.rate_equation_classes)
         ]
 
     def __call__(self, conc_balanced: Float[Array, " m"]) -> Float[Array, " n"]:
-        conc = jnp.zeros(self.unparameterised_model.structure.S.shape[0])
-        conc = conc.at[self.unparameterised_model.structure.ix_balanced].set(
-            conc_balanced
-        )
-        conc = conc.at[self.unparameterised_model.structure.ix_unbalanced].set(
+        conc = jnp.zeros(self.structure.S.shape[0])
+        conc = conc.at[self.structure.ix_balanced].set(conc_balanced)
+        conc = conc.at[self.structure.ix_unbalanced].set(
             jnp.exp(self.parameters.log_conc_unbalanced)
         )
         return jnp.array(
             [
-                f(conc[self.unparameterised_model.structure.ix_reactant[r]])
+                f(conc[self.structure.ix_reactant[r]])
                 for r, f in enumerate(self.rate_equations)
             ]
         )
@@ -83,6 +79,4 @@ def dcdt(
     t: ScalarLike, conc: Float[Array, " n_balanced"], args: KineticModel
 ) -> Float[Array, " n_balanced"]:
     model = args
-    return (model.unparameterised_model.structure.S @ model(conc))[
-        model.unparameterised_model.structure.ix_balanced
-    ]
+    return (model.structure.S @ model(conc))[model.structure.ix_balanced]

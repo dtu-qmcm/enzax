@@ -57,9 +57,9 @@ def posterior_logdensity_fn(
     model = KineticModel(parameters, unparameterised_model)
     steady = solve(parameters, unparameterised_model, guess)
     flux = model(steady)
-    conc = jnp.zeros(unparameterised_model.structure.S.shape[0])
-    conc = conc.at[unparameterised_model.structure.ix_balanced].set(steady)
-    conc = conc.at[unparameterised_model.structure.ix_unbalanced].set(
+    conc = jnp.zeros(model.structure.S.shape[0])
+    conc = conc.at[model.structure.ix_balanced].set(steady)
+    conc = conc.at[model.structure.ix_unbalanced].set(
         jnp.exp(parameters.log_conc_unbalanced)
     )
     likelihood_logdensity = (

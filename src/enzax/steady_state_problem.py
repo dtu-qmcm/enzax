@@ -82,7 +82,7 @@ def main():
     )
     unparameterised_model = UnparameterisedKineticModel(
         structure,
-        rate_equation_classes=[  # type: ignore
+        rate_equation_classes=[
             ReversibleMichaelisMenten,
             ReversibleMichaelisMenten,
             ReversibleMichaelisMenten,
@@ -91,15 +91,15 @@ def main():
     # guesses
     bad_guess = jnp.array([0.1, 2.0])
     good_guess = jnp.array([2.1, 1.1])
-    model = KineticModel(parameters, structure)
+    model = KineticModel(parameters, unparameterised_model)
     # solve once for jitting
     _ = solve(parameters, unparameterised_model, good_guess)
-    jac = jax.jacrev(solve)(parameters, structure, good_guess)
+    jac = jax.jacrev(solve)(parameters, unparameterised_model, good_guess)
     # compare good and bad guess
     for guess in [bad_guess, good_guess]:
         start = time.time()
         conc_steady = solve(parameters, unparameterised_model, guess)
-        jac = jax.jacrev(solve)(parameters, structure, guess)
+        jac = jax.jacrev(solve)(parameters, unparameterised_model, guess)
         runtime = (time.time() - start) * 1e3
         sv = dcdt(jnp.array(0.0), conc_steady, model)
         flux = model(conc_steady)
