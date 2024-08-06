@@ -14,7 +14,7 @@ from jaxtyping import Array, Float, Int, Scalar
 class MichaelisMenten(RateEquation, ABC):
     """Abstract base class for Michaelis Menten rate equations.
 
-    Subclasses need to implement the method free_enzyme_ratio.
+    Subclasses need to implement the method free_enzyme_ratio (and also the __call__ method).
 
     """
 
@@ -72,21 +72,13 @@ class MichaelisMenten(RateEquation, ABC):
         return out
 
     def numerator(self, conc: Float[Array, " n"]) -> Scalar:
-        """Get the product of each substrate's concentration over its km."""
+        """Get the product of each substrate's concentration over its km.
+        This quantity is the numerator in a Michaelis Menten reaction's rate equation
+        """
         return jnp.prod((conc[self.ix_substrate] / self.km[self.ix_substrate]))
 
     @abstractmethod
     def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar: ...
-
-    def __call__(self, conc: Float[Array, " n"]) -> Scalar:
-        """Get flux of a reaction with irreversible Michaelis Menten kinetics.
-
-        :param conc: A 1D array of non-negative numbers representing concentrations of the species that the reaction produces and consumes.
-
-        """
-        saturation: Scalar = self.numerator(conc) * self.free_enzyme_ratio(conc)
-        out = self.kcat * self.enzyme * saturation
-        return out
 
 
 class IrreversibleMichaelisMenten(MichaelisMenten):
@@ -99,6 +91,16 @@ class IrreversibleMichaelisMenten(MichaelisMenten):
             )
             + jnp.sum(conc[self.ix_ki_species] / self.ki)
         )
+
+    def __call__(self, conc: Float[Array, " n"]) -> Scalar:
+        """Get flux of a reaction with irreversible Michaelis Menten kinetics.
+
+        :param conc: A 1D array of non-negative numbers representing concentrations of the species that the reaction produces and consumes.
+
+        """
+        saturation: Scalar = self.numerator(conc) * self.free_enzyme_ratio(conc)
+        out = self.kcat * self.enzyme * saturation
+        return out
 
 
 class ReversibleMichaelisMenten(MichaelisMenten):
@@ -128,7 +130,14 @@ class ReversibleMichaelisMenten(MichaelisMenten):
         )
 
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
-        return super().__call__(conc) * self.reversibility(conc)
+        """Get flux of a reaction with reversible Michaelis Menten kinetics.
+
+        :param conc: A 1D array of non-negative numbers representing concentrations of the species that the reaction produces and consumes.
+
+        """
+        saturation: Scalar = self.numerator(conc) * self.free_enzyme_ratio(conc)
+        out = self.reversibility(conc) * self.kcat * self.enzyme * saturation
+        return out
 
 
 class AllostericMichaelisMenten(MichaelisMenten):
@@ -138,8 +147,8 @@ class AllostericMichaelisMenten(MichaelisMenten):
 
     """
 
-    transfer_constant: Scalar
-    dissociation_constant: Float[Array, " n_effector"]
+    log_transfer_constant: Scalar
+    log_dissociation_constant: Float[Array, " n_effector"]
     subunits: int
     ix_effector: Int[Array, "n effector"]
     ix_activator: Int[Array, "n activator"]
@@ -148,10 +157,10 @@ class AllostericMichaelisMenten(MichaelisMenten):
     def __init__(self, parameters, structure, ix):
         super().__init__(parameters, structure, ix)
         self.subunits = structure.subunits[ix]  # type: ignore
-        self.transfer_constant = parameters.transfer_constant[
+        self.log_transfer_constant = parameters.log_transfer_constant[
             jnp.array(structure.ix_allosteric_enzyme[ix])
         ]
-        self.dissociation_constant = parameters.dissociation_constant[
+        self.log_dissociation_constant = parameters.log_dissociation_constant[
             jnp.array(structure.ix_allosteric_effector[ix])
         ]
         self.ix_effector = jnp.array(
@@ -165,12 +174,13 @@ class AllostericMichaelisMenten(MichaelisMenten):
         )
 
     def allosteric_effect(self, conc: Float[Array, " n"]) -> Scalar:
-        conc_over_dc = conc[self.ix_effector] / self.dissociation_constant
+        tc = jnp.exp(self.log_transfer_constant)
+        dc = jnp.exp(self.log_dissociation_constant)
+        conc_over_dc = conc[self.ix_effector] / dc
         fer = self.free_enzyme_ratio(conc)
         qnum = 1 + conc_over_dc[self.ix_inhibitor].sum()
         qdenom = 1 + conc_over_dc[self.ix_activator].sum()
-        su = self.subunits
-        out = 1.0 / (self.transfer_constant * (fer * qnum / qdenom) ** su)
+        out = 1.0 / (tc * (fer * qnum / qdenom) ** self.subunits)
         return out
 
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:

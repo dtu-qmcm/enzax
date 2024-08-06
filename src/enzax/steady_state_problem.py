@@ -70,8 +70,8 @@ def main():
         log_ki=jnp.array([1.0]),
         log_conc_unbalanced=jnp.array([0.5, 0.1]),
         temperature=jnp.array(310.0),
-        transfer_constant=jnp.array([1.0, 1.0]),
-        dissociation_constant=jnp.array([1.0, 1.0]),
+        log_transfer_constant=jnp.array([0.0, 0.0]),
+        log_dissociation_constant=jnp.array([0.0, 0.0]),
     )
     structure = KineticModelStructure(
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),

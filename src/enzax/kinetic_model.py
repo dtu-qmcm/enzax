@@ -15,8 +15,8 @@ class KineticModelParameters(eqx.Module):
     log_ki: Float[Array, " n_ki"]
     log_conc_unbalanced: Float[Array, " n_unbalanced"]
     temperature: Scalar
-    transfer_constant: Float[Array, " n_allosteric_enzyme"]
-    dissociation_constant: Float[Array, " n_allosteric_effector _"]
+    log_transfer_constant: Float[Array, " n_allosteric_enzyme"]
+    log_dissociation_constant: Float[Array, " n_allosteric_effector"]
 
 
 class KineticModelStructure(eqx.Module):

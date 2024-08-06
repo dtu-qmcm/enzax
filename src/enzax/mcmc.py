@@ -40,6 +40,9 @@ class PriorSet:
     log_km: Float[Array, "2 n_km"]
     log_conc_unbalanced: Float[Array, "2 n_unbalanced"]
     temperature: Float[Array, "2"]
+    log_ki: Float[Array, " n_ki"]
+    log_transfer_constant: Float[Array, "2 n_allosteric_enzyme"]
+    log_dissociation_constant: Float[Array, "2 n_allosteric_effector"]
 
 
 def ind_normal_prior_logdensity(param, prior):
@@ -65,9 +68,7 @@ def posterior_logdensity_fn(
     likelihood_logdensity = (
         norm.pdf(jnp.log(obs.conc), conc, obs.conc_scale).sum()
         + norm.pdf(obs.flux, flux[0], obs.flux_scale).sum()
-        + norm.pdf(
-            jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale
-        ).sum()
+        + norm.pdf(jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale).sum()
     )
     prior_logdensity = (
         ind_normal_prior_logdensity(parameters.log_kcat, prior.log_kcat)
@@ -128,6 +129,17 @@ def ind_prior_from_truth(truth, sd):
 
 def main():
     """Demonstrate the functionality of the mcmc module."""
+    true_parameters = KineticModelParameters(
+        log_kcat=jnp.array([0.0, 0.0, 0.0]),
+        log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
+        dgf=jnp.array([-3, -1.0]),
+        log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
+        log_ki=jnp.array([1.0]),
+        log_conc_unbalanced=jnp.array([0.5, 0.1]),
+        temperature=jnp.array(310.0),
+        log_transfer_constant=jnp.array([0.0, 0.0]),
+        log_dissociation_constant=jnp.array([0.0, 0.0]),
+    )
     structure = KineticModelStructure(
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
         ix_balanced=jnp.array([1, 2]),
@@ -138,14 +150,13 @@ def main():
         ix_mic_to_metabolite=jnp.array([0, 0, 1, 1]),
         ix_unbalanced=jnp.array([0, 3]),
         stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
-    )
-    true_parameters = KineticModelParameters(
-        log_kcat=jnp.array([0.0, 0.0, 0.0]),
-        log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
-        dgf=jnp.array([-3, -1.0]),
-        log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
-        log_conc_unbalanced=jnp.array([0.5, 0.1]),
-        temperature=jnp.array(310.0),
+        subunits=jnp.array([1, 1, 1]),
+        ix_allosteric_enzyme=jnp.array([0, 1]),
+        ix_allosteric_effector=[[2], [1], []],
+        ix_allosteric_activator=[[2], [], []],
+        ix_allosteric_inhibitor=[[], [1], []],
+        ix_ki_species=jnp.array([1]),
+        ix_rate_to_ki=[[], [0], []],
     )
     unparameterised_model = UnparameterisedKineticModel(
         structure=structure,
@@ -159,9 +170,7 @@ def main():
     true_model = KineticModel(
         parameters=true_parameters, unparameterised_model=unparameterised_model
     )
-    true_states = solve(
-        true_parameters, unparameterised_model, default_state_guess
-    )
+    true_states = solve(true_parameters, unparameterised_model, default_state_guess)
     prior = PriorSet(
         log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
@@ -171,6 +180,13 @@ def main():
             true_parameters.log_conc_unbalanced, 0.1
         ),
         temperature=ind_prior_from_truth(true_parameters.temperature, 0.1),
+        log_ki=ind_prior_from_truth(true_parameters.log_ki, 0.1),
+        log_transfer_constant=ind_prior_from_truth(
+            true_parameters.log_transfer_constant, 0.1
+        ),
+        log_dissociation_constant=ind_prior_from_truth(
+            true_parameters.log_dissociation_constant, 0.1
+        ),
     )
     # get true concentration
     true_conc = jnp.zeros(structure.S.shape[0])
@@ -187,8 +203,7 @@ def main():
     key = jax.random.key(SEED)
     obs_conc = jnp.exp(jnp.log(true_conc) + jax.random.normal(key) * error_conc)
     obs_enzyme = jnp.exp(
-        jnp.log(true_parameters.log_enzyme)
-        + jax.random.normal(key) * error_enzyme
+        jnp.log(true_parameters.log_enzyme) + jax.random.normal(key) * error_enzyme
     )
     obs_flux = true_flux + jax.random.normal(key) * error_conc
     obs = ObservationSet(
