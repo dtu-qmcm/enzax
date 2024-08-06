@@ -17,7 +17,10 @@ from enzax.kinetic_model import (
     UnparameterisedKineticModel,
     dcdt,
 )
-from enzax.rate_equations import ReversibleMichaelisMenten
+from enzax.rate_equations import (
+    ReversibleMichaelisMenten,
+    AllostericReversibleMichaelisMenten,
+)
 
 config.update("jax_enable_x64", True)
 
@@ -35,9 +38,7 @@ def solve(
     t1 = jnp.inf
     dt0 = None
     max_steps = None
-    controller = diffrax.PIDController(
-        pcoeff=0.3, icoeff=0.4, rtol=1e-8, atol=1e-8
-    )
+    controller = diffrax.PIDController(pcoeff=0.3, icoeff=0.4, rtol=1e-9, atol=1e-9)
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint(
@@ -66,8 +67,11 @@ def main():
         log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
         dgf=jnp.array([-3, -1.0]),
         log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
+        log_ki=jnp.array([1.0]),
         log_conc_unbalanced=jnp.array([0.5, 0.1]),
         temperature=jnp.array(310.0),
+        transfer_constant=jnp.array([1.0, 1.0]),
+        dissociation_constant=jnp.array([1.0, 1.0]),
     )
     structure = KineticModelStructure(
         S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
@@ -79,12 +83,19 @@ def main():
         ix_mic_to_metabolite=jnp.array([0, 0, 1, 1]),
         ix_unbalanced=jnp.array([0, 3]),
         stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
+        subunits=jnp.array([1, 1, 1]),
+        ix_allosteric_enzyme=jnp.array([0, 1]),
+        ix_allosteric_effector=[[2], [1], []],
+        ix_allosteric_activator=[[2], [], []],
+        ix_allosteric_inhibitor=[[], [1], []],
+        ix_ki_species=jnp.array([1]),
+        ix_rate_to_ki=[[], [0], []],
     )
     unparameterised_model = UnparameterisedKineticModel(
         structure,
         rate_equation_classes=[
-            ReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
+            AllostericReversibleMichaelisMenten,
+            AllostericReversibleMichaelisMenten,
             ReversibleMichaelisMenten,
         ],
     )
@@ -93,7 +104,7 @@ def main():
     good_guess = jnp.array([2.1, 1.1])
     model = KineticModel(parameters, unparameterised_model)
     # solve once for jitting
-    _ = solve(parameters, unparameterised_model, good_guess)
+    x = solve(parameters, unparameterised_model, good_guess)
     jac = jax.jacrev(solve)(parameters, unparameterised_model, good_guess)
     # compare good and bad guess
     for guess in [bad_guess, good_guess]:
