@@ -15,11 +15,15 @@ from enzax.kinetic_model import (
     KineticModel,
     UnparameterisedKineticModel,
 )
-from enzax.rate_equations import ReversibleMichaelisMenten
+from enzax.rate_equations import (
+    AllostericReversibleMichaelisMenten,
+    ReversibleMichaelisMenten,
+)
 from enzax.steady_state_problem import solve
 from jaxtyping import Array, Float, ScalarLike
 
-SEED = 12345
+SEED = 1234
+jax.config.update("jax_enable_x64", True)
 
 
 @chex.dataclass
@@ -66,7 +70,7 @@ def posterior_logdensity_fn(
         jnp.exp(parameters.log_conc_unbalanced)
     )
     likelihood_logdensity = (
-        norm.pdf(jnp.log(obs.conc), conc, obs.conc_scale).sum()
+        norm.pdf(jnp.log(obs.conc), jnp.log(conc), obs.conc_scale).sum()
         + norm.pdf(obs.flux, flux[0], obs.flux_scale).sum()
         + norm.pdf(jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale).sum()
     )
@@ -79,6 +83,13 @@ def posterior_logdensity_fn(
             parameters.log_conc_unbalanced, prior.log_conc_unbalanced
         )
         + ind_normal_prior_logdensity(parameters.temperature, prior.temperature)
+        + ind_normal_prior_logdensity(parameters.log_ki, prior.log_ki)
+        + ind_normal_prior_logdensity(
+            parameters.log_transfer_constant, prior.log_transfer_constant
+        )
+        + ind_normal_prior_logdensity(
+            parameters.log_dissociation_constant, prior.log_dissociation_constant
+        )
     )
     return prior_logdensity + likelihood_logdensity
 
@@ -102,7 +113,7 @@ def sample(logdensity_fn, rng_key, init_parameters):
         logdensity_fn,
         progress_bar=True,
         initial_step_size=0.0001,
-        max_num_doublings=6,
+        max_num_doublings=8,
         is_mass_matrix_diagonal=False,
         target_acceptance_rate=0.95,
     )
@@ -131,11 +142,11 @@ def main():
     """Demonstrate the functionality of the mcmc module."""
     true_parameters = KineticModelParameters(
         log_kcat=jnp.array([0.0, 0.0, 0.0]),
-        log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
+        log_enzyme=jnp.log(jnp.array([0.17609, 0.17609, 0.17609])),
         dgf=jnp.array([-3, -1.0]),
         log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
-        log_ki=jnp.array([1.0]),
-        log_conc_unbalanced=jnp.array([0.5, 0.1]),
+        log_ki=jnp.array([0.0]),
+        log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
         temperature=jnp.array(310.0),
         log_transfer_constant=jnp.array([0.0, 0.0]),
         log_dissociation_constant=jnp.array([0.0, 0.0]),
@@ -161,8 +172,8 @@ def main():
     unparameterised_model = UnparameterisedKineticModel(
         structure=structure,
         rate_equation_classes=[
-            ReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
+            AllostericReversibleMichaelisMenten,
+            AllostericReversibleMichaelisMenten,
             ReversibleMichaelisMenten,
         ],
     )
@@ -203,7 +214,7 @@ def main():
     key = jax.random.key(SEED)
     obs_conc = jnp.exp(jnp.log(true_conc) + jax.random.normal(key) * error_conc)
     obs_enzyme = jnp.exp(
-        jnp.log(true_parameters.log_enzyme) + jax.random.normal(key) * error_enzyme
+        true_parameters.log_enzyme + jax.random.normal(key) * error_enzyme
     )
     obs_flux = true_flux + jax.random.normal(key) * error_conc
     obs = ObservationSet(
@@ -222,7 +233,17 @@ def main():
         guess=default_state_guess,
     )
     samples = sample(log_M, key, true_parameters)
-    print(samples)
+    print("True parameter values vs posterior:")
+    for param in true_parameters.__dataclass_fields__.keys():
+        true_val = getattr(true_parameters, param)
+        model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
+        model_mean = getattr(samples.position, param).mean(axis=0)
+        model_high = jnp.quantile(getattr(samples.position, param), 0.99, axis=0)
+        print(f" {param}:")
+        print(f"  true value: {true_val}")
+        print(f"  posterior 1%: {model_low}")
+        print(f"  posterior mean: {model_mean}")
+        print(f"  posterior 99%: {model_high}")
 
 
 if __name__ == "__main__":

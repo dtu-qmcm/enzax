@@ -38,7 +38,7 @@ def solve(
     t1 = jnp.inf
     dt0 = None
     max_steps = None
-    controller = diffrax.PIDController(pcoeff=0.3, icoeff=0.4, rtol=1e-9, atol=1e-9)
+    controller = diffrax.PIDController(pcoeff=0.3, icoeff=0.4, rtol=1e-8, atol=1e-8)
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint(
@@ -64,11 +64,11 @@ def main():
     """Function for testing the steady state solver."""
     parameters = KineticModelParameters(
         log_kcat=jnp.array([0.0, 0.0, 0.0]),
-        log_enzyme=jnp.array([0.17609, 0.17609, 0.17609]),
+        log_enzyme=jnp.log(jnp.array([0.17609, 0.17609, 0.17609])),
         dgf=jnp.array([-3, -1.0]),
         log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
         log_ki=jnp.array([1.0]),
-        log_conc_unbalanced=jnp.array([0.5, 0.1]),
+        log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
         temperature=jnp.array(310.0),
         log_transfer_constant=jnp.array([0.0, 0.0]),
         log_dissociation_constant=jnp.array([0.0, 0.0]),
