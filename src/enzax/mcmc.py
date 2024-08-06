@@ -237,12 +237,10 @@ def main():
     for param in true_parameters.__dataclass_fields__.keys():
         true_val = getattr(true_parameters, param)
         model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
-        model_mean = getattr(samples.position, param).mean(axis=0)
         model_high = jnp.quantile(getattr(samples.position, param), 0.99, axis=0)
         print(f" {param}:")
         print(f"  true value: {true_val}")
         print(f"  posterior 1%: {model_low}")
-        print(f"  posterior mean: {model_mean}")
         print(f"  posterior 99%: {model_high}")
 
 
