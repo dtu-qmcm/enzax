@@ -2,6 +2,7 @@
 
 from abc import abstractmethod, ABC
 
+import jax
 from enzax.kinetic_model import (
     KineticModelParameters,
     KineticModelStructure,
@@ -82,7 +83,6 @@ class MichaelisMenten(RateEquation, ABC):
 
 
 class IrreversibleMichaelisMenten(MichaelisMenten):
-
     def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar:
         return 1.0 / (
             jnp.prod(
@@ -140,58 +140,56 @@ class ReversibleMichaelisMenten(MichaelisMenten):
         return out
 
 
-class AllostericMichaelisMenten(MichaelisMenten):
-    """Mixin class providing the method allosteric_effect.
+class AllostericRateLaw(MichaelisMenten):
+    """Mixin class providing the method allosteric_effect."""
 
-    Note that this class does not provide the free_enzyme_ratio method so it will not work on its own.
-
-    """
-
-    log_transfer_constant: Scalar
-    log_dissociation_constant: Float[Array, " n_effector"]
     subunits: int
-    ix_effector: Int[Array, "n effector"]
-    ix_activator: Int[Array, "n activator"]
-    ix_inhibitor: Int[Array, "n inhibitor"]
+    species_activation: Int[Array, " n_activation"]
+    species_inhibition: Int[Array, " n_inhibition"]
+    tc: Scalar
+    dc_activation: Float[Array, " n_activation"]
+    dc_inhibition: Float[Array, " n_inhibition"]
 
     def __init__(self, parameters, structure, ix):
+        ix_dc_activation = jnp.array(
+            structure.ix_rate_to_dc_activation[ix], dtype=jnp.int16
+        )
+        ix_dc_inhibition = jnp.array(
+            structure.ix_rate_to_dc_inhibition[ix], dtype=jnp.int16
+        )
         super().__init__(parameters, structure, ix)
         self.subunits = structure.subunits[ix]  # type: ignore
-        self.log_transfer_constant = parameters.log_transfer_constant[
-            jnp.array(structure.ix_allosteric_enzyme[ix])
-        ]
-        self.log_dissociation_constant = parameters.log_dissociation_constant[
-            jnp.array(structure.ix_allosteric_effector[ix])
-        ]
-        self.ix_effector = jnp.array(
-            structure.ix_allosteric_effector[ix], dtype=jnp.int16
+        self.species_activation = structure.ix_dc_species[ix_dc_activation]
+        self.species_inhibition = structure.ix_dc_species[ix_dc_inhibition]
+        self.tc = jnp.exp(
+            parameters.log_transfer_constant[structure.ix_rate_to_tc[ix][0]]
         )
-        self.ix_activator = jnp.array(
-            structure.ix_allosteric_activator[ix], dtype=jnp.int16
+        self.dc_activation = jnp.exp(
+            parameters.log_dissociation_constant[ix_dc_activation]
         )
-        self.ix_inhibitor = jnp.array(
-            structure.ix_allosteric_inhibitor[ix], dtype=jnp.int16
+        self.dc_inhibition = jnp.exp(
+            parameters.log_dissociation_constant[ix_dc_inhibition]
         )
 
     def allosteric_effect(self, conc: Float[Array, " n"]) -> Scalar:
-        tc = jnp.exp(self.log_transfer_constant)
-        dc = jnp.exp(self.log_dissociation_constant)
-        conc_over_dc = conc[self.ix_effector] / dc
-        fer = self.free_enzyme_ratio(conc)
-        qnum = 1 + conc_over_dc[self.ix_inhibitor].sum()
-        qdenom = 1 + conc_over_dc[self.ix_activator].sum()
-        out = 1.0 / (tc * (fer * qnum / qdenom) ** self.subunits)
+        qnum = 1 + jnp.sum(conc[self.species_activation] / self.dc_activation)
+        qdenom = 1 + jnp.sum(conc[self.species_inhibition] / self.dc_inhibition)
+        out = 1.0 / (
+            self.tc
+            * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
+        )
         return out
 
+
+class AllostericIrreversibleMichaelisMenten(
+    AllostericRateLaw, IrreversibleMichaelisMenten
+):
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         return super().__call__(conc) * self.allosteric_effect(conc)
 
 
-class AllostericIrreversibleMichaelisMenten(
-    IrreversibleMichaelisMenten, AllostericMichaelisMenten
-): ...
-
-
 class AllostericReversibleMichaelisMenten(
-    ReversibleMichaelisMenten, AllostericMichaelisMenten
-): ...
+    AllostericRateLaw, ReversibleMichaelisMenten
+):
+    def __call__(self, conc: Float[Array, " n"]) -> Scalar:
+        return super().__call__(conc) * self.allosteric_effect(conc)

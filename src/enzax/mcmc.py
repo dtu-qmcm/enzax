@@ -24,6 +24,7 @@ from jaxtyping import Array, Float, ScalarLike
 
 SEED = 1234
 jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_debug_nans", True)
 
 
 @chex.dataclass
@@ -72,7 +73,9 @@ def posterior_logdensity_fn(
     likelihood_logdensity = (
         norm.pdf(jnp.log(obs.conc), jnp.log(conc), obs.conc_scale).sum()
         + norm.pdf(obs.flux, flux[0], obs.flux_scale).sum()
-        + norm.pdf(jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale).sum()
+        + norm.pdf(
+            jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale
+        ).sum()
     )
     prior_logdensity = (
         ind_normal_prior_logdensity(parameters.log_kcat, prior.log_kcat)
@@ -88,7 +91,8 @@ def posterior_logdensity_fn(
             parameters.log_transfer_constant, prior.log_transfer_constant
         )
         + ind_normal_prior_logdensity(
-            parameters.log_dissociation_constant, prior.log_dissociation_constant
+            parameters.log_dissociation_constant,
+            prior.log_dissociation_constant,
         )
     )
     return prior_logdensity + likelihood_logdensity
@@ -113,7 +117,7 @@ def sample(logdensity_fn, rng_key, init_parameters):
         logdensity_fn,
         progress_bar=True,
         initial_step_size=0.0001,
-        max_num_doublings=8,
+        max_num_doublings=9,
         is_mass_matrix_diagonal=False,
         target_acceptance_rate=0.95,
     )
@@ -121,7 +125,7 @@ def sample(logdensity_fn, rng_key, init_parameters):
     (initial_state, tuned_parameters), _ = warmup.run(
         warmup_key,
         init_parameters,
-        num_steps=200,  # type: ignore
+        num_steps=250,  # type: ignore
     )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
@@ -129,7 +133,7 @@ def sample(logdensity_fn, rng_key, init_parameters):
         sample_key,
         kernel=nuts_kernel,
         initial_state=initial_state,
-        num_samples=150,
+        num_samples=200,
     )
     return states
 
@@ -162,10 +166,10 @@ def main():
         ix_unbalanced=jnp.array([0, 3]),
         stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
         subunits=jnp.array([1, 1, 1]),
-        ix_allosteric_enzyme=jnp.array([0, 1]),
-        ix_allosteric_effector=[[2], [1], []],
-        ix_allosteric_activator=[[2], [], []],
-        ix_allosteric_inhibitor=[[], [1], []],
+        ix_rate_to_tc=[[0], [1], []],
+        ix_rate_to_dc_activation=[[0], [], []],
+        ix_rate_to_dc_inhibition=[[], [1], []],
+        ix_dc_species=jnp.array([2, 1]),
         ix_ki_species=jnp.array([1]),
         ix_rate_to_ki=[[], [0], []],
     )
@@ -181,7 +185,9 @@ def main():
     true_model = KineticModel(
         parameters=true_parameters, unparameterised_model=unparameterised_model
     )
-    true_states = solve(true_parameters, unparameterised_model, default_state_guess)
+    true_states = solve(
+        true_parameters, unparameterised_model, default_state_guess
+    )
     prior = PriorSet(
         log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
@@ -237,7 +243,9 @@ def main():
     for param in true_parameters.__dataclass_fields__.keys():
         true_val = getattr(true_parameters, param)
         model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
-        model_high = jnp.quantile(getattr(samples.position, param), 0.99, axis=0)
+        model_high = jnp.quantile(
+            getattr(samples.position, param), 0.99, axis=0
+        )
         print(f" {param}:")
         print(f"  true value: {true_val}")
         print(f"  posterior 1%: {model_low}")

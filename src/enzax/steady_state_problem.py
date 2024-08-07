@@ -35,10 +35,12 @@ def solve(
     term = diffrax.ODETerm(dcdt)
     solver = diffrax.Kvaerno5()
     t0 = 0
-    t1 = jnp.inf
+    t1 = 900
     dt0 = None
     max_steps = None
-    controller = diffrax.PIDController(pcoeff=0.3, icoeff=0.4, rtol=1e-8, atol=1e-8)
+    controller = diffrax.PIDController(
+        pcoeff=0.3, icoeff=0.4, rtol=1e-9, atol=1e-9
+    )
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint(
@@ -84,10 +86,10 @@ def main():
         ix_unbalanced=jnp.array([0, 3]),
         stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
         subunits=jnp.array([1, 1, 1]),
-        ix_allosteric_enzyme=jnp.array([0, 1]),
-        ix_allosteric_effector=[[2], [1], []],
-        ix_allosteric_activator=[[2], [], []],
-        ix_allosteric_inhibitor=[[], [1], []],
+        ix_rate_to_tc=[[0], [1], []],
+        ix_rate_to_dc_activation=[[0], [], []],
+        ix_rate_to_dc_inhibition=[[], [1], []],
+        ix_dc_species=jnp.array([2, 1]),
         ix_ki_species=jnp.array([1]),
         ix_rate_to_ki=[[], [0], []],
     )

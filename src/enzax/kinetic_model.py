@@ -1,5 +1,4 @@
 from abc import abstractmethod, ABC
-from dataclasses import dataclass
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar, ScalarLike
@@ -32,11 +31,11 @@ class KineticModelStructure(eqx.Module):
     ix_rate_to_ki: list[list[int]]
     ix_mic_to_metabolite: Int[Array, " m"]
     stoich_by_rate: Float[Array, "n _"]
-    ix_allosteric_enzyme: Int[Array, " n_allosteric_enzyme"]
-    ix_allosteric_effector: list[list[int]]
-    ix_allosteric_activator: list[list[int]]
-    ix_allosteric_inhibitor: list[list[int]]
     ix_ki_species: Int[Array, " n_competitive_inhibitor"]
+    ix_rate_to_tc: list[list[int]]
+    ix_rate_to_dc_inhibition: list[list[int]]
+    ix_rate_to_dc_activation: list[list[int]]
+    ix_dc_species: Int[Array, " n_allosteric_interaction"]
     subunits: Int[Array, " n"]
 
 
@@ -84,7 +83,9 @@ class KineticModel(eqx.Module):
         self.structure = unparameterised_model.structure
         self.rate_equations = [
             cls(self.parameters, self.structure, ix)
-            for ix, cls in enumerate(unparameterised_model.rate_equation_classes)
+            for ix, cls in enumerate(
+                unparameterised_model.rate_equation_classes
+            )
         ]
 
     def __call__(
