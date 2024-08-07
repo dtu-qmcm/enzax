@@ -2,7 +2,6 @@
 
 from abc import abstractmethod, ABC
 
-import jax
 from enzax.kinetic_model import (
     KineticModelParameters,
     KineticModelStructure,

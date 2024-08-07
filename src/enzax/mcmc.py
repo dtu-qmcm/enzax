@@ -51,7 +51,7 @@ class PriorSet:
 
 
 def ind_normal_prior_logdensity(param, prior):
-    return norm.pdf(param, loc=prior[0], scale=prior[1]).sum()
+    return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
 
 
 @eqx.filter_jit
@@ -71,9 +71,9 @@ def posterior_logdensity_fn(
         jnp.exp(parameters.log_conc_unbalanced)
     )
     likelihood_logdensity = (
-        norm.pdf(jnp.log(obs.conc), jnp.log(conc), obs.conc_scale).sum()
-        + norm.pdf(obs.flux, flux[0], obs.flux_scale).sum()
-        + norm.pdf(
+        norm.logpdf(jnp.log(obs.conc), jnp.log(conc), obs.conc_scale).sum()
+        + norm.logpdf(obs.flux, flux[0], obs.flux_scale).sum()
+        + norm.logpdf(
             jnp.log(obs.enzyme), parameters.log_enzyme, obs.enzyme_scale
         ).sum()
     )
@@ -117,7 +117,7 @@ def sample(logdensity_fn, rng_key, init_parameters):
         logdensity_fn,
         progress_bar=True,
         initial_step_size=0.0001,
-        max_num_doublings=9,
+        max_num_doublings=10,
         is_mass_matrix_diagonal=False,
         target_acceptance_rate=0.95,
     )
@@ -125,7 +125,7 @@ def sample(logdensity_fn, rng_key, init_parameters):
     (initial_state, tuned_parameters), _ = warmup.run(
         warmup_key,
         init_parameters,
-        num_steps=250,  # type: ignore
+        num_steps=1000,  # type: ignore
     )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
