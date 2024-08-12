@@ -174,8 +174,7 @@ class AllostericRateLaw(MichaelisMenten):
         qnum = 1 + jnp.sum(conc[self.species_activation] / self.dc_activation)
         qdenom = 1 + jnp.sum(conc[self.species_inhibition] / self.dc_inhibition)
         out = 1.0 / (
-            self.tc
-            * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
+            self.tc * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
         )
         return out
 
@@ -187,8 +186,6 @@ class AllostericIrreversibleMichaelisMenten(
         return super().__call__(conc) * self.allosteric_effect(conc)
 
 
-class AllostericReversibleMichaelisMenten(
-    AllostericRateLaw, ReversibleMichaelisMenten
-):
+class AllostericReversibleMichaelisMenten(AllostericRateLaw, ReversibleMichaelisMenten):
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         return super().__call__(conc) * self.allosteric_effect(conc)
