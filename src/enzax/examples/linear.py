@@ -1,16 +1,20 @@
 """A simple linear kinetic model."""
 
+from jax import config
+from jax import numpy as jnp
+
 from enzax.kinetic_model import (
+    KineticModel,
     KineticModelParameters,
     KineticModelStructure,
     UnparameterisedKineticModel,
-    KineticModel,
 )
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
 )
-from jax import numpy as jnp
+
+config.update("jax_enable_x64", True)
 
 parameters = KineticModelParameters(
     log_kcat=jnp.array([-0.1, 0.0, 0.1]),

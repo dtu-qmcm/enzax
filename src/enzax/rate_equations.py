@@ -21,8 +21,8 @@ class Drain(RateEquation):
         structure: KineticModelStructure,
         ix: int,
     ):
-        self.log_v = parameters.log_drain[structure.rate_to_drain_ix[ix]]
-        self.sign = structure.drain_sign[structure.rate_to_drain_ix[ix]]
+        self.log_v = parameters.log_drain[jnp.array(structure.rate_to_drain_ix[ix][0])]
+        self.sign = structure.drain_sign[jnp.array(structure.rate_to_drain_ix[ix])[0]]
 
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         """Get flux of a drain reaction.
@@ -50,6 +50,8 @@ class MichaelisMenten(RateEquation):
     ix_substrate: Int[Array, " n_substrate"]
     ix_ki_species: Int[Array, " n_ki"]
     water_stoichiometry: Scalar
+    substrate_km_positions: Int[Array, " n_substrate"]
+    substrate_reactant_positions: Int[Array, " n_substrate"]
 
     def __init__(
         self,
@@ -60,14 +62,16 @@ class MichaelisMenten(RateEquation):
         ix_dgf = structure.species_to_metabolite_ix[structure.rate_to_reactants[ix]]
         self.dgf = parameters.dgf[ix_dgf]
         self.log_km = parameters.log_km[structure.rate_to_km_ixs[ix]]
-        self.log_enzyme = parameters.log_enzyme[ix]
-        self.log_kcat = parameters.log_kcat[ix]
-        self.log_ki = parameters.log_ki[
-            jnp.array(structure.rate_to_ki_ixs[ix], dtype=jnp.int16)
-        ]
+        self.log_enzyme = parameters.log_enzyme[structure.rate_to_enzyme_ix[ix][0]]
+        self.log_kcat = parameters.log_kcat[structure.rate_to_enzyme_ix[ix][0]]
+        self.log_ki = parameters.log_ki[structure.rate_to_ki_ixs[ix]]
         self.temperature = parameters.temperature
         self.stoich = structure.rate_to_stoichs[ix]
-        self.ix_substrate = structure.rate_to_substrate_reactant_positions[ix]
+        self.ix_substrate = structure.rate_to_substrates[ix]
+        self.substrate_km_positions = jnp.arange(len(self.ix_substrate))
+        self.substrate_reactant_positions = (
+            structure.rate_to_substrate_reactant_positions[ix]
+        )
         self.ix_ki_species = structure.ki_to_species_ix[ix]
         self.water_stoichiometry = structure.water_stoichiometry[ix]
 
@@ -87,26 +91,13 @@ class MichaelisMenten(RateEquation):
     def enzyme(self):
         return jnp.exp(self.log_enzyme)
 
-    def reversibility(
-        self, conc: Float[Array, " n"], water_stoichiometry: Scalar
-    ) -> Scalar:
-        """Get the reversibility of a reaction.
-
-        Hard coded water dgf is taken from <http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001>.
-
-        """
-        RT = self.temperature * 0.008314
-        dgf_water = -150.9
-        dgr = self.stoich @ self.dgf + water_stoichiometry * dgf_water
-        quotient = self.stoich @ jnp.log(conc)
-        out = 1.0 - ((dgr + RT * quotient) / RT)
-        return out
-
     def numerator(self, conc: Float[Array, " n"]) -> Scalar:
         """Get the product of each substrate's concentration over its km.
         This quantity is the numerator in a Michaelis Menten reaction's rate equation
         """
-        return jnp.prod((conc[self.ix_substrate] / self.km[self.ix_substrate]))
+        return jnp.prod(
+            (conc[self.ix_substrate] / self.km[self.substrate_km_positions])
+        )
 
     @abstractmethod
     def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar: ...
@@ -116,8 +107,8 @@ class IrreversibleMichaelisMenten(MichaelisMenten):
     def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar:
         return 1.0 / (
             jnp.prod(
-                ((conc[self.ix_substrate] / self.km[self.ix_substrate]) + 1)
-                ** jnp.abs(self.stoich[self.ix_substrate])
+                ((conc[self.ix_substrate] / self.km[self.substrate_km_positions]) + 1)
+                ** jnp.abs(self.stoich[self.substrate_reactant_positions])
             )
             + jnp.sum(conc[self.ix_ki_species] / self.ki)
         )
@@ -135,6 +126,8 @@ class IrreversibleMichaelisMenten(MichaelisMenten):
 
 class ReversibleMichaelisMenten(MichaelisMenten):
     ix_product: Int[Array, " n_product"]
+    ix_reactants: Int[Array, " n_reactant"]
+    product_reactant_positions: Int[Array, " n_product"]
 
     def __init__(
         self,
@@ -143,18 +136,46 @@ class ReversibleMichaelisMenten(MichaelisMenten):
         ix: int,
     ):
         super().__init__(parameters, structure, ix)
-        self.ix_product = structure.rate_to_product_reactant_positions[ix]
+        self.ix_product = structure.rate_to_products[ix]
+        self.ix_reactants = structure.rate_to_reactants[ix]
+        self.product_reactant_positions = structure.rate_to_product_reactant_positions[
+            ix
+        ]
+
+    def reversibility(
+        self, conc: Float[Array, " n"], water_stoichiometry: Scalar
+    ) -> Scalar:
+        """Get the reversibility of a reaction.
+
+        Hard coded water dgf is taken from <http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001>.
+
+        """
+        RT = self.temperature * 0.008314
+        dgf_water = -150.9
+        dgr = self.stoich @ self.dgf + water_stoichiometry * dgf_water
+        quotient = self.stoich @ jnp.log(conc[self.ix_reactants])
+        out = 1.0 - jnp.exp(((dgr + RT * quotient) / RT))
+        return out
 
     def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar:
         return 1.0 / (
             -1.0
             + jnp.prod(
-                ((conc[self.ix_substrate] / self.km[self.ix_substrate]) + 1.0)
-                ** jnp.abs(self.stoich[self.ix_substrate])
+                (
+                    (
+                        conc[self.ix_substrate]
+                        / self.km[self.substrate_reactant_positions]
+                    )
+                    + 1.0
+                )
+                ** jnp.abs(self.stoich[self.substrate_reactant_positions])
             )
             + jnp.prod(
-                ((conc[self.ix_product] / self.km[self.ix_product]) + 1.0)
-                ** jnp.abs(self.stoich[self.ix_product])
+                (
+                    (conc[self.ix_product] / self.km[self.product_reactant_positions])
+                    + 1.0
+                )
+                ** jnp.abs(self.stoich[self.product_reactant_positions])
             )
             + jnp.sum(conc[self.ix_ki_species] / self.ki)
         )
@@ -207,10 +228,11 @@ class AllostericRateLaw(MichaelisMenten):
         )
 
     def allosteric_effect(self, conc: Float[Array, " n"]) -> Scalar:
-        qnum = 1 + jnp.sum(conc[self.species_activation] / self.dc_activation)
-        qdenom = 1 + jnp.sum(conc[self.species_inhibition] / self.dc_inhibition)
+        qnum = 1 + jnp.sum(conc[self.species_inhibition] / self.dc_inhibition)
+        qdenom = 1 + jnp.sum(conc[self.species_activation] / self.dc_activation)
         out = 1.0 / (
-            self.tc * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
+            1
+            + self.tc * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
         )
         return out
 
