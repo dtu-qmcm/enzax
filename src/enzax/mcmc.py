@@ -9,8 +9,8 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.stats import norm
 
+from enzax.examples import methionine
 from enzax.kinetic_model import (
-    KineticModelStructure,
     KineticModelParameters,
     KineticModel,
     UnparameterisedKineticModel,
@@ -64,10 +64,10 @@ def posterior_logdensity_fn(
 ):
     model = KineticModel(parameters, unparameterised_model)
     steady = solve(parameters, unparameterised_model, guess)
-    flux = model(steady)
+    flux = model.flux(steady)
     conc = jnp.zeros(model.structure.S.shape[0])
-    conc = conc.at[model.structure.ix_balanced].set(steady)
-    conc = conc.at[model.structure.ix_unbalanced].set(
+    conc = conc.at[model.structure.balanced_species].set(steady)
+    conc = conc.at[model.structure.unbalanced_species].set(
         jnp.exp(parameters.log_conc_unbalanced)
     )
     likelihood_logdensity = (
@@ -144,37 +144,9 @@ def ind_prior_from_truth(truth, sd):
 
 def main():
     """Demonstrate the functionality of the mcmc module."""
-    true_parameters = KineticModelParameters(
-        log_kcat=jnp.array([0.0, 0.0, 0.0]),
-        log_enzyme=jnp.log(jnp.array([0.17609, 0.17609, 0.17609])),
-        dgf=jnp.array([-3, -1.0]),
-        log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
-        log_ki=jnp.array([0.0]),
-        log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
-        temperature=jnp.array(310.0),
-        log_transfer_constant=jnp.array([0.0, 0.0]),
-        log_dissociation_constant=jnp.array([0.0, 0.0]),
-    )
-    structure = KineticModelStructure(
-        S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
-        ix_balanced=jnp.array([1, 2]),
-        ix_reactant=jnp.array([[0, 1], [1, 2], [2, 3]]),
-        ix_substrate=jnp.array([[0], [0], [0]]),
-        ix_product=jnp.array([[1], [1], [1]]),
-        ix_rate_to_km=jnp.array([[0, 1], [2, 3], [4, 5]]),
-        ix_mic_to_metabolite=jnp.array([0, 0, 1, 1]),
-        ix_unbalanced=jnp.array([0, 3]),
-        stoich_by_rate=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
-        subunits=jnp.array([1, 1, 1]),
-        ix_rate_to_tc=[[0], [1], []],
-        ix_rate_to_dc_activation=[[0], [], []],
-        ix_rate_to_dc_inhibition=[[], [1], []],
-        ix_dc_species=jnp.array([2, 1]),
-        ix_ki_species=jnp.array([1]),
-        ix_rate_to_ki=[[], [0], []],
-    )
+    true_parameters = methionine.parameters
     unparameterised_model = UnparameterisedKineticModel(
-        structure=structure,
+        structure=methionine.structure,
         rate_equation_classes=[
             AllostericReversibleMichaelisMenten,
             AllostericReversibleMichaelisMenten,
@@ -185,9 +157,7 @@ def main():
     true_model = KineticModel(
         parameters=true_parameters, unparameterised_model=unparameterised_model
     )
-    true_states = solve(
-        true_parameters, unparameterised_model, default_state_guess
-    )
+    true_states = solve(true_parameters, unparameterised_model, default_state_guess)
     prior = PriorSet(
         log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
@@ -206,13 +176,13 @@ def main():
         ),
     )
     # get true concentration
-    true_conc = jnp.zeros(structure.S.shape[0])
-    true_conc = true_conc.at[structure.ix_balanced].set(true_states)
-    true_conc = true_conc.at[structure.ix_unbalanced].set(
+    true_conc = jnp.zeros(methionine.structure.S.shape[0])
+    true_conc = true_conc.at[methionine.structure.balanced_species].set(true_states)
+    true_conc = true_conc.at[methionine.structure.unbalanced_species].set(
         jnp.exp(true_parameters.log_conc_unbalanced)
     )
     # get true flux
-    true_flux = true_model(true_states)
+    true_flux = true_model.flux(true_states)
     # simulate observations
     error_conc = 0.03
     error_flux = 0.05
@@ -243,9 +213,7 @@ def main():
     for param in true_parameters.__dataclass_fields__.keys():
         true_val = getattr(true_parameters, param)
         model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
-        model_high = jnp.quantile(
-            getattr(samples.position, param), 0.99, axis=0
-        )
+        model_high = jnp.quantile(getattr(samples.position, param), 0.99, axis=0)
         print(f" {param}:")
         print(f"  true value: {true_val}")
         print(f"  posterior 1%: {model_low}")
