@@ -9,8 +9,8 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.stats import norm
 
+from enzax.examples import methionine
 from enzax.kinetic_model import (
-    KineticModelStructure,
     KineticModelParameters,
     KineticModel,
     UnparameterisedKineticModel,
@@ -144,37 +144,9 @@ def ind_prior_from_truth(truth, sd):
 
 def main():
     """Demonstrate the functionality of the mcmc module."""
-    true_parameters = KineticModelParameters(
-        log_kcat=jnp.array([0.0, 0.0, 0.0]),
-        log_enzyme=jnp.log(jnp.array([0.17609, 0.17609, 0.17609])),
-        dgf=jnp.array([-3, -1.0]),
-        log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
-        log_ki=jnp.array([0.0]),
-        log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
-        temperature=jnp.array(310.0),
-        log_transfer_constant=jnp.array([0.0, 0.0]),
-        log_dissociation_constant=jnp.array([0.0, 0.0]),
-    )
-    structure = KineticModelStructure(
-        S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
-        balanced_species=jnp.array([1, 2]),
-        rate_to_reactants=jnp.array([[0, 1], [1, 2], [2, 3]]),
-        rate_to_substrate_reactant_positions=jnp.array([[0], [0], [0]]),
-        rate_to_product_reactant_positions=jnp.array([[1], [1], [1]]),
-        rate_to_km_ixs=jnp.array([[0, 1], [2, 3], [4, 5]]),
-        species_to_metabolite_ix=jnp.array([0, 0, 1, 1]),
-        unbalanced_species=jnp.array([0, 3]),
-        rate_to_stoichs=jnp.array([[-1, 1], [-1, 1], [-1, 1]]),
-        rate_to_subunits=jnp.array([1, 1, 1]),
-        rate_to_tc_ix=[[0], [1], []],
-        rate_to_dc_ixs_activation=[[0], [], []],
-        rate_to_dc_ixs_inhibition=[[], [1], []],
-        dc_to_species_ix=jnp.array([2, 1]),
-        ki_to_species_ix=jnp.array([1]),
-        rate_to_ki_ixs=[[], [0], []],
-    )
+    true_parameters = methionine.parameters
     unparameterised_model = UnparameterisedKineticModel(
-        structure=structure,
+        structure=methionine.structure,
         rate_equation_classes=[
             AllostericReversibleMichaelisMenten,
             AllostericReversibleMichaelisMenten,
@@ -204,9 +176,9 @@ def main():
         ),
     )
     # get true concentration
-    true_conc = jnp.zeros(structure.S.shape[0])
-    true_conc = true_conc.at[structure.balanced_species].set(true_states)
-    true_conc = true_conc.at[structure.unbalanced_species].set(
+    true_conc = jnp.zeros(methionine.structure.S.shape[0])
+    true_conc = true_conc.at[methionine.structure.balanced_species].set(true_states)
+    true_conc = true_conc.at[methionine.structure.unbalanced_species].set(
         jnp.exp(true_parameters.log_conc_unbalanced)
     )
     # get true flux

@@ -32,6 +32,7 @@ structure = KineticModelStructure(
     S=jnp.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]]),
     water_stoichiometry=jnp.array([0, 0, 0]),
     balanced_species=jnp.array([1, 2]),
+    rate_to_enzyme_ix=[[0], [1], [2]],
     rate_to_km_ixs=jnp.array([[0, 1], [2, 3], [4, 5]]),
     species_to_metabolite_ix=jnp.array([0, 0, 1, 1]),
     rate_to_subunits=jnp.array([1, 1, 1]),
@@ -53,3 +54,4 @@ unparameterised_model = UnparameterisedKineticModel(
     ],
 )
 model = KineticModel(parameters, unparameterised_model)
+steady_state = jnp.array([0.43658744, 0.12695706])

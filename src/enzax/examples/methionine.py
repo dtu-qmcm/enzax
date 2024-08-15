@@ -87,8 +87,8 @@ parameters = KineticModelParameters(
                 0.000520015,  # amet GNMT1
                 0.00253545,  # gly GNMT1
                 2.32e-05,  # ahcys AHC1
-                5.66e-06,  # adn AHC1
                 1.06e-05,  # hcys-L AHC1
+                5.66e-06,  # adn AHC1
                 1.71e-06,  # hcys-L MS1
                 6.94e-05,  # 5mthf MS1
                 1.98e-05,  # hcys-L BHMT1
@@ -348,3 +348,12 @@ unparameterised_model = UnparameterisedKineticModel(
     ],
 )
 model = KineticModel(parameters, unparameterised_model)
+steady_state = jnp.array(
+    [
+        4.233000e-05,  # met-L
+        3.099670e-05,  # amet
+        2.170170e-07,  # ahcys
+        3.521780e-06,  # hcys
+        6.534400e-06,  # 5mthf
+    ]
+)

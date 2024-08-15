@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import lineax as lx
 from jaxtyping import Array, Float
-from enzax.examples import methionine
+from enzax.examples import linear, methionine
 from enzax.kinetic_model import (
     KineticModel,
     KineticModelParameters,
@@ -59,21 +59,20 @@ def solve(
 def main():
     """Function for testing the steady state solver."""
     # guesses
-    # bad_guess = jnp.array([0.1, 2.0])
-    # good_guess = jnp.array([2.1, 1.1])
     bad_guess = jnp.full((5,), 0.01)
-    good_guess = jnp.array([4.33e-5, 5.94e-5, 2.16e-7, 3.52e-6, 5.79e-6])
-    model = KineticModel(methionine.parameters, methionine.unparameterised_model)
-    maud_steady = jnp.array(
+    bad_guess = jnp.full((2,), 0.01)
+    conc = solve(linear.parameters, linear.unparameterised_model, bad_guess)
+    __import__("pdb").set_trace()
+    good_guess = jnp.array(
         [
-            4.514500e-05,
-            3.103940e-05,
-            2.564110e-07,
-            4.665840e-06,
-            6.085360e-06,
+            4.233000e-05,  # met-L
+            3.099670e-05,  # amet
+            2.170170e-07,  # ahcys
+            3.521780e-06,  # hcys
+            6.534400e-06,  # 5mthf
         ]
     )
-    model.dcdt(0, maud_steady)
+    model = methionine.model
     # solve once for jitting
     solve(methionine.parameters, methionine.unparameterised_model, good_guess)
     jax.jacrev(solve)(

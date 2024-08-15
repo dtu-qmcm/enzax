@@ -2,13 +2,14 @@
 
 from abc import abstractmethod
 
+from jax import numpy as jnp
+from jaxtyping import Array, Float, Int, Scalar
+
 from enzax.kinetic_model import (
     KineticModelParameters,
     KineticModelStructure,
     RateEquation,
 )
-from jax import numpy as jnp
-from jaxtyping import Array, Float, Int, Scalar
 
 
 class Drain(RateEquation):
@@ -72,7 +73,7 @@ class MichaelisMenten(RateEquation):
         self.substrate_reactant_positions = (
             structure.rate_to_substrate_reactant_positions[ix]
         )
-        self.ix_ki_species = structure.ki_to_species_ix[ix]
+        self.ix_ki_species = structure.ki_to_species_ix[structure.rate_to_ki_ixs[ix]]
         self.water_stoichiometry = structure.water_stoichiometry[ix]
 
     @property
@@ -241,7 +242,8 @@ class AllostericIrreversibleMichaelisMenten(
     AllostericRateLaw, IrreversibleMichaelisMenten
 ):
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
-        return super().__call__(conc) * self.allosteric_effect(conc)
+        out = super().__call__(conc) * self.allosteric_effect(conc)
+        return out
 
 
 class AllostericReversibleMichaelisMenten(AllostericRateLaw, ReversibleMichaelisMenten):
