@@ -111,8 +111,7 @@ class MichaelisMenten(RateEquation):
         )
 
     @abstractmethod
-    def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar:
-        ...
+    def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar: ...
 
 
 class IrreversibleMichaelisMenten(MichaelisMenten):
