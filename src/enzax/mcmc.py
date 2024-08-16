@@ -157,7 +157,9 @@ def main():
     true_model = KineticModel(
         parameters=true_parameters, unparameterised_model=unparameterised_model
     )
-    true_states = solve(true_parameters, unparameterised_model, default_state_guess)
+    true_states = solve(
+        true_parameters, unparameterised_model, default_state_guess
+    )
     prior = PriorSet(
         log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
@@ -177,7 +179,9 @@ def main():
     )
     # get true concentration
     true_conc = jnp.zeros(methionine.structure.S.shape[0])
-    true_conc = true_conc.at[methionine.structure.balanced_species].set(true_states)
+    true_conc = true_conc.at[methionine.structure.balanced_species].set(
+        true_states
+    )
     true_conc = true_conc.at[methionine.structure.unbalanced_species].set(
         jnp.exp(true_parameters.log_conc_unbalanced)
     )
@@ -213,7 +217,9 @@ def main():
     for param in true_parameters.__dataclass_fields__.keys():
         true_val = getattr(true_parameters, param)
         model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
-        model_high = jnp.quantile(getattr(samples.position, param), 0.99, axis=0)
+        model_high = jnp.quantile(
+            getattr(samples.position, param), 0.99, axis=0
+        )
         print(f" {param}:")
         print(f"  true value: {true_val}")
         print(f"  posterior 1%: {model_low}")

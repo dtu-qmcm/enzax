@@ -60,7 +60,9 @@ class KineticModelStructure(eqx.Module):
     rate_to_substrate_reactant_positions: list[Int[Array, " _"]] = eqx.field(
         static=True
     )
-    rate_to_product_reactant_positions: list[Int[Array, " _"]] = eqx.field(static=True)
+    rate_to_product_reactant_positions: list[Int[Array, " _"]] = eqx.field(
+        static=True
+    )
     rate_to_stoichs: list[Float[Array, " _"]] = eqx.field(static=True)
 
     def __init__(
@@ -82,7 +84,9 @@ class KineticModelStructure(eqx.Module):
         dc_to_species_ix,
     ):
         self.S = jnp.array(S, dtype=jnp.float64)
-        self.water_stoichiometry = jnp.array(water_stoichiometry, dtype=jnp.float64)
+        self.water_stoichiometry = jnp.array(
+            water_stoichiometry, dtype=jnp.float64
+        )
         self.balanced_species = jnp.array(balanced_species, dtype=jnp.int16)
         self.rate_to_enzyme_ix = ragged_jax_index(rate_to_enzyme_ix)
         self.rate_to_km_ixs = ragged_jax_index(rate_to_km_ixs)
@@ -90,46 +94,61 @@ class KineticModelStructure(eqx.Module):
         self.rate_to_tc_ix = ragged_jax_index(rate_to_tc_ix)
         self.rate_to_drain_ix = ragged_jax_index(rate_to_drain_ix)
         self.drain_sign = jnp.array(drain_sign)
-        self.rate_to_dc_ixs_inhibition = ragged_jax_index(rate_to_dc_ixs_inhibition)
-        self.rate_to_dc_ixs_activation = ragged_jax_index(rate_to_dc_ixs_activation)
+        self.rate_to_dc_ixs_inhibition = ragged_jax_index(
+            rate_to_dc_ixs_inhibition
+        )
+        self.rate_to_dc_ixs_activation = ragged_jax_index(
+            rate_to_dc_ixs_activation
+        )
         self.rate_to_subunits = rate_to_subunits
         self.species_to_metabolite_ix = species_to_metabolite_ix
         self.ki_to_species_ix = ki_to_species_ix
         self.dc_to_species_ix = dc_to_species_ix
         self.unbalanced_species = jnp.array(
-            [i for i in range(self.S.shape[0]) if i not in self.balanced_species]
+            [
+                i
+                for i in range(self.S.shape[0])
+                if i not in self.balanced_species
+            ]
         )
         self.rate_to_stoichs = [
-            jnp.array([coeff for coeff in coeffs if coeff != 0], dtype=jnp.float64)
+            jnp.array(
+                [coeff for coeff in coeffs if coeff != 0], dtype=jnp.float64
+            )
             for coeffs in self.S.T
         ]
         self.rate_to_reactants = [
             jnp.array(
-                [i for i, coeff in enumerate(coeffs) if coeff != 0], dtype=jnp.int16
+                [i for i, coeff in enumerate(coeffs) if coeff != 0],
+                dtype=jnp.int16,
             )
             for coeffs in self.S.T
         ]
         self.rate_to_substrates = [
             jnp.array(
-                [i for i, coeff in enumerate(coeffs) if coeff < 0], dtype=jnp.int16
+                [i for i, coeff in enumerate(coeffs) if coeff < 0],
+                dtype=jnp.int16,
             )
             for coeffs in self.S.T
         ]
         self.rate_to_products = [
             jnp.array(
-                [i for i, coeff in enumerate(coeffs) if coeff > 0], dtype=jnp.int16
+                [i for i, coeff in enumerate(coeffs) if coeff > 0],
+                dtype=jnp.int16,
             )
             for coeffs in self.S.T
         ]
         self.rate_to_substrate_reactant_positions = [
             jnp.array(
-                [i for i, coeff in enumerate(coeffs) if coeff < 0], dtype=jnp.int16
+                [i for i, coeff in enumerate(coeffs) if coeff < 0],
+                dtype=jnp.int16,
             )
             for coeffs in self.rate_to_stoichs
         ]
         self.rate_to_product_reactant_positions = [
             jnp.array(
-                [i for i, coeff in enumerate(coeffs) if coeff > 0], dtype=jnp.int16
+                [i for i, coeff in enumerate(coeffs) if coeff > 0],
+                dtype=jnp.int16,
             )
             for coeffs in self.rate_to_stoichs
         ]
@@ -179,10 +198,14 @@ class KineticModel(eqx.Module):
         self.structure = unparameterised_model.structure
         self.rate_equations = [
             cls(self.parameters, self.structure, ix)
-            for ix, cls in enumerate(unparameterised_model.rate_equation_classes)
+            for ix, cls in enumerate(
+                unparameterised_model.rate_equation_classes
+            )
         ]
 
-    def flux(self, conc_balanced: Float[Array, " n_balanced"]) -> Float[Array, " n"]:
+    def flux(
+        self, conc_balanced: Float[Array, " n_balanced"]
+    ) -> Float[Array, " n"]:
         """Get fluxes from balanced species concentrations.
 
         :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
@@ -207,5 +230,7 @@ class KineticModel(eqx.Module):
         Note that the signature is as required for a Diffrax vector field function, hence the redundant variable t and the weird name "args".
 
         """
-        out = (self.structure.S @ self.flux(conc))[self.structure.balanced_species]
+        out = (self.structure.S @ self.flux(conc))[
+            self.structure.balanced_species
+        ]
         return out
