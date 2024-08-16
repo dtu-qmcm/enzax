@@ -35,7 +35,8 @@ jobs:
 
     - name: Run tests
       run: |
-        pdm install -d
+        pdm install --dev
         pdm run pytest tests --cov=src/enzax
+
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
