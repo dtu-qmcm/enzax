@@ -1,0 +1,33 @@
+# This workflow runs tests using pytest.
+
+name: Run tox
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+        matrix:
+            os: [ubuntu-latest, windows-latest]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.12
+    - name: Install enzax
+      run: pip install -e .[test]
+    - name: Run pytest
+      run: python -m pytest --cov=src/enzax
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v3
+
