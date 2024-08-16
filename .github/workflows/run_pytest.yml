@@ -1,6 +1,6 @@
 # This workflow runs tests using pytest.
 
-name: Run tox
+name: Run pytest
 
 on:
   push:
