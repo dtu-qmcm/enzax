@@ -60,9 +60,6 @@ def main():
     """Function for testing the steady state solver."""
     # guesses
     bad_guess = jnp.full((5,), 0.01)
-    bad_guess = jnp.full((2,), 0.01)
-    conc = solve(linear.parameters, linear.unparameterised_model, bad_guess)
-    __import__("pdb").set_trace()
     good_guess = jnp.array(
         [
             4.233000e-05,  # met-L
