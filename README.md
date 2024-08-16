@@ -6,12 +6,12 @@
 
 Enzax is a library of automatically differentiable equations and solvers for modelling networks of enzyme-catalysed reactions, written in [JAX](https://jax.readthedocs.io/en/latest/).
 
-Enzax provides straightforward, fast and interoperable access to the gradients of realistic metabolic network models, allowing you to incorporate these models in your MCMC and machine learning algorithms when you want to, for example, predict the effect of down-regulating an enzyme on the yield of a fermentation experiment. 
+Enzax provides straightforward, fast and interoperable access to the gradients of realistic metabolic network models, allowing you to incorporate these models in your MCMC and machine learning algorithms when you want to, for example, predict the effect of down-regulating an enzyme on the yield of a fermentation experiment.
 
 ## Installation
 
 ```sh
-pip install enzax 
+pip install enzax
 ```
 
 ## Usage
