@@ -22,8 +22,12 @@ class Drain(RateEquation):
         structure: KineticModelStructure,
         ix: int,
     ):
-        self.log_v = parameters.log_drain[jnp.array(structure.rate_to_drain_ix[ix][0])]
-        self.sign = structure.drain_sign[jnp.array(structure.rate_to_drain_ix[ix])[0]]
+        self.log_v = parameters.log_drain[
+            jnp.array(structure.rate_to_drain_ix[ix][0])
+        ]
+        self.sign = structure.drain_sign[
+            jnp.array(structure.rate_to_drain_ix[ix])[0]
+        ]
 
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         """Get flux of a drain reaction.
@@ -60,10 +64,14 @@ class MichaelisMenten(RateEquation):
         structure: KineticModelStructure,
         ix: int,
     ):
-        ix_dgf = structure.species_to_metabolite_ix[structure.rate_to_reactants[ix]]
+        ix_dgf = structure.species_to_metabolite_ix[
+            structure.rate_to_reactants[ix]
+        ]
         self.dgf = parameters.dgf[ix_dgf]
         self.log_km = parameters.log_km[structure.rate_to_km_ixs[ix]]
-        self.log_enzyme = parameters.log_enzyme[structure.rate_to_enzyme_ix[ix][0]]
+        self.log_enzyme = parameters.log_enzyme[
+            structure.rate_to_enzyme_ix[ix][0]
+        ]
         self.log_kcat = parameters.log_kcat[structure.rate_to_enzyme_ix[ix][0]]
         self.log_ki = parameters.log_ki[structure.rate_to_ki_ixs[ix]]
         self.temperature = parameters.temperature
@@ -73,7 +81,9 @@ class MichaelisMenten(RateEquation):
         self.substrate_reactant_positions = (
             structure.rate_to_substrate_reactant_positions[ix]
         )
-        self.ix_ki_species = structure.ki_to_species_ix[structure.rate_to_ki_ixs[ix]]
+        self.ix_ki_species = structure.ki_to_species_ix[
+            structure.rate_to_ki_ixs[ix]
+        ]
         self.water_stoichiometry = structure.water_stoichiometry[ix]
 
     @property
@@ -108,7 +118,13 @@ class IrreversibleMichaelisMenten(MichaelisMenten):
     def free_enzyme_ratio(self, conc: Float[Array, " n"]) -> Scalar:
         return 1.0 / (
             jnp.prod(
-                ((conc[self.ix_substrate] / self.km[self.substrate_km_positions]) + 1)
+                (
+                    (
+                        conc[self.ix_substrate]
+                        / self.km[self.substrate_km_positions]
+                    )
+                    + 1
+                )
                 ** jnp.abs(self.stoich[self.substrate_reactant_positions])
             )
             + jnp.sum(conc[self.ix_ki_species] / self.ki)
@@ -139,9 +155,9 @@ class ReversibleMichaelisMenten(MichaelisMenten):
         super().__init__(parameters, structure, ix)
         self.ix_product = structure.rate_to_products[ix]
         self.ix_reactants = structure.rate_to_reactants[ix]
-        self.product_reactant_positions = structure.rate_to_product_reactant_positions[
-            ix
-        ]
+        self.product_reactant_positions = (
+            structure.rate_to_product_reactant_positions[ix]
+        )
 
     def reversibility(
         self, conc: Float[Array, " n"], water_stoichiometry: Scalar
@@ -173,7 +189,10 @@ class ReversibleMichaelisMenten(MichaelisMenten):
             )
             + jnp.prod(
                 (
-                    (conc[self.ix_product] / self.km[self.product_reactant_positions])
+                    (
+                        conc[self.ix_product]
+                        / self.km[self.product_reactant_positions]
+                    )
                     + 1.0
                 )
                 ** jnp.abs(self.stoich[self.product_reactant_positions])
@@ -233,7 +252,8 @@ class AllostericRateLaw(MichaelisMenten):
         qdenom = 1 + jnp.sum(conc[self.species_activation] / self.dc_activation)
         out = 1.0 / (
             1
-            + self.tc * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
+            + self.tc
+            * (self.free_enzyme_ratio(conc) * qnum / qdenom) ** self.subunits
         )
         return out
 
@@ -246,6 +266,8 @@ class AllostericIrreversibleMichaelisMenten(
         return out
 
 
-class AllostericReversibleMichaelisMenten(AllostericRateLaw, ReversibleMichaelisMenten):
+class AllostericReversibleMichaelisMenten(
+    AllostericRateLaw, ReversibleMichaelisMenten
+):
     def __call__(self, conc: Float[Array, " n"]) -> Scalar:
         return super().__call__(conc) * self.allosteric_effect(conc)

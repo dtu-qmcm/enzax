@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import lineax as lx
 from jaxtyping import Array, Float
-from enzax.examples import linear, methionine
+from enzax.examples import methionine
 from enzax.kinetic_model import (
     KineticModel,
     KineticModelParameters,
@@ -33,7 +33,9 @@ def solve(
     t1 = 900
     dt0 = 0.000001
     max_steps = None
-    controller = diffrax.PIDController(pcoeff=0.1, icoeff=0.3, rtol=1e-11, atol=1e-11)
+    controller = diffrax.PIDController(
+        pcoeff=0.1, icoeff=0.3, rtol=1e-11, atol=1e-11
+    )
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint(
