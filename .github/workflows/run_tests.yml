@@ -17,16 +17,26 @@ jobs:
     strategy:
         matrix:
             os: [ubuntu-latest, windows-latest]
+            python-version: [3.12]
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python 3.12
+
+    - name: checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
-        python-version: 3.12
-    - name: Install enzax
-      run: pip install -e .[test]
-    - name: Run pytest
-      run: python -m pytest --cov=src/enzax
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install pdm
+      run: pip install pdm
+
+    - name: pre-commit checks
+      uses: pre-commit/action@v2.0.3
+
+    - name: Run tests
+      run: pdm run pytest tests --cov=src/enzax
+
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
