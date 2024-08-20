@@ -78,13 +78,13 @@ def free_enzyme_ratio_imm(
     substrate_km_positions: Int[Array, " n_substrate"],
     substrate_reactant_positions: Int[Array, " n_substrate"],
     ix_ki_species: Int[Array, " n_ki"],
-    stoich: Float[Array, " n"],
+    reactant_stoichiometry: Float[Array, " n"],
 ) -> Scalar:
     """Free enzyme ratio for irreversible Michaelis Menten reactions."""
     return 1.0 / (
         jnp.prod(
             ((conc[ix_substrate] / km[substrate_km_positions]) + 1)
-            ** jnp.abs(stoich[substrate_reactant_positions])
+            ** jnp.abs(reactant_stoichiometry[substrate_reactant_positions])
         )
         + jnp.sum(conc[ix_ki_species] / ki)
     )
@@ -98,20 +98,20 @@ class IrreversibleMichaelisMenten(MichaelisMenten):
         km = self.get_km(parameters)
         ki = self.get_ki(parameters)
         numerator = numerator_mm(
-            conc,
-            km,
-            self.ix_substrate,
-            self.substrate_km_positions,
+            conc=conc,
+            km=km,
+            ix_substrate=self.ix_substrate,
+            substrate_km_positions=self.substrate_km_positions,
         )
         free_enzyme_ratio = free_enzyme_ratio_imm(
-            conc,
-            km,
-            ki,
-            self.ix_substrate,
-            self.substrate_km_positions,
-            self.substrate_reactant_positions,
-            self.ix_ki_species,
-            self.reactant_stoichiometry,
+            conc=conc,
+            km=km,
+            ki=ki,
+            ix_substrate=self.ix_substrate,
+            substrate_km_positions=self.substrate_km_positions,
+            substrate_reactant_positions=self.substrate_reactant_positions,
+            ix_ki_species=self.ix_ki_species,
+            reactant_stoichiometry=self.reactant_stoichiometry,
         )
         return kcat * enzyme * numerator * free_enzyme_ratio
 
@@ -186,32 +186,33 @@ class ReversibleMichaelisMenten(MichaelisMenten):
         km = self.get_km(parameters)
         ki = self.get_ki(parameters)
         reversibility = get_reversibility(
-            conc,
-            self.water_stoichiometry,
-            self.get_dgf(parameters),
-            parameters.temperature,
-            self.reactant_stoichiometry,
-            self.ix_reactants,
+            conc=conc,
+            water_stoichiometry=self.water_stoichiometry,
+            dgf=self.get_dgf(parameters),
+            temperature=parameters.temperature,
+            reactant_stoichiometry=self.reactant_stoichiometry,
+            ix_reactants=self.ix_reactants,
         )
         numerator = numerator_mm(
-            conc,
-            km,
-            self.ix_substrate,
-            self.substrate_km_positions,
+            conc=conc,
+            km=km,
+            ix_substrate=self.ix_substrate,
+            substrate_km_positions=self.substrate_km_positions,
         )
         free_enzyme_ratio = free_enzyme_ratio_rmm(
-            conc,
-            km,
-            ki,
-            self.reactant_stoichiometry,
-            self.ix_substrate,
-            self.ix_product,
-            self.substrate_km_positions,
-            self.product_km_positions,
-            self.substrate_reactant_positions,
-            self.product_reactant_positions,
-            self.ix_ki_species,
+            conc=conc,
+            km=km,
+            ki=ki,
+            reactant_stoichiometry=self.reactant_stoichiometry,
+            ix_substrate=self.ix_substrate,
+            ix_product=self.ix_product,
+            substrate_km_positions=self.substrate_km_positions,
+            product_km_positions=self.product_km_positions,
+            substrate_reactant_positions=self.substrate_reactant_positions,
+            product_reactant_positions=self.product_reactant_positions,
+            ix_ki_species=self.ix_ki_species,
         )
+        __import__("pdb").set_trace()
         return reversibility * kcat * enzyme * numerator * free_enzyme_ratio
 
 
@@ -265,24 +266,24 @@ class AllostericIrreversibleMichaelisMenten(
         dc_activation = self.get_dc_activation(parameters)
         dc_inhibition = self.get_dc_inhibition(parameters)
         free_enzyme_ratio = free_enzyme_ratio_imm(
-            conc,
-            km,
-            ki,
-            self.ix_substrate,
-            self.substrate_km_positions,
-            self.substrate_reactant_positions,
-            self.ix_ki_species,
-            self.reactant_stoichiometry,
+            conc=conc,
+            km=km,
+            ki=ki,
+            ix_substrate=self.ix_substrate,
+            substrate_km_positions=self.substrate_km_positions,
+            substrate_reactant_positions=self.substrate_reactant_positions,
+            ix_ki_species=self.ix_ki_species,
+            reactant_stoichiometry=self.reactant_stoichiometry,
         )
         allosteric_effect = get_allosteric_effect(
-            conc,
-            tc,
-            free_enzyme_ratio,
-            dc_inhibition,
-            dc_activation,
-            self.species_inhibition,
-            self.species_activation,
-            self.subunits,
+            conc=conc,
+            free_enzyme_ratio=free_enzyme_ratio,
+            tc=tc,
+            dc_inhibition=dc_inhibition,
+            dc_activation=dc_activation,
+            species_inhibition=self.species_inhibition,
+            species_activation=self.species_activation,
+            subunits=self.subunits,
         )
         non_allosteric_rate = super().__call__(conc, parameters)
         return non_allosteric_rate * allosteric_effect
@@ -311,27 +312,32 @@ class AllostericReversibleMichaelisMenten(
             ix_ki_species=self.ix_ki_species,
         )
         allosteric_effect = get_allosteric_effect(
-            conc,
-            tc,
-            free_enzyme_ratio,
-            dc_inhibition,
-            dc_activation,
-            self.species_inhibition,
-            self.species_activation,
-            self.subunits,
+            conc=conc,
+            free_enzyme_ratio=free_enzyme_ratio,
+            tc=tc,
+            dc_inhibition=dc_inhibition,
+            dc_activation=dc_activation,
+            species_inhibition=self.species_inhibition,
+            species_activation=self.species_activation,
+            subunits=self.subunits,
         )
         non_allosteric_rate = super().__call__(conc, parameters)
         return non_allosteric_rate * allosteric_effect
 
 
-m = IrreversibleMichaelisMenten(
-    kcat_ix=0,
-    enzyme_ix=0,
-    km_ix=jnp.array([0, 1]),
-    ki_ix=jnp.array([]),
-    reactant_stoichiometry=jnp.array([-1, 1]),
-    ix_substrate=jnp.array([0]),
-    ix_ki_species=jnp.array([]),
-    substrate_km_positions=jnp.array([0]),
-    substrate_reactant_positions=jnp.array([0]),
-)
+def main():
+    _ = IrreversibleMichaelisMenten(
+        kcat_ix=0,
+        enzyme_ix=0,
+        km_ix=jnp.array([0, 1]),
+        ki_ix=jnp.array([]),
+        reactant_stoichiometry=jnp.array([-1, 1]),
+        ix_substrate=jnp.array([0]),
+        ix_ki_species=jnp.array([]),
+        substrate_km_positions=jnp.array([0]),
+        substrate_reactant_positions=jnp.array([0]),
+    )
+
+
+if __name__ == "__main__":
+    main()
