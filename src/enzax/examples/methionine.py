@@ -145,8 +145,8 @@ parameters = KineticModelParameters(
     log_dissociation_constant=jnp.log(
         jnp.array(
             [
-                0.000316641,  # amet MAT3
                 0.00059999,  # met-L MAT3
+                0.000316641,  # amet MAT3
                 1.98e-05,  # amet GNMT1
                 0.000228576,  # mlthf GNMT1
                 9.30e-05,  # amet CBS1
@@ -240,10 +240,10 @@ unparameterised_model = UnparameterisedKineticModel(
             substrate_reactant_positions=jnp.array([0, 1], dtype=jnp.int16),
             subunits=2,
             tc_ix=0,
-            ix_dc_inhibition=jnp.array([0, 1], dtype=jnp.int16),
-            ix_dc_activation=jnp.array([], dtype=jnp.int16),
-            species_inhibition=jnp.array([4, 0], dtype=jnp.int16),
-            species_activation=jnp.array([], dtype=jnp.int16),
+            ix_dc_inhibition=jnp.array([], dtype=jnp.int16),
+            ix_dc_activation=jnp.array([0, 1], dtype=jnp.int16),
+            species_inhibition=jnp.array([], dtype=jnp.int16),
+            species_activation=jnp.array([0, 4], dtype=jnp.int16),
         ),
         IrreversibleMichaelisMenten(  # METH
             kcat_ix=2,
@@ -371,4 +371,3 @@ steady_state = jnp.array(
         6.534400e-06,  # 5mthf
     ]
 )
-flux = model.flux(steady_state)
