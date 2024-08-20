@@ -212,7 +212,6 @@ class ReversibleMichaelisMenten(MichaelisMenten):
             product_reactant_positions=self.product_reactant_positions,
             ix_ki_species=self.ix_ki_species,
         )
-        __import__("pdb").set_trace()
         return reversibility * kcat * enzyme * numerator * free_enzyme_ratio
 
 

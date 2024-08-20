@@ -272,8 +272,8 @@ unparameterised_model = UnparameterisedKineticModel(
             tc_ix=1,
             ix_dc_activation=jnp.array([2], dtype=jnp.int16),
             ix_dc_inhibition=jnp.array([3], dtype=jnp.int16),
-            species_inhibition=jnp.array([4], dtype=jnp.int16),
-            species_activation=jnp.array([12], dtype=jnp.int16),
+            species_inhibition=jnp.array([12], dtype=jnp.int16),
+            species_activation=jnp.array([4], dtype=jnp.int16),
         ),
         ReversibleMichaelisMenten(  # AHC
             kcat_ix=4,
