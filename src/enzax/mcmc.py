@@ -1,26 +1,25 @@
 """Code for doing mcmc on the parameters of a steady state problem."""
 
 import functools
+import logging
+import warnings
 
+import arviz as az
 import blackjax
 import chex
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jax.scipy.stats import norm
+from jaxtyping import Array, Float, ScalarLike
 
 from enzax.examples import methionine
 from enzax.kinetic_model import (
-    KineticModelParameters,
     KineticModel,
+    KineticModelParameters,
     UnparameterisedKineticModel,
 )
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
 from enzax.steady_state_problem import solve
-from jaxtyping import Array, Float, ScalarLike
 
 SEED = 1234
 jax.config.update("jax_enable_x64", True)
@@ -41,11 +40,12 @@ class ObservationSet:
 class PriorSet:
     log_kcat: Float[Array, "2 n"]
     log_enzyme: Float[Array, "2 n"]
+    log_drain: Float[Array, "2 n_drain"]
     dgf: Float[Array, "2 n_metabolite"]
     log_km: Float[Array, "2 n_km"]
+    log_ki: Float[Array, "2 n_ki"]
     log_conc_unbalanced: Float[Array, "2 n_unbalanced"]
     temperature: Float[Array, "2"]
-    log_ki: Float[Array, " n_ki"]
     log_transfer_constant: Float[Array, "2 n_allosteric_enzyme"]
     log_dissociation_constant: Float[Array, "2 n_allosteric_effector"]
 
@@ -80,6 +80,7 @@ def posterior_logdensity_fn(
     prior_logdensity = (
         ind_normal_prior_logdensity(parameters.log_kcat, prior.log_kcat)
         + ind_normal_prior_logdensity(parameters.log_enzyme, prior.log_enzyme)
+        + ind_normal_prior_logdensity(parameters.log_drain, prior.log_drain)
         + ind_normal_prior_logdensity(parameters.dgf, prior.dgf)
         + ind_normal_prior_logdensity(parameters.log_km, prior.log_km)
         + ind_normal_prior_logdensity(
@@ -101,13 +102,18 @@ def posterior_logdensity_fn(
 @functools.partial(jax.jit, static_argnames=["kernel", "num_samples"])
 def inference_loop(rng_key, kernel, initial_state, num_samples):
     def one_step(state, rng_key):
-        state, _ = kernel(rng_key, state)
-        return state, state
+        state, info = kernel(rng_key, state)
+        return state, (state, info)
 
     keys = jax.random.split(rng_key, num_samples)
-    _, states = jax.lax.scan(one_step, initial_state, keys)
+    _, (states, info) = jax.lax.scan(one_step, initial_state, keys)
 
-    return states
+    return states, info
+
+
+def warn_if_divergent(info):
+    if jnp.any(info.is_divergent):
+        warnings.warn("I found a divergent transition!")
 
 
 @eqx.filter_jit
@@ -122,47 +128,51 @@ def sample(logdensity_fn, rng_key, init_parameters):
         target_acceptance_rate=0.95,
     )
     rng_key, warmup_key = jax.random.split(rng_key)
-    (initial_state, tuned_parameters), _ = warmup.run(
+    (initial_state, tuned_parameters), (_, info, _) = warmup.run(
         warmup_key,
         init_parameters,
         num_steps=1000,  # type: ignore
     )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
-    states = inference_loop(
+    states, info = inference_loop(
         sample_key,
         kernel=nuts_kernel,
         initial_state=initial_state,
         num_samples=200,
     )
-    return states
+    return states, info
 
 
 def ind_prior_from_truth(truth, sd):
     return jnp.vstack((truth, jnp.full(truth.shape, sd)))
 
 
+def get_idata(samples, info):
+    sample_dict = {
+        k: jnp.expand_dims(getattr(samples.position, k), 0)
+        for k in samples.position.__dataclass_fields__.keys()
+    }
+    posterior = az.convert_to_inference_data(sample_dict, group="posterior")
+    sample_stats = az.convert_to_inference_data(
+        {"diverging": info.is_divergent}, group="sample_stats"
+    )
+    return az.concat(posterior, sample_stats)
+
+
 def main():
     """Demonstrate the functionality of the mcmc module."""
     true_parameters = methionine.parameters
-    unparameterised_model = UnparameterisedKineticModel(
-        structure=methionine.structure,
-        rate_equation_classes=[
-            AllostericReversibleMichaelisMenten,
-            AllostericReversibleMichaelisMenten,
-            ReversibleMichaelisMenten,
-        ],
-    )
-    default_state_guess = jnp.array([0.1, 0.1])
-    true_model = KineticModel(
-        parameters=true_parameters, unparameterised_model=unparameterised_model
-    )
+    unparameterised_model = methionine.unparameterised_model
+    true_model = methionine.model
+    default_state_guess = jnp.full((5,), 0.01)
     true_states = solve(
         true_parameters, unparameterised_model, default_state_guess
     )
     prior = PriorSet(
         log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
+        log_drain=ind_prior_from_truth(true_parameters.log_drain, 0.1),
         dgf=ind_prior_from_truth(true_parameters.dgf, 0.1),
         log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
         log_conc_unbalanced=ind_prior_from_truth(
@@ -212,7 +222,15 @@ def main():
         unparameterised_model=unparameterised_model,
         guess=default_state_guess,
     )
-    samples = sample(log_M, key, true_parameters)
+    samples, info = sample(log_M, key, true_parameters)
+    idata = get_idata(samples, info)
+    print(az.summary(idata))
+    if jnp.any(info.is_divergentl):
+        n_divergent = info.is_divergent.sum()
+        msg = f"There were {n_divergent} post-warmup divergent transitions."
+        warnings.warn(msg)
+    else:
+        logging.info("No post-warmup divergent transitions!")
     print("True parameter values vs posterior:")
     for param in true_parameters.__dataclass_fields__.keys():
         true_val = getattr(true_parameters, param)
