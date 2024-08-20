@@ -178,22 +178,8 @@ structure = KineticModelStructure(
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # nadp
             [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0],  # nadph
             [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # cyst-L
-        ]
-    ),
-    water_stoichiometry=jnp.array(
-        [
-            0.0,  # met-L source
-            -1.0,  # MAT1 METAT
-            -1.0,  # MAT3 METAT
-            0.0,  # METH Gen
-            0.0,  # GNMT1
-            -1.0,  # AHC
-            0.0,  # MS
-            0.0,  # BHMT
-            1.0,  # CBS
-            0.0,  # MTHFR
-            0.0,  # PROT
-        ]
+        ],
+        dtype=jnp.float64,
     ),
     balanced_species=jnp.array(
         [
@@ -204,147 +190,175 @@ structure = KineticModelStructure(
             11,  # 5mthf
         ]
     ),
-    rate_to_enzyme_ix=[
-        [],  # met-L source
-        [0],  # MAT1 METAT
-        [1],  # MAT3 METAT
-        [2],  # METH Gen
-        [3],  # GNMT1
-        [4],  # AHC
-        [5],  # MS
-        [6],  # BHMT
-        [7],  # CBS
-        [8],  # MTHFR
-        [9],  # PROT
-    ],
-    rate_to_km_ixs=[
-        [],  # met-L source
-        [0, 1],  # MAT1 METAT
-        [2, 3],  # MAT3 METAT
-        [4],  # METH Gen
-        [5, 6],  # GNMT1
-        [7, 8, 9],  # AHC
-        [10, 11],  # MS
-        [12, 13],  # BHMT
-        [14, 15],  # CBS
-        [16, 17],  # MTHFR
-        [18],  # PROT
-    ],
-    species_to_metabolite_ix=jnp.arange(19),
-    rate_to_subunits=jnp.array(
+    unbalanced_species=jnp.array(
         [
-            0,  # met-L source
-            1,  # MAT1 METAT
-            2,  # MAT3 METAT
-            1,  # METH Gen
-            4,  # GNMT1
-            1,  # AHC
-            1,  # MS
-            1,  # BHMT
-            2,  # CBS
-            2,  # MTHFR
-            1,  # PROT
+            1,  # atp
+            2,  # pi
+            3,  # ppi
+            6,  # gly
+            7,  #  sarcs
+            9,  # adn
+            10,  # thf
+            12,  # mlthf
+            13,  # glyb
+            14,  # dmgly
+            15,  # ser-L
+            16,  # nadp
+            17,  # nadph
+            18,  # cyst-L
         ]
     ),
-    rate_to_tc_ix=[
-        [],  # met-L source
-        [],  # MAT1 METAT
-        [0],  # MAT3 METAT
-        [],  # METH Gen
-        [1],  # GNMT1
-        [],  # AHC
-        [],  # MS
-        [],  # BHMT
-        [2],  # CBS
-        [3],  # MTHFR
-        [],  # PROT
-    ],
-    rate_to_dc_ixs_activation=[
-        [],  # met-L source
-        [],  # MAT1 METAT
-        [0, 1],  # MAT3 METAT
-        [],  # METH Gen
-        [2],  # GNMT1
-        [],  # AHC
-        [],  # MS
-        [],  # BHMT
-        [4],  # CBS
-        [6],  # MTHFR
-        [],  # PROT
-    ],
-    rate_to_dc_ixs_inhibition=[
-        [],  # met-L source
-        [],  # MAT1 METAT
-        [],  # MAT3 METAT
-        [],  # METH Gen
-        [3],  # GNMT1
-        [],  # AHC
-        [],  # MS
-        [],  # BHMT
-        [],  # CBS
-        [5],  # MTHFR
-        [],  # PROT
-    ],
-    rate_to_drain_ix=[
-        [0],  # met-L source
-        [],  # MAT1 METAT
-        [],  # MAT3 METAT
-        [],  # METH Gen
-        [],  # GNMT1
-        [],  # AHC
-        [],  # MS
-        [],  # BHMT
-        [],  # CBS
-        [],  # MTHFR
-        [],  # PROT
-    ],
-    drain_sign=jnp.array([1.0]),
-    dc_to_species_ix=jnp.array(
-        [
-            4,  # amet -> MAT3
-            0,  # met-L -> MAT3
-            4,  # amet -> GNMT1
-            12,  # mlthf -| GNMT1
-            4,  # amet -> CBS1
-            4,  # amet -| MTHFR1
-            5,  # ahcys -> MTHFR1
-        ]
-    ),
-    ki_to_species_ix=jnp.array(
-        [
-            4,  # amet -| MAT1
-            5,  # ahcys -| METH-GEN
-            5,  # ahcys -| GNMT1
-        ]
-    ),
-    rate_to_ki_ixs=[
-        [],  # met-L source
-        [0],  # MAT1 METAT
-        [],  # MAT3 METAT
-        [1],  # METH Gen
-        [2],  # GNMT1
-        [],  # AHC
-        [],  # MS
-        [],  # BHMT
-        [],  # CBS
-        [],  # MTHFR
-        [],  # PROT
-    ],
 )
 unparameterised_model = UnparameterisedKineticModel(
     structure,
     [
-        Drain,  # met-L source
-        IrreversibleMichaelisMenten,  # MAT1
-        AllostericIrreversibleMichaelisMenten,  # MAT3
-        IrreversibleMichaelisMenten,  # METH
-        AllostericIrreversibleMichaelisMenten,  # GNMT1
-        ReversibleMichaelisMenten,  # AHC
-        IrreversibleMichaelisMenten,  # MS
-        IrreversibleMichaelisMenten,  # BHMT
-        AllostericIrreversibleMichaelisMenten,  # CBS
-        AllostericIrreversibleMichaelisMenten,  # MTHFR
-        IrreversibleMichaelisMenten,  # PROT
+        Drain(sign=jnp.array(1.0), drain_ix=0),  # met-L source
+        IrreversibleMichaelisMenten(  # MAT1
+            kcat_ix=0,
+            enzyme_ix=0,
+            km_ix=jnp.array([0, 1], dtype=jnp.int16),
+            ki_ix=jnp.array([0], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array(
+                [-1.0, -1.0, 1.0, 1.0, 1.0], dtype=jnp.int16
+            ),
+            ix_substrate=jnp.array([0, 1], dtype=jnp.int16),
+            ix_ki_species=jnp.array([4], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0, 1], dtype=jnp.int16),
+        ),
+        AllostericIrreversibleMichaelisMenten(  # MAT3
+            kcat_ix=1,
+            enzyme_ix=1,
+            km_ix=jnp.array([2, 3], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array(
+                [-1.0, -1.0, 1.0, 1.0, 1.0], dtype=jnp.int16
+            ),
+            ix_substrate=jnp.array([0, 1], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0, 1], dtype=jnp.int16),
+            subunits=2,
+            tc_ix=0,
+            ix_dc_inhibition=jnp.array([0, 1], dtype=jnp.int16),
+            ix_dc_activation=jnp.array([], dtype=jnp.int16),
+            species_inhibition=jnp.array([4, 0], dtype=jnp.int16),
+            species_activation=jnp.array([], dtype=jnp.int16),
+        ),
+        IrreversibleMichaelisMenten(  # METH
+            kcat_ix=2,
+            enzyme_ix=2,
+            km_ix=jnp.array([4], dtype=jnp.int16),
+            ki_ix=jnp.array([1], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([-1, 1], dtype=jnp.int16),
+            ix_substrate=jnp.array([4], dtype=jnp.int16),
+            ix_ki_species=jnp.array([5], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0], dtype=jnp.int16),
+        ),
+        AllostericIrreversibleMichaelisMenten(  # GNMT1
+            kcat_ix=3,
+            enzyme_ix=3,
+            km_ix=jnp.array([5, 6], dtype=jnp.int16),
+            ki_ix=jnp.array([2], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array(
+                [-1.0, 1.0, -1.0, 1.0], dtype=jnp.int16
+            ),
+            ix_substrate=jnp.array([4, 6], dtype=jnp.int16),
+            ix_ki_species=jnp.array([5], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0, 2], dtype=jnp.int16),
+            subunits=4,
+            tc_ix=1,
+            ix_dc_activation=jnp.array([2], dtype=jnp.int16),
+            ix_dc_inhibition=jnp.array([3], dtype=jnp.int16),
+            species_inhibition=jnp.array([4], dtype=jnp.int16),
+            species_activation=jnp.array([12], dtype=jnp.int16),
+        ),
+        ReversibleMichaelisMenten(  # AHC
+            kcat_ix=4,
+            enzyme_ix=4,
+            km_ix=jnp.array([7, 8, 9], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([-1.0, 1.0, 1.0], dtype=jnp.int16),
+            ix_substrate=jnp.array([5], dtype=jnp.int16),
+            ix_product=jnp.array([8, 9], dtype=jnp.int16),
+            ix_reactants=jnp.array([5, 8, 9], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0], dtype=jnp.int16),
+            product_km_positions=jnp.array([1, 2], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0], dtype=jnp.int16),
+            product_reactant_positions=jnp.array([1, 2], dtype=jnp.int16),
+            water_stoichiometry=jnp.array(-1.0),
+            reactant_to_dgf=jnp.array([5, 8, 9], dtype=jnp.int16),
+        ),
+        IrreversibleMichaelisMenten(  # MS
+            kcat_ix=5,
+            enzyme_ix=5,
+            km_ix=jnp.array([10, 11], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([1, -1, 1, -1], dtype=jnp.int16),
+            ix_substrate=jnp.array([8, 11], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([1, 3], dtype=jnp.int16),
+        ),
+        IrreversibleMichaelisMenten(  # BHMT
+            kcat_ix=6,
+            enzyme_ix=6,
+            km_ix=jnp.array([12, 13], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([1, -1, -1, 1], dtype=jnp.int16),
+            ix_substrate=jnp.array([8, 13], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([1, 2], dtype=jnp.int16),
+        ),
+        AllostericIrreversibleMichaelisMenten(  # CBS1
+            kcat_ix=7,
+            enzyme_ix=7,
+            km_ix=jnp.array([14, 15], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([-1, -1, 1], dtype=jnp.int16),
+            ix_substrate=jnp.array([8, 15], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0, 1], dtype=jnp.int16),
+            subunits=2,
+            tc_ix=2,
+            ix_dc_activation=jnp.array([4], dtype=jnp.int16),
+            ix_dc_inhibition=jnp.array([], dtype=jnp.int16),
+            species_inhibition=jnp.array([4], dtype=jnp.int16),
+            species_activation=jnp.array([], dtype=jnp.int16),
+        ),
+        AllostericIrreversibleMichaelisMenten(  # MTHFR
+            kcat_ix=8,
+            enzyme_ix=8,
+            km_ix=jnp.array([16, 17], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([1, -1, 1, -1], dtype=jnp.int16),
+            ix_substrate=jnp.array([12, 17], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0, 1], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([1, 3], dtype=jnp.int16),
+            subunits=2,
+            tc_ix=3,
+            ix_dc_activation=jnp.array([6], dtype=jnp.int16),
+            ix_dc_inhibition=jnp.array([5], dtype=jnp.int16),
+            species_inhibition=jnp.array([4], dtype=jnp.int16),
+            species_activation=jnp.array([5], dtype=jnp.int16),
+        ),
+        IrreversibleMichaelisMenten(  # PROT
+            kcat_ix=9,
+            enzyme_ix=9,
+            km_ix=jnp.array([18], dtype=jnp.int16),
+            ki_ix=jnp.array([], dtype=jnp.int16),
+            reactant_stoichiometry=jnp.array([-1.0], dtype=jnp.int16),
+            ix_substrate=jnp.array([0], dtype=jnp.int16),
+            ix_ki_species=jnp.array([], dtype=jnp.int16),
+            substrate_km_positions=jnp.array([0], dtype=jnp.int16),
+            substrate_reactant_positions=jnp.array([0], dtype=jnp.int16),
+        ),
     ],
 )
 model = KineticModel(parameters, unparameterised_model)
@@ -357,3 +371,4 @@ steady_state = jnp.array(
         6.534400e-06,  # 5mthf
     ]
 )
+flux = model.flux(steady_state)
