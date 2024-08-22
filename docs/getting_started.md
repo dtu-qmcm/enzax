@@ -14,6 +14,12 @@ $ pip install git+https://github.com/dtu-qmcm/enzax.git@main
 
 ## Make your own kinetic model
 
+Enzax provides building blocks for you to construct a wide range of differentiable kinetic models using pre-written and tested rate laws.
+
+Here we write a model describing a simple linear pathway with two state variables, two boundary species and three reactions.
+
+First we import some enzax classes:
+
 ```python
 from enzax.kinetic_model import (
     KineticModel,
@@ -27,6 +33,20 @@ from enzax.rate_equations import (
 )
 
 ```
+
+Next we specify our model's structure by providing a stoichiometric matrix and saying which of its rows represent state variables (aka "balanced species") and which represent boundary or "unbalanced" species:
+
+```python
+structure = KineticModelStructure(
+    S=jnp.array(
+        [[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]], dtype=jnp.float64
+    ),
+    balanced_species=jnp.array([1, 2]),
+    unbalanced_species=jnp.array([0, 3]),
+)
+```
+
+Next we provide some kinetic parameter values:
 
 ```python
 parameters = KineticModelParameters(
@@ -42,18 +62,7 @@ parameters = KineticModelParameters(
     log_drain=jnp.array([]),
 )
 ```
-
-```python
-structure = KineticModelStructure(
-    S=jnp.array(
-        [[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]], dtype=jnp.float64
-    ),
-    balanced_species=jnp.array([1, 2]),
-    unbalanced_species=jnp.array([0, 3]),
-)
-```
-
-Now we can make some rate laws
+Now we can use enzax's rate laws to specify how each reaction behaves:
 
 ```python
 r0 = AllostericReversibleMichaelisMenten(
