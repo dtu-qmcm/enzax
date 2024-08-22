@@ -1,0 +1,44 @@
+site_name: "Enzax"
+site_description: Differentiable models of enzyme-catalysed reaction networks, with JAX
+use_directory_urls: False
+theme:
+  name: "material"
+  features:
+    - content.tabs.link
+    - content.code.annotate
+    - content.code.copy
+    - announce.dismiss
+    - navigation.sections
+  # logo: '_static/bibat-light.svg'
+  # favicon: '_static/bibat-light.svg'
+repo_url: https://github.com/dtu-qmcm/enzax
+plugins:
+- search
+- mkdocstrings:
+    handlers:
+      python:
+        paths: [src/enzax]
+        options:
+          show_bases: false
+          docstring_style: sphinx
+          members_order: source
+          group_by_category: false
+          filters: ["!^_"]
+          docstring_options:
+            warn_unknown_params: false
+
+markdown_extensions:
+  - admonition
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: 'index.md'
+  - Getting started: 'getting_started.md'
+  - API: 'api.md'
+  - Contributing: 'contributing.md'
+  - Accessibility: 'accessibility.md'

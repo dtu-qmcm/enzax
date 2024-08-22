@@ -6,19 +6,6 @@ from typeguard import typechecked
 from enzax.rate_equations import RateEquation
 
 
-def ragged_jax_index(lol: list[list[int]]) -> list[Int[Array, " _"]]:
-    """Convert a list of integer lists into a list of jax int arrays.
-
-    :param lol: a list of lists containing integers.
-
-    """
-
-    def convert_list(loi: list[int]) -> Int[Array, " _"]:
-        return jnp.array(loi, dtype=jnp.int16)
-
-    return list(map(convert_list, lol))
-
-
 @jaxtyped(typechecker=typechecked)
 class KineticModelParameters(eqx.Module):
     """Parameters for a kinetic model."""
