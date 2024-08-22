@@ -11,21 +11,36 @@ ConcArray = Float[Array, " n"]
 
 
 class RateEquation(Module, ABC):
+    """Abstract definition of a rate equation.
+
+    A rate equation is an equinox [Module](https://docs.kidger.site/equinox/api/module/module/) with a `__call__` method that takes in a 1 dimensional array of concentrations and an arbitrary PyTree of parameters, returning a scalar value representing a single flux.
+    """
+
     @abstractmethod
     def __call__(self, conc: ConcArray, parameters: PyTree) -> Scalar: ...
 
 
-def drain_function(sign: Scalar, log_v: Scalar) -> Scalar:
+def get_drain_flux(sign: Scalar, log_v: Scalar) -> Scalar:
+    """Get the flux of a drain reaction.
+
+    :param sign: a scalar value (should be either one or zero) representing the direction of the reaction.
+
+    :param log_v: a scalar representing the magnitude of the reaction, on log scale.
+
+    """
     return sign * jnp.exp(log_v)
 
 
 class Drain(RateEquation):
+    """A drain reaction."""
+
     sign: Scalar
     drain_ix: int
 
     def __call__(self, conc: ConcArray, parameters: PyTree) -> Scalar:
+        """Get the flux of a drain reaction."""
         log_v = parameters.log_drain[self.drain_ix]
-        return drain_function(self.sign, log_v)
+        return get_drain_flux(self.sign, log_v)
 
 
 def numerator_mm(
@@ -91,6 +106,8 @@ def free_enzyme_ratio_imm(
 
 
 class IrreversibleMichaelisMenten(MichaelisMenten):
+    """A reaction with irreversible Michaelis Menten kinetics."""
+
     def __call__(self, conc: Float[Array, " n"], parameters: PyTree) -> Scalar:
         """Get flux of a reaction with irreversible Michaelis Menten kinetics."""
         kcat = self.get_kcat(parameters)
@@ -150,6 +167,7 @@ def free_enzyme_ratio_rmm(
     product_reactant_positions: Int[Array, " n_product"],
     ix_ki_species: Int[Array, " n_ki"],
 ) -> Scalar:
+    """The free enzyme ratio for a reversible Michaelis Menten reaction."""
     return 1.0 / (
         -1.0
         + jnp.prod(
@@ -165,6 +183,8 @@ def free_enzyme_ratio_rmm(
 
 
 class ReversibleMichaelisMenten(MichaelisMenten):
+    """A reaction with reversible Michaelis Menten kinetics."""
+
     ix_product: Int[Array, " n_product"]
     ix_reactants: Int[Array, " n_reactant"]
     product_reactant_positions: Int[Array, " n_product"]
@@ -172,7 +192,7 @@ class ReversibleMichaelisMenten(MichaelisMenten):
     water_stoichiometry: Scalar
     reactant_to_dgf: Int[Array, " n_reactant"]
 
-    def get_dgf(self, parameters: PyTree):
+    def _get_dgf(self, parameters: PyTree):
         return parameters.dgf[self.reactant_to_dgf]
 
     def __call__(self, conc: Float[Array, " n"], parameters: PyTree) -> Scalar:
@@ -188,7 +208,7 @@ class ReversibleMichaelisMenten(MichaelisMenten):
         reversibility = get_reversibility(
             conc=conc,
             water_stoichiometry=self.water_stoichiometry,
-            dgf=self.get_dgf(parameters),
+            dgf=self._get_dgf(parameters),
             temperature=parameters.temperature,
             reactant_stoichiometry=self.reactant_stoichiometry,
             ix_reactants=self.ix_reactants,
@@ -225,6 +245,11 @@ def get_allosteric_effect(
     species_activation: Int[Array, " n_activation"],
     subunits: int,
 ) -> Scalar:
+    """Get the allosteric effect on a rate.
+
+    The equation is generalised Monod Wyman Changeux model as presented in Popova and Sel'kov 1975: https://doi.org/10.1016/0014-5793(75)80034-2.
+
+    """
     qnum = 1 + jnp.sum(conc[species_inhibition] / dc_inhibition)
     qdenom = 1 + jnp.sum(conc[species_activation] / dc_activation)
     out = 1.0 / (1 + tc * (free_enzyme_ratio * qnum / qdenom) ** subunits)
@@ -258,7 +283,10 @@ class AllostericRateLaw(MichaelisMenten):
 class AllostericIrreversibleMichaelisMenten(
     AllostericRateLaw, IrreversibleMichaelisMenten
 ):
+    """A reaction with irreversible Michaelis Menten kinetics and allostery."""
+
     def __call__(self, conc: Float[Array, " n"], parameters: PyTree) -> Scalar:
+        """The flux of an allosteric irreversible Michaelis Menten reaction."""
         km = self.get_km(parameters)
         ki = self.get_ki(parameters)
         tc = self.get_tc(parameters)
@@ -291,7 +319,10 @@ class AllostericIrreversibleMichaelisMenten(
 class AllostericReversibleMichaelisMenten(
     AllostericRateLaw, ReversibleMichaelisMenten
 ):
+    """A reaction with reversible Michaelis Menten kinetics and allostery."""
+
     def __call__(self, conc: ConcArray, parameters: PyTree) -> Scalar:
+        """The flux of an allosteric reversible Michaelis Menten reaction."""
         km = self.get_km(parameters)
         ki = self.get_ki(parameters)
         tc = self.get_tc(parameters)
@@ -322,21 +353,3 @@ class AllostericReversibleMichaelisMenten(
         )
         non_allosteric_rate = super().__call__(conc, parameters)
         return non_allosteric_rate * allosteric_effect
-
-
-def main():
-    _ = IrreversibleMichaelisMenten(
-        kcat_ix=0,
-        enzyme_ix=0,
-        km_ix=jnp.array([0, 1]),
-        ki_ix=jnp.array([]),
-        reactant_stoichiometry=jnp.array([-1, 1]),
-        ix_substrate=jnp.array([0]),
-        ix_ki_species=jnp.array([]),
-        substrate_km_positions=jnp.array([0]),
-        substrate_reactant_positions=jnp.array([0]),
-    )
-
-
-if __name__ == "__main__":
-    main()

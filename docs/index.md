@@ -4,8 +4,6 @@ Enzax is a library of kinetic models of enzyme-catalysed reaction networks. It s
 
 The [getting started](getting_started.md) page explains how to install enzax and use it to find and differentiate the steady states of an example model.
 
-For reference information, check out the [api](api.md) page.
-
 If you would like to contribute to enzax, the [contributing](contributing.md)
 page has some useful information.
 

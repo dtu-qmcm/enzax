@@ -1,3 +1,5 @@
+"""Module containing enzax's definition of a kinetic model."""
+
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, PyTree, Scalar, ScalarLike, jaxtyped
@@ -75,6 +77,10 @@ class KineticModel(eqx.Module):
         """Get the rate of change of balanced species concentrations.
 
         Note that the signature is as required for a Diffrax vector field function, hence the redundant variable t and the weird name "args".
+
+        :param t: redundant variable representing time.
+
+        :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
 
         """
         out = (self.structure.S @ self.flux(conc))[

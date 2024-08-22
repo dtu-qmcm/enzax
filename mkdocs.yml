@@ -39,6 +39,8 @@ markdown_extensions:
 nav:
   - Home: 'index.md'
   - Getting started: 'getting_started.md'
-  - API: 'api.md'
   - Contributing: 'contributing.md'
   - Accessibility: 'accessibility.md'
+  - API:
+    - 'api/kinetic_model.md'
+    - 'api/rate_equations.md'
