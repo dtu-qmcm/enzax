@@ -17,10 +17,7 @@ website. For example, that means you should be able to:
 
 ## How accessible this website is
 
-We know some parts of this website are not fully accessible:
-
-- Some images in [this vignette](_static/report.html) have no text
-  descriptions.
+We test the website's accessibility using [Lighthouse](https://developer.chrome.com/docs/lighthouse/overview/). Check out the latest results [here](https://github.com/dtu-qmcm/enzax/actions/workflows/test_docs.yml).
 
 ## Feedback and contact information
 
