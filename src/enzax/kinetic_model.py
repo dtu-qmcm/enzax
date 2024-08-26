@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, PyTree, Scalar, ScalarLike, jaxtyped
 from typeguard import typechecked
 
-from enzax.rate_equations import RateEquation
+from enzax.rate_equation import RateEquation
 
 
 @jaxtyped(typechecker=typechecked)
