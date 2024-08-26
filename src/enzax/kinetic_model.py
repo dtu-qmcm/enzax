@@ -53,7 +53,8 @@ class KineticModel(eqx.Module):
         self.rate_equations = unparameterised_model.rate_equations
 
     def flux(
-        self, conc_balanced: Float[Array, " n_balanced"]
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
     ) -> Float[Array, " n"]:
         """Get fluxes from balanced species concentrations.
 
@@ -61,7 +62,7 @@ class KineticModel(eqx.Module):
 
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
-        """
+        """  # Noqa: E501
         conc = jnp.zeros(self.structure.S.shape[0])
         conc = conc.at[self.structure.balanced_species].set(conc_balanced)
         conc = conc.at[self.structure.unbalanced_species].set(
@@ -82,8 +83,6 @@ class KineticModel(eqx.Module):
 
         :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
 
-        """
-        out = (self.structure.S @ self.flux(conc))[
-            self.structure.balanced_species
-        ]
-        return out
+        """  # Noqa: E501
+        sv = self.structure.S @ self.flux(conc)
+        return sv[self.structure.balanced_species]

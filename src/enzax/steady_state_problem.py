@@ -1,4 +1,8 @@
-"""Given a structural kinetic model, a set of parameters and an initial guess, find the physiological steady state metabolite concentration and its parameter sensitivities."""
+"""Module for solving steady state problems.
+
+Given a structural kinetic model, a set of parameters and an initial guess, the aim is to find the physiological steady state metabolite concentration and its parameter sensitivities.
+
+"""  # noqa: E501
 
 import time
 
@@ -34,7 +38,10 @@ def solve(
     dt0 = 0.000001
     max_steps = None
     controller = diffrax.PIDController(
-        pcoeff=0.1, icoeff=0.3, rtol=1e-11, atol=1e-11
+        pcoeff=0.1,
+        icoeff=0.3,
+        rtol=1e-11,
+        atol=1e-11,
     )
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)

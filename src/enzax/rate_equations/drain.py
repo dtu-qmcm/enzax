@@ -1,6 +1,7 @@
-from jaxtyping import PyTree, Scalar
 from jax import numpy as jnp
-from enzax.rate_equation import RateEquation, ConcArray
+from jaxtyping import PyTree, Scalar
+
+from enzax.rate_equation import ConcArray, RateEquation
 
 
 def get_drain_flux(sign: Scalar, log_v: Scalar) -> Scalar:
@@ -10,7 +11,7 @@ def get_drain_flux(sign: Scalar, log_v: Scalar) -> Scalar:
 
     :param log_v: a scalar representing the magnitude of the reaction, on log scale.
 
-    """
+    """  # Noqa: E501
     return sign * jnp.exp(log_v)
 
 

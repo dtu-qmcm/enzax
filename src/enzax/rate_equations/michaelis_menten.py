@@ -12,8 +12,9 @@ def numerator_mm(
     substrate_km_positions: Int[Array, " n_substrate"],
 ) -> Scalar:
     """Get the product of each substrate's concentration over its km.
+
     This quantity is the numerator in a Michaelis Menten reaction's rate equation
-    """
+    """  # Noqa: E501
     return jnp.prod((conc[ix_substrate] / km[substrate_km_positions]))
 
 
@@ -55,22 +56,16 @@ class MichaelisMenten(RateEquation):
 
 
 def free_enzyme_ratio_imm(
-    conc: ConcArray,
-    km: Float[Array, " n"],
+    conc_sub: Float[Array, " n_substrate"],
+    km_sub: Float[Array, " n_substrate"],
+    stoich_sub: Float[Array, " n_substrate"],
     ki: Float[Array, " n_ki"],
-    ix_substrate: Int[Array, " n_substrate"],
-    substrate_km_positions: Int[Array, " n_substrate"],
-    substrate_reactant_positions: Int[Array, " n_substrate"],
-    ix_ki_species: Int[Array, " n_ki"],
-    reactant_stoichiometry: Float[Array, " n"],
+    conc_inhibitor: Float[Array, " n_ki"],
 ) -> Scalar:
     """Free enzyme ratio for irreversible Michaelis Menten reactions."""
     return 1.0 / (
-        jnp.prod(
-            ((conc[ix_substrate] / km[substrate_km_positions]) + 1)
-            ** jnp.abs(reactant_stoichiometry[substrate_reactant_positions])
-        )
-        + jnp.sum(conc[ix_ki_species] / ki)
+        jnp.prod(((conc_sub / km_sub) + 1) ** jnp.abs(stoich_sub))
+        + jnp.sum(conc_inhibitor / ki)
     )
 
 
@@ -79,18 +74,17 @@ class IrreversibleMichaelisMenten(MichaelisMenten):
 
     def free_enzyme_ratio(self, conc, parameters):
         return free_enzyme_ratio_imm(
-            conc=conc,
-            km=self.get_km(parameters),
+            conc_sub=conc[self.ix_substrate],
+            km_sub=self.get_km(parameters)[self.substrate_km_positions],
             ki=self.get_ki(parameters),
-            ix_substrate=self.ix_substrate,
-            substrate_km_positions=self.substrate_km_positions,
-            substrate_reactant_positions=self.substrate_reactant_positions,
-            ix_ki_species=self.ix_ki_species,
-            reactant_stoichiometry=self.reactant_stoichiometry,
+            conc_inhibitor=conc[self.ix_ki_species],
+            stoich_sub=self.reactant_stoichiometry[
+                self.substrate_reactant_positions
+            ],
         )
 
     def __call__(self, conc: Float[Array, " n"], parameters: PyTree) -> Scalar:
-        """Get flux of a reaction with irreversible Michaelis Menten kinetics."""
+        """Get flux of a reaction with irreversible Michaelis Menten kinetics."""  # noqa: E501
         kcat = self.get_kcat(parameters)
         enzyme = self.get_enzyme(parameters)
         km = self.get_km(parameters)
@@ -126,30 +120,21 @@ def get_reversibility(
 
 
 def free_enzyme_ratio_rmm(
-    conc: ConcArray,
-    km: Float[Array, " n_reactant"],
+    conc_sub: Float[Array, " n_substrate"],
+    km_sub: Float[Array, " n_substrate"],
+    stoich_sub: Float[Array, " n_substrate"],
+    conc_prod: Float[Array, " n_product"],
+    km_prod: Float[Array, " n_prod"],
+    stoich_prod: Float[Array, " n_prod"],
+    conc_inhibitor: Float[Array, " n_ki"],
     ki: Float[Array, " n_ki"],
-    reactant_stoichiometry: Float[Array, " n_reactant"],
-    ix_substrate: Int[Array, " n_substrate"],
-    ix_product: Int[Array, " n_product"],
-    substrate_km_positions: Int[Array, " n_substrate"],
-    product_km_positions: Int[Array, " n_product"],
-    substrate_reactant_positions: Int[Array, " n_substrate"],
-    product_reactant_positions: Int[Array, " n_product"],
-    ix_ki_species: Int[Array, " n_ki"],
 ) -> Scalar:
     """The free enzyme ratio for a reversible Michaelis Menten reaction."""
     return 1.0 / (
         -1.0
-        + jnp.prod(
-            ((conc[ix_substrate] / km[substrate_km_positions]) + 1.0)
-            ** jnp.abs(reactant_stoichiometry[substrate_reactant_positions])
-        )
-        + jnp.prod(
-            ((conc[ix_product] / km[product_km_positions]) + 1.0)
-            ** jnp.abs(reactant_stoichiometry[product_reactant_positions])
-        )
-        + jnp.sum(conc[ix_ki_species] / ki)
+        + jnp.prod(((conc_sub / km_sub) + 1.0) ** jnp.abs(stoich_sub))
+        + jnp.prod(((conc_prod / km_prod) + 1.0) ** jnp.abs(stoich_prod))
+        + jnp.sum(conc_inhibitor / ki)
     )
 
 
@@ -168,17 +153,18 @@ class ReversibleMichaelisMenten(MichaelisMenten):
 
     def free_enzyme_ratio(self, conc: ConcArray, parameters: PyTree) -> Scalar:
         return free_enzyme_ratio_rmm(
-            conc=conc,
-            km=self.get_km(parameters),
+            conc_sub=conc[self.ix_substrate],
+            km_sub=self.get_km(parameters)[self.substrate_reactant_positions],
+            stoich_sub=self.reactant_stoichiometry[
+                self.substrate_reactant_positions
+            ],
+            conc_prod=conc[self.ix_product],
+            km_prod=self.get_km(parameters)[self.product_reactant_positions],
+            stoich_prod=self.reactant_stoichiometry[
+                self.product_reactant_positions
+            ],
+            conc_inhibitor=conc[self.ix_ki_species],
             ki=self.get_ki(parameters),
-            reactant_stoichiometry=self.reactant_stoichiometry,
-            ix_substrate=self.ix_substrate,
-            ix_product=self.ix_product,
-            substrate_km_positions=self.substrate_km_positions,
-            product_km_positions=self.product_km_positions,
-            substrate_reactant_positions=self.substrate_reactant_positions,
-            product_reactant_positions=self.product_reactant_positions,
-            ix_ki_species=self.ix_ki_species,
         )
 
     def __call__(self, conc: Float[Array, " n"], parameters: PyTree) -> Scalar:
@@ -186,7 +172,7 @@ class ReversibleMichaelisMenten(MichaelisMenten):
 
         :param conc: A 1D array of non-negative numbers representing concentrations of the species that the reaction produces and consumes.
 
-        """
+        """  # noqa: E501
         kcat = self.get_kcat(parameters)
         enzyme = self.get_enzyme(parameters)
         reversibility = get_reversibility(
