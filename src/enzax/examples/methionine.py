@@ -5,7 +5,6 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import (
     KineticModel,
-    KineticModelParameters,
     KineticModelStructure,
     UnparameterisedKineticModel,
 )
@@ -15,11 +14,12 @@ from enzax.rate_equations import (
     IrreversibleMichaelisMenten,
     ReversibleMichaelisMenten,
 )
+from enzax.parameters import AllostericMichaelisMentenParameters
 
 
 config.update("jax_enable_x64", True)
 
-parameters = KineticModelParameters(
+parameters = AllostericMichaelisMentenParameters(
     log_kcat=jnp.log(
         jnp.array(
             [

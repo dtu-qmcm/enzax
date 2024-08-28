@@ -2,26 +2,10 @@
 
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Array, Float, Int, PyTree, Scalar, ScalarLike, jaxtyped
+from jaxtyping import Array, Float, Int, PyTree, ScalarLike, jaxtyped
 from typeguard import typechecked
 
 from enzax.rate_equation import RateEquation
-
-
-@jaxtyped(typechecker=typechecked)
-class KineticModelParameters(eqx.Module):
-    """Parameters for a kinetic model."""
-
-    log_kcat: Float[Array, " n_enzyme"]
-    log_enzyme: Float[Array, " n_enzyme"]
-    dgf: Float[Array, " n_metabolite"]
-    log_km: Float[Array, " n_km"]
-    log_ki: Float[Array, " n_ki"]
-    log_conc_unbalanced: Float[Array, " n_unbalanced"]
-    temperature: Scalar
-    log_transfer_constant: Float[Array, " n_allosteric_enzyme"]
-    log_dissociation_constant: Float[Array, " n_allosteric_effector"]
-    log_drain: Float[Array, " n_drain"]
 
 
 @jaxtyped(typechecker=typechecked)
@@ -37,7 +21,7 @@ class UnparameterisedKineticModel(eqx.Module):
     """A kinetic model without parameter values."""
 
     structure: KineticModelStructure
-    rate_equations: list[RateEquation]
+    rate_equations: list[RateEquation] | None = None
 
 
 class KineticModel(eqx.Module):
@@ -45,7 +29,7 @@ class KineticModel(eqx.Module):
 
     parameters: PyTree
     structure: KineticModelStructure
-    rate_equations: list[RateEquation]
+    rate_equations: list[RateEquation] | None = None
 
     def __init__(self, parameters, unparameterised_model):
         self.parameters = parameters
