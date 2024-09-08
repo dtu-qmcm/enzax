@@ -44,3 +44,5 @@ nav:
   - API:
     - 'api/kinetic_model.md'
     - 'api/rate_equations.md'
+    - 'api/steady_state.md'
+    - 'api/mcmc.md'

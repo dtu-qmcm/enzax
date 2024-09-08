@@ -170,10 +170,21 @@ guess = jnp.full((5,) 0.01)
 steady_state = get_kinetic_model_steady_state(methionine.model, guess)
 ```
 
-To find the Jacobian of this steady state with respect to the model's parameters, we can wrap `get_kinetic_model_steady_state` in JAX's [`jacrev`](https://jax.readthedocs.io/en/latest/_autosummary/jax.jacrev.html) function:
+To access the Jacobian of this steady state with respect to the model's parameters, we can wrap `get_kinetic_model_steady_state` in a function that has a set of parameters as its only argument, then use JAX's [`jacrev`](https://jax.readthedocs.io/en/latest/_autosummary/jax.jacrev.html) function:
 
 ```python
 import jax
+from jaxtyping import PyTree
 
-jacobian = jax.jacrev(solve_steady_state)(methionine.model, guess)
+guess = jnp.full((5,) 0.01)
+model = methionine.model
+
+def get_steady_state_from_params(parameters: PyTree):
+    """Get the steady state with a one-argument non-pure function."""
+    _model = RateEquationModel(
+        parameters, model.structure, model.rate_equations
+    )
+    return get_kinetic_model_steady_state(_model, guess)
+
+jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
 ```

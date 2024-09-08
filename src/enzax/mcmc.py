@@ -23,8 +23,10 @@ from enzax.steady_state import get_kinetic_model_steady_state
 
 @chex.dataclass
 class ObservationSet:
+    """Measurements from a single experiment."""
+
     conc: Float[Array, " m"]
-    flux: ScalarLike
+    flux: Float[Array, " n"]
     enzyme: Float[Array, " e"]
     conc_scale: ScalarLike
     flux_scale: ScalarLike
@@ -33,6 +35,8 @@ class ObservationSet:
 
 @chex.dataclass
 class AllostericMichaelisMentenPriorSet:
+    """Priors for an allosteric Michaelis-Menten model."""
+
     log_kcat: Float[Array, "2 n_enzyme"]
     log_enzyme: Float[Array, "2 n_enzyme"]
     log_drain: Float[Array, "2 n_drain"]
@@ -106,7 +110,7 @@ def posterior_logdensity_amm(
 
 
 @functools.partial(jax.jit, static_argnames=["kernel", "num_samples"])
-def inference_loop(rng_key, kernel, initial_state, num_samples):
+def _inference_loop(rng_key, kernel, initial_state, num_samples):
     """Run MCMC with blackjax."""
 
     def one_step(state, rng_key):
@@ -141,7 +145,7 @@ def run_nuts(
     )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
-    states, info = inference_loop(
+    states, info = _inference_loop(
         sample_key,
         kernel=nuts_kernel,
         initial_state=initial_state,

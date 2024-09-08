@@ -15,8 +15,18 @@ from enzax.kinetic_model import KineticModel
 @eqx.filter_jit()
 def get_kinetic_model_steady_state(
     model: KineticModel,
-    guess: Float[Array, " n"],
+    guess: Float[Array, " n_balanced"],
 ) -> PyTree:
+    """Get the steady state of a kinetic model, using diffrax.
+
+    The better the guess (generally) the faster and more reliable the solving.
+
+    :param model: a KineticModel object
+
+    :param guess: a JAX array of floats. Must have the same length as the
+    model's number of balanced species.
+
+    """
     term = diffrax.ODETerm(model.dcdt)
     solver = diffrax.Kvaerno5()
     t0 = 0
