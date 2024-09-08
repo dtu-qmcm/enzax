@@ -21,14 +21,12 @@ pip install enzax
 
 ```python
 from enzax.examples import methionine
-from enzax.steady_state import solve_steady_state
+from enzax.steady_state import get_kinetic_model_steady_state
 from jax import numpy as jnp
 
 guess = jnp.full((5,) 0.01)
 
-steady_state = solve_steady_state(
-    methionine.parameters, methionine.unparameterised_model, guess
-)
+steady_state = get_kinetic_model_steady_state(methionine.model, guess)
 ```
 
 ### Find a steady state's Jacobian with respect to all parameters
@@ -36,12 +34,20 @@ steady_state = solve_steady_state(
 ```python
 import jax
 from enzax.examples import methionine
-from enzax.steady_state import solve_steady_state
+from enzax.steady_state import get_kinetic_model_steady_state
 from jax import numpy as jnp
+from jaxtyping import PyTree
 
 guess = jnp.full((5,) 0.01)
+model = methionine.model
 
-jacobian = jax.jacrev(solve_steady_state)(
-    methionine.parameters, methionine.unparameterised_model, guess
-)
+def get_steady_state_from_params(parameters: PyTree):
+    """Get the steady state with a one-argument non-pure function."""
+    _model = RateEquationModel(
+        parameters, model.structure, model.rate_equations
+    )
+    return get_kinetic_model_steady_state(_model, guess)
+
+jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
+
 ```

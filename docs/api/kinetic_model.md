@@ -4,7 +4,6 @@
       filters:
         - "!check"
       members:
-        - KineticModel
-        - UnparameterisedKineticModel
-        - KineticModelParameters
         - KineticModelStructure
+        - KineticModel
+        - RateEquationModel

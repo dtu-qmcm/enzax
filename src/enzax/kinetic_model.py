@@ -1,75 +1,36 @@
 """Module containing enzax's definition of a kinetic model."""
 
+from abc import ABC, abstractmethod
+
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Array, Float, Int, PyTree, Scalar, ScalarLike, jaxtyped
+from jaxtyping import Array, Float, Int, PyTree, ScalarLike, jaxtyped
 from typeguard import typechecked
 
-from enzax.rate_equations import RateEquation
-
-
-@jaxtyped(typechecker=typechecked)
-class KineticModelParameters(eqx.Module):
-    """Parameters for a kinetic model."""
-
-    log_kcat: Float[Array, " n_enzyme"]
-    log_enzyme: Float[Array, " n_enzyme"]
-    dgf: Float[Array, " n_metabolite"]
-    log_km: Float[Array, " n_km"]
-    log_ki: Float[Array, " n_ki"]
-    log_conc_unbalanced: Float[Array, " n_unbalanced"]
-    temperature: Scalar
-    log_transfer_constant: Float[Array, " n_allosteric_enzyme"]
-    log_dissociation_constant: Float[Array, " n_allosteric_effector"]
-    log_drain: Float[Array, " n_drain"]
+from enzax.rate_equation import RateEquation
 
 
 @jaxtyped(typechecker=typechecked)
 class KineticModelStructure(eqx.Module):
     """Structural information about a kinetic model."""
 
-    S: Float[Array, " s r"] = eqx.field(static=True)
-    balanced_species: Int[Array, " n_balanced"] = eqx.field(static=True)
-    unbalanced_species: Int[Array, " n_unbalanced"] = eqx.field(static=True)
+    S: Float[Array, " s r"]
+    balanced_species: Int[Array, " n_balanced"]
+    unbalanced_species: Int[Array, " n_unbalanced"]
 
 
-class UnparameterisedKineticModel(eqx.Module):
-    """A kinetic model without parameter values."""
-
-    structure: KineticModelStructure
-    rate_equations: list[RateEquation]
-
-
-class KineticModel(eqx.Module):
-    """A parameterised kinetic model."""
+class KineticModel(eqx.Module, ABC):
+    """Abstract base class for kinetic models."""
 
     parameters: PyTree
     structure: KineticModelStructure
-    rate_equations: list[RateEquation]
+    rate_equations: list[RateEquation] = eqx.field(default_factory=list)
 
-    def __init__(self, parameters, unparameterised_model):
-        self.parameters = parameters
-        self.structure = unparameterised_model.structure
-        self.rate_equations = unparameterised_model.rate_equations
-
+    @abstractmethod
     def flux(
-        self, conc_balanced: Float[Array, " n_balanced"]
-    ) -> Float[Array, " n"]:
-        """Get fluxes from balanced species concentrations.
-
-        :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
-
-        :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
-
-        """
-        conc = jnp.zeros(self.structure.S.shape[0])
-        conc = conc.at[self.structure.balanced_species].set(conc_balanced)
-        conc = conc.at[self.structure.unbalanced_species].set(
-            jnp.exp(self.parameters.log_conc_unbalanced)
-        )
-        t = [f(conc, self.parameters) for f in self.rate_equations]
-        out = jnp.array(t)
-        return out
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
+    ) -> Float[Array, " n"]: ...
 
     def dcdt(
         self, t: ScalarLike, conc: Float[Array, " n_balanced"], args=None
@@ -82,8 +43,32 @@ class KineticModel(eqx.Module):
 
         :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
 
-        """
-        out = (self.structure.S @ self.flux(conc))[
-            self.structure.balanced_species
-        ]
+        """  # Noqa: E501
+        sv = self.structure.S @ self.flux(conc)
+        return sv[self.structure.balanced_species]
+
+
+class RateEquationModel(KineticModel):
+    """A kinetic model that specifies its fluxes using RateEquation objects."""
+
+    rate_equations: list[RateEquation] = eqx.field(default_factory=list)
+
+    def flux(
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
+    ) -> Float[Array, " n"]:
+        """Get fluxes from balanced species concentrations.
+
+        :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+
+        :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
+
+        """  # Noqa: E501
+        conc = jnp.zeros(self.structure.S.shape[0])
+        conc = conc.at[self.structure.balanced_species].set(conc_balanced)
+        conc = conc.at[self.structure.unbalanced_species].set(
+            jnp.exp(self.parameters.log_conc_unbalanced)
+        )
+        t = [f(conc, self.parameters) for f in self.rate_equations]
+        out = jnp.array(t)
         return out
