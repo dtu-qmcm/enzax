@@ -22,10 +22,8 @@ First we import some enzax classes:
 
 ```python
 from enzax.kinetic_model import (
-    KineticModel,
-    KineticModelParameters,
     KineticModelStructure,
-    UnparameterisedKineticModel,
+    RateEquationModel,
 )
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
@@ -49,7 +47,9 @@ structure = KineticModelStructure(
 Next we provide some kinetic parameter values:
 
 ```python
-parameters = KineticModelParameters(
+from enzax.parameters import AllostericMichaelisMentenParameters
+
+parameters = AllostericMichaelisMentenParameters(
     log_kcat=jnp.array([-0.1, 0.0, 0.1]),
     log_enzyme=jnp.log(jnp.array([0.3, 0.2, 0.1])),
     dgf=jnp.array([-3, -1.0]),
@@ -65,6 +65,11 @@ parameters = KineticModelParameters(
 Now we can use enzax's rate laws to specify how each reaction behaves:
 
 ```python
+from enzax.rate_equations import (
+    AllostericReversibleMichaelisMenten,
+    ReversibleMichaelisMenten,
+)
+
 r0 = AllostericReversibleMichaelisMenten(
     kcat_ix=0,
     enzyme_ix=0,
@@ -130,16 +135,10 @@ r2 = ReversibleMichaelisMenten(
 )
 ```
 
-Next an unparameterised kinetic model
+Now we can declare our model:
 
 ```python
-unparameterised_model = UnparameterisedKineticModel(structure, [r0, r1, r2])
-```
-
-Finally a parameterised model:
-
-```python
-model = KineticModel(parameters, unparameterised_model)
+model = RateEquationModel(structure, parameters, [r0, r1, r2])
 ```
 
 To test out the model, we can see if it returns some fluxes and state variable rates when provided a set of balanced species concentrations:
@@ -157,28 +156,24 @@ dcdt
 
 ## Find a kinetic model's steady state
 
-Enzax provides a few example kinetic models, including [`methionine`](https://github.com/dtu-qmcm/enzax/blob/main/src/enzax/examples/methionine.py), a model of the mammallian methionine cycle.
+Enzax provides a few example kinetic models, including [`methionine`](https://github.com/dtu-qmcm/enzax/blob/main/src/enzax/examples/methionine.py), a model of the mammalian methionine cycle.
 
-Here is how to find this model's steady state (and its parameter gradients) using enzax's `solve_steady_state` function:
+Here is how to find this model's steady state (and its parameter gradients) using enzax's `get_kinetic_model_steady_state` function:
 
 ```python
 from enzax.examples import methionine
-from enzax.steady_state import solve_steady_state
+from enzax.steady_state import get_kinetic_model_steady_state
 from jax import numpy as jnp
 
 guess = jnp.full((5,) 0.01)
 
-steady_state = solve_steady_state(
-    methionine.parameters, methionine.unparameterised_model, guess
-)
+steady_state = get_kinetic_model_steady_state(methionine.model, guess)
 ```
 
-To find the jacobian of this steady state with respect to the model's parameters, we can wrap `solve_steady_state` in JAX's [`jacrev`](https://jax.readthedocs.io/en/latest/_autosummary/jax.jacrev.html) function:
+To find the Jacobian of this steady state with respect to the model's parameters, we can wrap `get_kinetic_model_steady_state` in JAX's [`jacrev`](https://jax.readthedocs.io/en/latest/_autosummary/jax.jacrev.html) function:
 
 ```python
 import jax
 
-jacobian = jax.jacrev(solve_steady_state)(
-    methionine.parameters, methionine.unparameterised_model, guess
-)
+jacobian = jax.jacrev(solve_steady_state)(methionine.model, guess)
 ```

@@ -20,10 +20,10 @@ LogDissociationConstant = Float[Array, " n_allosteric_effect"]
 
 
 @jaxtyped(typechecker=typechecked)
-class MichaelisMentenParameters(eqx.Module):
+class MichaelisMentenParameterSet(eqx.Module):
     """Parameters for a model with Michaelis Menten kinetics.
 
-    Reactions can have any of these rate laws:
+    This kind of parameter set supports models with the following rate laws:
 
       - enzax.rate_equations.drain.Drain
       - enzax.rate_equations.michaelis_menten.IrreversibleMichaelisMenten
@@ -41,7 +41,7 @@ class MichaelisMentenParameters(eqx.Module):
     log_drain: LogDrain
 
 
-class AllostericMichaelisMentenParameters(MichaelisMentenParameters):
+class AllostericMichaelisMentenParameterSet(MichaelisMentenParameterSet):
     """Parameters for a model with Michaelis Menten kinetics, with allostery.
 
     Reactions can be any out of:

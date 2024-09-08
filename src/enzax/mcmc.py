@@ -1,29 +1,24 @@
-"""Code for doing mcmc on the parameters of a steady state problem."""
+"""Code for MCMC-based Bayesian inference on kinetic models."""
 
 import functools
-import logging
-import warnings
+from typing import Callable, TypedDict, Unpack
 
 import arviz as az
 import blackjax
 import chex
-import equinox as eqx
 import jax
+from jax._src.random import KeyArray
 import jax.numpy as jnp
 from jax.scipy.stats import norm
-from jaxtyping import Array, Float, ScalarLike
+from jaxtyping import Array, Float, PyTree, ScalarLike
 
-from enzax.examples import methionine
 from enzax.kinetic_model import (
-    KineticModel,
-    KineticModelParameters,
-    UnparameterisedKineticModel,
+    RateEquationModel,
+    KineticModelStructure,
 )
-from enzax.steady_state_problem import solve
-
-SEED = 1234
-jax.config.update("jax_enable_x64", True)
-jax.config.update("jax_debug_nans", True)
+from enzax.parameters import AllostericMichaelisMentenParameterSet
+from enzax.rate_equation import RateEquation
+from enzax.steady_state import get_kinetic_model_steady_state
 
 
 @chex.dataclass
@@ -37,9 +32,9 @@ class ObservationSet:
 
 
 @chex.dataclass
-class PriorSet:
-    log_kcat: Float[Array, "2 n"]
-    log_enzyme: Float[Array, "2 n"]
+class AllostericMichaelisMentenPriorSet:
+    log_kcat: Float[Array, "2 n_enzyme"]
+    log_enzyme: Float[Array, "2 n_enzyme"]
     log_drain: Float[Array, "2 n_drain"]
     dgf: Float[Array, "2 n_metabolite"]
     log_km: Float[Array, "2 n_km"]
@@ -47,23 +42,34 @@ class PriorSet:
     log_conc_unbalanced: Float[Array, "2 n_unbalanced"]
     temperature: Float[Array, "2"]
     log_transfer_constant: Float[Array, "2 n_allosteric_enzyme"]
-    log_dissociation_constant: Float[Array, "2 n_allosteric_effector"]
+    log_dissociation_constant: Float[Array, "2 n_allosteric_effect"]
 
 
-def ind_normal_prior_logdensity(param, prior):
+class AdaptationKwargs(TypedDict):
+    """Keyword arguments to the blackjax function window_adaptation."""
+
+    initial_step_size: float
+    max_num_doublings: int
+    is_mass_matrix_diagonal: bool
+    target_acceptance_rate: float
+
+
+def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
+    """Total log density for an independent normal distribution."""
     return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
 
 
-@eqx.filter_jit
-def posterior_logdensity_fn(
-    parameters: KineticModelParameters,
-    unparameterised_model: UnparameterisedKineticModel,
+def posterior_logdensity_amm(
+    parameters: AllostericMichaelisMentenParameterSet,
+    structure: KineticModelStructure,
+    rate_equations: list[RateEquation],
     obs: ObservationSet,
-    prior: PriorSet,
+    prior: AllostericMichaelisMentenPriorSet,
     guess: Float[Array, " n_balanced"],
 ):
-    model = KineticModel(parameters, unparameterised_model)
-    steady = solve(parameters, unparameterised_model, guess)
+    """Get the log density for an allosteric Michaelis-Menten model."""
+    model = RateEquationModel(parameters, structure, rate_equations)
+    steady = get_kinetic_model_steady_state(model, guess)
     flux = model.flux(steady)
     conc = jnp.zeros(model.structure.S.shape[0])
     conc = conc.at[model.structure.balanced_species].set(steady)
@@ -101,37 +107,37 @@ def posterior_logdensity_fn(
 
 @functools.partial(jax.jit, static_argnames=["kernel", "num_samples"])
 def inference_loop(rng_key, kernel, initial_state, num_samples):
+    """Run MCMC with blackjax."""
+
     def one_step(state, rng_key):
         state, info = kernel(rng_key, state)
         return state, (state, info)
 
     keys = jax.random.split(rng_key, num_samples)
     _, (states, info) = jax.lax.scan(one_step, initial_state, keys)
-
     return states, info
 
 
-def warn_if_divergent(info):
-    if jnp.any(info.is_divergent):
-        warnings.warn("I found a divergent transition!")
-
-
-@eqx.filter_jit
-def sample(logdensity_fn, rng_key, init_parameters):
+def run_nuts(
+    logdensity_fn: Callable,
+    rng_key: KeyArray,
+    init_parameters: PyTree,
+    num_warmup: int,
+    num_samples: int,
+    **adapt_kwargs: Unpack[AdaptationKwargs],
+):
+    """Run the default NUTS algorithm with blackjax."""
     warmup = blackjax.window_adaptation(
         blackjax.nuts,
         logdensity_fn,
         progress_bar=True,
-        initial_step_size=0.0001,
-        max_num_doublings=10,
-        is_mass_matrix_diagonal=False,
-        target_acceptance_rate=0.95,
+        **adapt_kwargs,
     )
     rng_key, warmup_key = jax.random.split(rng_key)
     (initial_state, tuned_parameters), (_, info, _) = warmup.run(
         warmup_key,
         init_parameters,
-        num_steps=1000,  # type: ignore
+        num_steps=num_warmup,  #  type: ignore
     )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
@@ -139,110 +145,36 @@ def sample(logdensity_fn, rng_key, init_parameters):
         sample_key,
         kernel=nuts_kernel,
         initial_state=initial_state,
-        num_samples=200,
+        num_samples=num_samples,
     )
     return states, info
 
 
-def ind_prior_from_truth(truth, sd):
+def ind_prior_from_truth(truth: Float[Array, " _"], sd: ScalarLike):
+    """Get a set of independent priors centered at the true parameter values.
+
+    Note that the standard deviation currently has to be the same for
+    all parameters.
+
+    """
     return jnp.vstack((truth, jnp.full(truth.shape, sd)))
 
 
-def get_idata(samples, info):
+def get_idata(samples, info, coords=None, dims=None) -> az.InferenceData:
+    """Get an arviz InferenceData from a blackjax NUTS output."""
     sample_dict = {
         k: jnp.expand_dims(getattr(samples.position, k), 0)
         for k in samples.position.__dataclass_fields__.keys()
     }
-    posterior = az.convert_to_inference_data(sample_dict, group="posterior")
+    posterior = az.convert_to_inference_data(
+        sample_dict,
+        group="posterior",
+        coords=coords,
+        dims=dims,
+    )
     sample_stats = az.convert_to_inference_data(
         {"diverging": info.is_divergent}, group="sample_stats"
     )
-    return az.concat(posterior, sample_stats)
-
-
-def main():
-    """Demonstrate the functionality of the mcmc module."""
-    true_parameters = methionine.parameters
-    unparameterised_model = methionine.unparameterised_model
-    true_model = methionine.model
-    default_state_guess = jnp.full((5,), 0.01)
-    true_states = solve(
-        true_parameters, unparameterised_model, default_state_guess
-    )
-    prior = PriorSet(
-        log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
-        log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
-        log_drain=ind_prior_from_truth(true_parameters.log_drain, 0.1),
-        dgf=ind_prior_from_truth(true_parameters.dgf, 0.1),
-        log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
-        log_conc_unbalanced=ind_prior_from_truth(
-            true_parameters.log_conc_unbalanced, 0.1
-        ),
-        temperature=ind_prior_from_truth(true_parameters.temperature, 0.1),
-        log_ki=ind_prior_from_truth(true_parameters.log_ki, 0.1),
-        log_transfer_constant=ind_prior_from_truth(
-            true_parameters.log_transfer_constant, 0.1
-        ),
-        log_dissociation_constant=ind_prior_from_truth(
-            true_parameters.log_dissociation_constant, 0.1
-        ),
-    )
-    # get true concentration
-    true_conc = jnp.zeros(methionine.structure.S.shape[0])
-    true_conc = true_conc.at[methionine.structure.balanced_species].set(
-        true_states
-    )
-    true_conc = true_conc.at[methionine.structure.unbalanced_species].set(
-        jnp.exp(true_parameters.log_conc_unbalanced)
-    )
-    # get true flux
-    true_flux = true_model.flux(true_states)
-    # simulate observations
-    error_conc = 0.03
-    error_flux = 0.05
-    error_enzyme = 0.03
-    key = jax.random.key(SEED)
-    obs_conc = jnp.exp(jnp.log(true_conc) + jax.random.normal(key) * error_conc)
-    obs_enzyme = jnp.exp(
-        true_parameters.log_enzyme + jax.random.normal(key) * error_enzyme
-    )
-    obs_flux = true_flux + jax.random.normal(key) * error_conc
-    obs = ObservationSet(
-        conc=obs_conc,
-        flux=obs_flux,
-        enzyme=obs_enzyme,
-        conc_scale=error_conc,
-        flux_scale=error_flux,
-        enzyme_scale=error_enzyme,
-    )
-    log_M = functools.partial(
-        posterior_logdensity_fn,
-        obs=obs,
-        prior=prior,
-        unparameterised_model=unparameterised_model,
-        guess=default_state_guess,
-    )
-    samples, info = sample(log_M, key, true_parameters)
-    idata = get_idata(samples, info)
-    print(az.summary(idata))
-    if jnp.any(info.is_divergentl):
-        n_divergent = info.is_divergent.sum()
-        msg = f"There were {n_divergent} post-warmup divergent transitions."
-        warnings.warn(msg)
-    else:
-        logging.info("No post-warmup divergent transitions!")
-    print("True parameter values vs posterior:")
-    for param in true_parameters.__dataclass_fields__.keys():
-        true_val = getattr(true_parameters, param)
-        model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
-        model_high = jnp.quantile(
-            getattr(samples.position, param), 0.99, axis=0
-        )
-        print(f" {param}:")
-        print(f"  true value: {true_val}")
-        print(f"  posterior 1%: {model_low}")
-        print(f"  posterior 99%: {model_high}")
-
-
-if __name__ == "__main__":
-    main()
+    idata = az.concat(posterior, sample_stats)
+    assert idata is not None
+    return idata

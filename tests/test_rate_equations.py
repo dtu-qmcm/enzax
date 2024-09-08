@@ -7,10 +7,10 @@ from enzax.rate_equations import (
     IrreversibleMichaelisMenten,
     ReversibleMichaelisMenten,
 )
-from enzax.parameters import AllostericMichaelisMentenParameters
+from enzax.parameters import AllostericMichaelisMentenParameterSet
 
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1, 0.3])
-EXAMPLE_PARAMETERS = AllostericMichaelisMentenParameters(
+EXAMPLE_PARAMETERS = AllostericMichaelisMentenParameterSet(
     log_kcat=jnp.array([-0.1]),
     log_enzyme=jnp.log(jnp.array([0.3])),
     dgf=jnp.array([-3, -1.0]),

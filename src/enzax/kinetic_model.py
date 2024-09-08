@@ -1,5 +1,7 @@
 """Module containing enzax's definition of a kinetic model."""
 
+from abc import ABC, abstractmethod
+
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, PyTree, ScalarLike, jaxtyped
@@ -12,29 +14,44 @@ from enzax.rate_equation import RateEquation
 class KineticModelStructure(eqx.Module):
     """Structural information about a kinetic model."""
 
-    S: Float[Array, " s r"] = eqx.field(static=True)
-    balanced_species: Int[Array, " n_balanced"] = eqx.field(static=True)
-    unbalanced_species: Int[Array, " n_unbalanced"] = eqx.field(static=True)
+    S: Float[Array, " s r"]
+    balanced_species: Int[Array, " n_balanced"]
+    unbalanced_species: Int[Array, " n_unbalanced"]
 
 
-class UnparameterisedKineticModel(eqx.Module):
-    """A kinetic model without parameter values."""
-
-    structure: KineticModelStructure
-    rate_equations: list[RateEquation] | None = None
-
-
-class KineticModel(eqx.Module):
-    """A parameterised kinetic model."""
+class KineticModel(eqx.Module, ABC):
+    """Abstract base class for kinetic models."""
 
     parameters: PyTree
     structure: KineticModelStructure
-    rate_equations: list[RateEquation] | None = None
+    rate_equations: list[RateEquation] = eqx.field(default_factory=list)
 
-    def __init__(self, parameters, unparameterised_model):
-        self.parameters = parameters
-        self.structure = unparameterised_model.structure
-        self.rate_equations = unparameterised_model.rate_equations
+    @abstractmethod
+    def flux(
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
+    ) -> Float[Array, " n"]: ...
+
+    def dcdt(
+        self, t: ScalarLike, conc: Float[Array, " n_balanced"], args=None
+    ) -> Float[Array, " n_balanced"]:
+        """Get the rate of change of balanced species concentrations.
+
+        Note that the signature is as required for a Diffrax vector field function, hence the redundant variable t and the weird name "args".
+
+        :param t: redundant variable representing time.
+
+        :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+
+        """  # Noqa: E501
+        sv = self.structure.S @ self.flux(conc)
+        return sv[self.structure.balanced_species]
+
+
+class RateEquationModel(KineticModel):
+    """A kinetic model that specifies its fluxes using RateEquation objects."""
+
+    rate_equations: list[RateEquation] = eqx.field(default_factory=list)
 
     def flux(
         self,
@@ -55,18 +72,3 @@ class KineticModel(eqx.Module):
         t = [f(conc, self.parameters) for f in self.rate_equations]
         out = jnp.array(t)
         return out
-
-    def dcdt(
-        self, t: ScalarLike, conc: Float[Array, " n_balanced"], args=None
-    ) -> Float[Array, " n_balanced"]:
-        """Get the rate of change of balanced species concentrations.
-
-        Note that the signature is as required for a Diffrax vector field function, hence the redundant variable t and the weird name "args".
-
-        :param t: redundant variable representing time.
-
-        :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
-
-        """  # Noqa: E501
-        sv = self.structure.S @ self.flux(conc)
-        return sv[self.structure.balanced_species]
