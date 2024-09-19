@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Array, Float, Int, PyTree, ScalarLike, jaxtyped
+import sympy2jax
 from typeguard import typechecked
 
 from enzax.rate_equation import RateEquation
@@ -72,3 +73,26 @@ class RateEquationModel(KineticModel):
         t = [f(conc, self.parameters) for f in self.rate_equations]
         out = jnp.array(t)
         return out
+
+
+class SymbolicModel(KineticModel):
+    """A kinetic model whose flux comes from a symbolic expression."""
+
+    rate_functions: list[sympy2jax.SymbolicModule] = eqx.field(
+        default_factory=list
+    )
+
+    def flux(
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
+    ) -> Float[Array, " n"]:
+        conc = jnp.zeros(self.structure.S.shape[0])
+        conc = conc.at[self.structure.balanced_species].set(conc_balanced)
+        conc = conc.at[self.structure.unbalanced_species].set(
+            jnp.exp(self.parameters.log_conc_unbalanced)
+        )
+        t = [
+            rf(conc=conc, parameters=self.parameters)
+            for rf in self.rate_functions
+        ]
+        return jnp.array(t)
