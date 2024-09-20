@@ -9,7 +9,7 @@ import chex
 import jax
 from jax._src.random import KeyArray
 import jax.numpy as jnp
-from jax.scipy.stats import norm
+from jax.scipy.stats import norm, multivariate_normal
 from jaxtyping import Array, Float, PyTree, ScalarLike
 
 from enzax.kinetic_model import (
@@ -61,6 +61,13 @@ class AdaptationKwargs(TypedDict):
 def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
     """Total log density for an independent normal distribution."""
     return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
+
+def mv_normal_prior_logdensity(
+    param: Float[Array, "_"],
+    prior: tuple[Float[Array, "_"], Float[Array, "_ _"]],
+):
+    """Total log density for an multivariate normal distribution."""
+    return jnp.sum(multivariate_normal.logpdf(param, mean=prior[0], cov=prior[1]))
 
 
 def posterior_logdensity_amm(
