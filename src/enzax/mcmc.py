@@ -40,7 +40,10 @@ class AllostericMichaelisMentenPriorSet:
     log_kcat: Float[Array, "2 n_enzyme"]
     log_enzyme: Float[Array, "2 n_enzyme"]
     log_drain: Float[Array, "2 n_drain"]
-    dgf: tuple[Float[Array, "n_metabolite"], Float[Array, "n_metabolite n_metabolite"]]
+    dgf: tuple[
+        Float[Array, " n_metabolite"],
+        Float[Array, " n_metabolite n_metabolite"],
+    ]
     log_km: Float[Array, "2 n_km"]
     log_ki: Float[Array, "2 n_ki"]
     log_conc_unbalanced: Float[Array, "2 n_unbalanced"]
@@ -62,9 +65,10 @@ def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
     """Total log density for an independent normal distribution."""
     return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
 
+
 def mv_normal_prior_logdensity(
-    param: Float[Array, "_"],
-    prior: tuple[Float[Array, "_"], Float[Array, "_ _"]],
+    param: Float[Array, " _"],
+    prior: tuple[Float[Array, " _"], Float[Array, " _ _"]],
 ):
     """Total log density for an multivariate normal distribution."""
     return jnp.sum(
