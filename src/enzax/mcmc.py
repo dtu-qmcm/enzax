@@ -67,7 +67,9 @@ def mv_normal_prior_logdensity(
     prior: tuple[Float[Array, "_"], Float[Array, "_ _"]],
 ):
     """Total log density for an multivariate normal distribution."""
-    return jnp.sum(multivariate_normal.logpdf(param, mean=prior[0], cov=prior[1]))
+    return jnp.sum(
+        multivariate_normal.logpdf(param, mean=prior[0], cov=prior[1])
+    )
 
 
 def posterior_logdensity_amm(
