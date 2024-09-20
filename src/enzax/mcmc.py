@@ -40,7 +40,7 @@ class AllostericMichaelisMentenPriorSet:
     log_kcat: Float[Array, "2 n_enzyme"]
     log_enzyme: Float[Array, "2 n_enzyme"]
     log_drain: Float[Array, "2 n_drain"]
-    dgf: Float[Array, "2 n_metabolite"]
+    dgf: tuple[Float[Array, "n_metabolite"], Float[Array, "n_metabolite n_metabolite"]]
     log_km: Float[Array, "2 n_km"]
     log_ki: Float[Array, "2 n_ki"]
     log_conc_unbalanced: Float[Array, "2 n_unbalanced"]
@@ -100,7 +100,7 @@ def posterior_logdensity_amm(
         ind_normal_prior_logdensity(parameters.log_kcat, prior.log_kcat)
         + ind_normal_prior_logdensity(parameters.log_enzyme, prior.log_enzyme)
         + ind_normal_prior_logdensity(parameters.log_drain, prior.log_drain)
-        + ind_normal_prior_logdensity(parameters.dgf, prior.dgf)
+        + mv_normal_prior_logdensity(parameters.dgf, prior.dgf)
         + ind_normal_prior_logdensity(parameters.log_km, prior.log_km)
         + ind_normal_prior_logdensity(
             parameters.log_conc_unbalanced, prior.log_conc_unbalanced
