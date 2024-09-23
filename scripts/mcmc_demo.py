@@ -39,8 +39,8 @@ def main():
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
         log_drain=ind_prior_from_truth(true_parameters.log_drain, 0.1),
         dgf=(
-            ind_prior_from_truth(true_parameters.dgf, 0.1)[0], 
-            jnp.diag(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])
+            ind_prior_from_truth(true_parameters.dgf, 0.1)[0],
+            jnp.diag(ind_prior_from_truth(true_parameters.dgf, 0.1)[1]),
         ),
         log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
         log_conc_unbalanced=ind_prior_from_truth(
