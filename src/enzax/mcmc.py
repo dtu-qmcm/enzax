@@ -9,7 +9,7 @@ import chex
 import jax
 from jax._src.random import KeyArray
 import jax.numpy as jnp
-from jax.scipy.stats import norm
+from jax.scipy.stats import norm, multivariate_normal
 from jaxtyping import Array, Float, PyTree, ScalarLike
 
 from enzax.kinetic_model import (
@@ -40,7 +40,10 @@ class AllostericMichaelisMentenPriorSet:
     log_kcat: Float[Array, "2 n_enzyme"]
     log_enzyme: Float[Array, "2 n_enzyme"]
     log_drain: Float[Array, "2 n_drain"]
-    dgf: Float[Array, "2 n_metabolite"]
+    dgf: tuple[
+        Float[Array, " n_metabolite"],
+        Float[Array, " n_metabolite n_metabolite"],
+    ]
     log_km: Float[Array, "2 n_km"]
     log_ki: Float[Array, "2 n_ki"]
     log_conc_unbalanced: Float[Array, "2 n_unbalanced"]
@@ -61,6 +64,16 @@ class AdaptationKwargs(TypedDict):
 def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
     """Total log density for an independent normal distribution."""
     return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
+
+
+def mv_normal_prior_logdensity(
+    param: Float[Array, " _"],
+    prior: tuple[Float[Array, " _"], Float[Array, " _ _"]],
+):
+    """Total log density for an multivariate normal distribution."""
+    return jnp.sum(
+        multivariate_normal.logpdf(param, mean=prior[0], cov=prior[1])
+    )
 
 
 def posterior_logdensity_amm(
@@ -91,7 +104,7 @@ def posterior_logdensity_amm(
         ind_normal_prior_logdensity(parameters.log_kcat, prior.log_kcat)
         + ind_normal_prior_logdensity(parameters.log_enzyme, prior.log_enzyme)
         + ind_normal_prior_logdensity(parameters.log_drain, prior.log_drain)
-        + ind_normal_prior_logdensity(parameters.dgf, prior.dgf)
+        + mv_normal_prior_logdensity(parameters.dgf, prior.dgf)
         + ind_normal_prior_logdensity(parameters.log_km, prior.log_km)
         + ind_normal_prior_logdensity(
             parameters.log_conc_unbalanced, prior.log_conc_unbalanced
