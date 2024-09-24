@@ -1,5 +1,4 @@
 import json
-import pytest
 import jax
 from jax import numpy as jnp
 
@@ -7,24 +6,25 @@ from enzax.examples import methionine
 from enzax.mcmc import (
     ObservationSet,
     AllostericMichaelisMentenPriorSet,
-    get_idata,
     ind_prior_from_truth,
     posterior_logdensity_amm,
-    run_nuts,
 )
 from enzax.steady_state import get_kinetic_model_steady_state
-from enzax.examples import linear, methionine
+
+import importlib.resources
+from tests import data
 
 import functools
 
-
-SEED = 1234
 jax.config.update("jax_enable_x64", True)
+SEED = 1234
 
+methionine_pldf_grad_file = (
+    importlib.resources.files(data) / "methionine_pldf_grad.json"
+)
 
 
 def test_lp_grad():
-    """Demonstrate How to make a Bayesian kinetic model with enzax."""
     model = methionine
     structure = methionine.structure
     rate_equations = methionine.rate_equations
@@ -39,8 +39,8 @@ def test_lp_grad():
         log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
         log_drain=ind_prior_from_truth(true_parameters.log_drain, 0.1),
         dgf=(
-            ind_prior_from_truth(true_parameters.dgf, 0.1),
-            jnp.diag(ind_prior_from_truth(true_parameters.dgf, 0.1)[1]),
+            ind_prior_from_truth(true_parameters.dgf, 0.1)[0],
+            jnp.diag(jnp.square(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])),
         ),
         log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
         log_conc_unbalanced=ind_prior_from_truth(
@@ -100,11 +100,8 @@ def test_lp_grad():
             } 
         for p in model.dims.keys()
         }
-    with open('methionine_pldf_grad.json', 'r') as file:
+    with open(methionine_pldf_grad_file, 'r') as file:
         saved_pldf_grad = file.read()
     true_gradient = json.loads(saved_pldf_grad)
     assert index_pldf_grad == true_gradient
-
-if __name__ == "__main__":
-    test_lp_grad()
 
