@@ -40,7 +40,9 @@ def test_lp_grad():
         log_drain=ind_prior_from_truth(true_parameters.log_drain, 0.1),
         dgf=(
             ind_prior_from_truth(true_parameters.dgf, 0.1)[0],
-            jnp.diag(jnp.square(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])),
+            jnp.diag(
+                jnp.square(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])
+            ),
         ),
         log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
         log_conc_unbalanced=ind_prior_from_truth(
@@ -95,13 +97,13 @@ def test_lp_grad():
     index_pldf_grad = {
         p: {
             c: float(getattr(pldf_grad, p)[i])
-            for i, c in
-                    enumerate(model.coords[model.dims[p][0]])
-            } 
+            for i, c in enumerate(model.coords[model.dims[p][0]])
+        } 
         for p in model.dims.keys()
-        }
-    with open(methionine_pldf_grad_file, 'r') as file:
+    }
+    with open(methionine_pldf_grad_file, "r") as file:
         saved_pldf_grad = file.read()
+
     true_gradient = json.loads(saved_pldf_grad)
     assert index_pldf_grad == true_gradient
 
