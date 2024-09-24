@@ -98,7 +98,7 @@ def test_lp_grad():
         p: {
             c: float(getattr(pldf_grad, p)[i])
             for i, c in enumerate(model.coords[model.dims[p][0]])
-        } 
+        }
         for p in model.dims.keys()
     }
     with open(methionine_pldf_grad_file, "r") as file:
@@ -106,4 +106,3 @@ def test_lp_grad():
 
     true_gradient = json.loads(saved_pldf_grad)
     assert index_pldf_grad == true_gradient
-

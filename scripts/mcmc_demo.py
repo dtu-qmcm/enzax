@@ -41,7 +41,7 @@ def main():
         dgf=(
             ind_prior_from_truth(true_parameters.dgf, 0.1)[0],
             jnp.diag(
-                     jnp.square(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])
+                jnp.square(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])
             ),
         ),
         log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
