@@ -1,31 +1,32 @@
-"""Demonstration of how to make a Bayesian kinetic model with enzax."""
-
-import functools
-import logging
-import warnings
-
-import arviz as az
+import json
 import jax
+import pytest
 from jax import numpy as jnp
 
 from enzax.examples import methionine
 from enzax.mcmc import (
     ObservationSet,
     AllostericMichaelisMentenPriorSet,
-    get_idata,
     ind_prior_from_truth,
     posterior_logdensity_amm,
-    run_nuts,
 )
 from enzax.steady_state import get_kinetic_model_steady_state
 
-SEED = 1234
+import importlib.resources
+from tests import data
+
+import functools
 
 jax.config.update("jax_enable_x64", True)
+SEED = 1234
+
+methionine_pldf_grad_file = (
+    importlib.resources.files(data) / "methionine_pldf_grad.json"
+)
 
 
-def main():
-    """Demonstrate How to make a Bayesian kinetic model with enzax."""
+def test_lp_grad():
+    model = methionine
     structure = methionine.structure
     rate_equations = methionine.rate_equations
     true_parameters = methionine.parameters
@@ -93,39 +94,17 @@ def main():
         rate_equations=rate_equations,
         guess=default_state_guess,
     )
-    samples, info = run_nuts(
-        pldf,
-        key,
-        true_parameters,
-        num_warmup=200,
-        num_samples=200,
-        initial_step_size=0.0001,
-        max_num_doublings=10,
-        is_mass_matrix_diagonal=False,
-        target_acceptance_rate=0.95,
-    )
-    idata = get_idata(
-        samples, info, coords=methionine.coords, dims=methionine.dims
-    )
-    print(az.summary(idata))
-    if jnp.any(info.is_divergent):
-        n_divergent = info.is_divergent.sum()
-        msg = f"There were {n_divergent} post-warmup divergent transitions."
-        warnings.warn(msg)
-    else:
-        logging.info("No post-warmup divergent transitions!")
-    print("True parameter values vs posterior:")
-    for param in true_parameters.__dataclass_fields__.keys():
-        true_val = getattr(true_parameters, param)
-        model_low = jnp.quantile(getattr(samples.position, param), 0.01, axis=0)
-        model_high = jnp.quantile(
-            getattr(samples.position, param), 0.99, axis=0
-        )
-        print(f" {param}:")
-        print(f"  true value: {true_val}")
-        print(f"  posterior 1%: {model_low}")
-        print(f"  posterior 99%: {model_high}")
+    pldf_grad = jax.jacrev(pldf)(methionine.parameters)
+    index_pldf_grad = {
+        p: {
+            c: float(getattr(pldf_grad, p)[i])
+            for i, c in enumerate(model.coords[model.dims[p][0]])
+        }
+        for p in model.dims.keys()
+    }
+    with open(methionine_pldf_grad_file, "r") as file:
+        saved_pldf_grad = file.read()
 
-
-if __name__ == "__main__":
-    main()
+    true_gradient = json.loads(saved_pldf_grad)
+    for p, vals in true_gradient.items():
+        assert true_gradient[p] == pytest.approx(index_pldf_grad[p])
