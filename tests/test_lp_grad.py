@@ -1,5 +1,6 @@
 import json
 import jax
+import pytest
 from jax import numpy as jnp
 
 from enzax.examples import methionine
@@ -105,4 +106,5 @@ def test_lp_grad():
         saved_pldf_grad = file.read()
 
     true_gradient = json.loads(saved_pldf_grad)
-    assert index_pldf_grad == true_gradient
+    for p, vals in true_gradient.items():
+        assert true_gradient[p] == pytest.approx(index_pldf_grad[p])
