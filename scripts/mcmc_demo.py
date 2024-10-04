@@ -91,7 +91,6 @@ def main():
         prior=prior,
         structure=structure,
         rate_equations=rate_equations,
-        guess=default_state_guess,
     )
     samples, info = run_nuts(
         pldf,
