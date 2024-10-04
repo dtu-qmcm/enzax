@@ -94,7 +94,7 @@ def test_lp_grad():
         rate_equations=rate_equations,
         guess=default_state_guess,
     )
-    pldf_grad = jax.jacrev(pldf)(methionine.parameters)
+    pldf_grad = jax.jacrev(pldf)(methionine.parameters)[0]
     index_pldf_grad = {
         p: {
             c: float(getattr(pldf_grad, p)[i])
