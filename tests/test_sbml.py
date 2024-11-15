@@ -6,6 +6,7 @@ from enzax import sbml
 brusselator_file = importlib.resources.files(data) / "brusselator.xml"
 exampleode_file = importlib.resources.files(data) / "exampleode.xml"
 
+
 @pytest.mark.parametrize(
     "file_path",
     [
@@ -16,6 +17,7 @@ exampleode_file = importlib.resources.files(data) / "exampleode.xml"
 def test_load_sbml(file_path):
     sbml.load_sbml(file_path)
 
+
 @pytest.mark.parametrize(
     "model",
     [
@@ -25,5 +27,6 @@ def test_load_sbml(file_path):
 )
 def test_sbml_to_sympy(model):
     sbml.sbml_to_sympy(model)
+
 
 def test_sympy_to_enzax(): ...

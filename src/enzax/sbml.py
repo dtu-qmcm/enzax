@@ -25,7 +25,7 @@ def sbml_to_sympy(model):
                     )
                 )
             )
-        ) 
+        )
         for r in reactions_sbml
     ]
     return reactions_sympy
