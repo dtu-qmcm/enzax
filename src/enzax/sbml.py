@@ -1,5 +1,6 @@
 import libsbml
 from sbmlmath import SBMLMathMLParser
+import sympy2jax
 
 
 def load_sbml(file_path):
@@ -31,3 +32,7 @@ def sbml_to_sympy(model):
         for r in reactions_sbml
     ]
     return reactions_sympy
+
+def sympy_to_enzax(reactions_sympy): 
+    sym_module = sympy2jax.SymbolicModule(reactions_sympy)
+    return sym_module
