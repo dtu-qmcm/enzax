@@ -33,6 +33,7 @@ def sbml_to_sympy(model):
     ]
     return reactions_sympy
 
-def sympy_to_enzax(reactions_sympy): 
+
+def sympy_to_enzax(reactions_sympy):
     sym_module = sympy2jax.SymbolicModule(reactions_sympy)
     return sym_module
