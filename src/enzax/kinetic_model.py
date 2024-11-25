@@ -24,7 +24,6 @@ class KineticModel(eqx.Module, ABC):
 
     parameters: PyTree
     structure: KineticModelStructure
-    rate_equations: list[RateEquation] = eqx.field(default_factory=list)
 
     @abstractmethod
     def flux(
