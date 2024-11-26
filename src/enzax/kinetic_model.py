@@ -82,5 +82,9 @@ class KineticModelSbml(KineticModel):
         self,
         conc_balanced: Float[Array, " n_balanced"],
     ) -> Float[Array, " n"]:
-        flux = jnp.array(self.sym_module(**self.parameters, **dict(zip(self.balanced_ids, conc_balanced))))
+        flux = jnp.array(
+            self.sym_module(
+                **self.parameters, **dict(zip(self.balanced_ids, conc_balanced))
+            )
+        )
         return flux
