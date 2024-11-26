@@ -50,7 +50,7 @@ for reaction in model_sbml.getListOfReactions():
         stoichmatrix = stoichmatrix.at[species.index(p.getSpecies()), i].set(
             int(p.getStoichiometry())
         )
-    i+=1
+    i += 1
 
 structure = KineticModelStructure(
     stoichmatrix, jnp.array(balanced_ix), jnp.array(unbalanced_ix)
@@ -60,7 +60,7 @@ kinmodel_sbml = KineticModelSbml(
     parameters=para,
     balanced_ids=balanced_species_dict,
     structure=structure,
-    sym_module=sym_module
+    sym_module=sym_module,
 )
 
 y0 = jnp.array([2.0, 4])

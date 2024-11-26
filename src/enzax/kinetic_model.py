@@ -77,7 +77,6 @@ class KineticModelSbml(KineticModel):
     balanced_ids: PyTree
     sym_module: any
 
-    
     def flux(
         self,
         conc_balanced: Float[Array, " n_balanced"],
