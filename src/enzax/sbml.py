@@ -6,14 +6,14 @@ import sympy2jax
 def load_sbml(file_path):
     reader = libsbml.SBMLReader()
     doc = reader.readSBML(file_path)
-    if doc.getModel().getNumFunctionDefinitions():
+    if doc.getModel() is None:
+        raise ValueError("Failed to load the SBML model")
+    elif doc.getModel().getNumFunctionDefinitions():
         convert_config = (
             libsbml.SBMLFunctionDefinitionConverter().getDefaultProperties()
         )
         doc.convert(convert_config)
     model = doc.getModel()
-    if model is None:
-        raise ValueError("Failed to load the SBML model")
     return model
 
 
