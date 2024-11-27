@@ -15,15 +15,59 @@ class KineticModelStructure(eqx.Module):
     """Structural information about a kinetic model."""
 
     S: Float[Array, " s r"]
-    balanced_species: Int[Array, " n_balanced"]
-    unbalanced_species: Int[Array, " n_unbalanced"]
+    species: list[str]
+    reactions: list[str]
+    balanced_species: list[str]
+    species_to_dgf_ix: Int[Array, " s"]
+    balanced_species_ix: Int[Array, " b"]
+    unbalanced_species_ix: Int[Array, " u"]
+
+    def __init__(
+        self,
+        S,
+        species,
+        reactions,
+        balanced_species,
+        species_to_dgf_ix,
+    ):
+        self.S = S
+        self.species = species
+        self.reactions = reactions
+        self.balanced_species = balanced_species
+        self.species_to_dgf_ix = species_to_dgf_ix
+        self.balanced_species_ix = jnp.array(
+            [i for i, s in enumerate(species) if s in balanced_species],
+            dtype=jnp.int16,
+        )
+        self.unbalanced_species_ix = jnp.array(
+            [i for i, s in enumerate(species) if s not in balanced_species],
+            dtype=jnp.int16,
+        )
+
+
+class RateEquationKineticModelStructure(KineticModelStructure):
+    rate_equations: list[RateEquation]
+
+    def __init__(
+        self,
+        S,
+        species,
+        reactions,
+        balanced_species,
+        species_to_dgf_ix,
+        rate_equations,
+    ):
+        super().__init__(
+            S, species, reactions, balanced_species, species_to_dgf_ix
+        )
+        self.rate_equations = rate_equations
 
 
 class KineticModel(eqx.Module, ABC):
     """Abstract base class for kinetic models."""
 
     parameters: PyTree
-    structure: KineticModelStructure
+    structure: KineticModelStructure = eqx.field(static=True)
 
     @abstractmethod
     def flux(
@@ -44,7 +88,7 @@ class KineticModel(eqx.Module, ABC):
 
         """  # Noqa: E501
         sv = self.structure.S @ self.flux(conc)
-        return sv[self.structure.balanced_species]
+        return sv[self.structure.balanced_species_ix]
 
 
 class RateEquationModel(KineticModel):
@@ -64,10 +108,17 @@ class RateEquationModel(KineticModel):
 
         """  # Noqa: E501
         conc = jnp.zeros(self.structure.S.shape[0])
-        conc = conc.at[self.structure.balanced_species].set(conc_balanced)
-        conc = conc.at[self.structure.unbalanced_species].set(
+        conc = conc.at[self.structure.balanced_species_ix].set(conc_balanced)
+        conc = conc.at[self.structure.unbalanced_species_ix].set(
             jnp.exp(self.parameters.log_conc_unbalanced)
         )
-        t = [f(conc, self.parameters) for f in self.rate_equations]
-        out = jnp.array(t)
-        return out
+        flux_list = []
+        for i, rate_equation in enumerate(self.structure.rate_equations):
+            ipt = rate_equation.get_input(
+                self.parameters,
+                i,
+                self.structure.S,
+                self.structure.species_to_dgf_ix,
+            )
+            flux_list.append(rate_equation(conc, ipt))
+        return jnp.array(flux_list)
