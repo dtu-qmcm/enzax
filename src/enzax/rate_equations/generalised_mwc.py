@@ -41,7 +41,7 @@ def get_allosteric_irreversible_michaelis_menten_input(
         kcat=jnp.exp(parameters.log_kcat[rxn_ix]),
         enzyme=jnp.exp(parameters.log_enzyme[rxn_ix]),
         ix_substrate=ix_substrate,
-        substrate_kms=jnp.exp(parameters.log_km[rxn_ix]),
+        substrate_kms=jnp.exp(parameters.log_km[rxn_ix][ix_substrate]),
         substrate_stoichiometry=Sj[ix_substrate],
         ix_ki_species=ci_ix,
         ki=jnp.exp(parameters.log_ki[rxn_ix]),

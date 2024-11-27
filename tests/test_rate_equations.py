@@ -25,8 +25,8 @@ class ExampleParameterSet(eqx.Module):
     log_tc: dict[int, Array]
 
 
-EXAMPLE_S = np.array([[-1], [1]], dtype=np.float64)
-EXAMPLE_CONC = jnp.array([0.5, 0.2])
+EXAMPLE_S = np.array([[-1], [1], [0]], dtype=np.float64)
+EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
 EXAMPLE_PARAMETERS = ExampleParameterSet(
     log_km={0: jnp.array([[0.1], [-0.2]])},
     log_kcat={0: jnp.array(-0.1)},
