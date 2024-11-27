@@ -1,11 +1,12 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
 from abc import ABC, abstractmethod
-
-import numpy as np
 from equinox import Module
-from jaxtyping import Array, Float, PyTree, Scalar
+import numpy as np
 from numpy.typing import NDArray
+
+from jaxtyping import Array, Float, PyTree, Scalar
+
 
 ConcArray = Float[Array, " n"]
 

@@ -4,23 +4,27 @@ from abc import ABC, abstractmethod
 
 import equinox as eqx
 import jax.numpy as jnp
-from jaxtyping import Array, Float, Int, PyTree, ScalarLike, jaxtyped
+import numpy as np
+from jax.tree_util import register_pytree_node_class
+from jaxtyping import Array, Float, PyTree, ScalarLike, jaxtyped
+from numpy.typing import NDArray
 from typeguard import typechecked
 
 from enzax.rate_equation import RateEquation
 
 
 @jaxtyped(typechecker=typechecked)
-class KineticModelStructure(eqx.Module):
+@register_pytree_node_class
+class KineticModelStructure:
     """Structural information about a kinetic model."""
 
-    S: Float[Array, " s r"]
+    S: NDArray[np.float64]
     species: list[str]
     reactions: list[str]
     balanced_species: list[str]
-    species_to_dgf_ix: Int[Array, " s"]
-    balanced_species_ix: Int[Array, " b"]
-    unbalanced_species_ix: Int[Array, " u"]
+    species_to_dgf_ix: NDArray[np.int16]
+    balanced_species_ix: NDArray[np.int16]
+    unbalanced_species_ix: NDArray[np.int16]
 
     def __init__(
         self,
@@ -35,14 +39,29 @@ class KineticModelStructure(eqx.Module):
         self.reactions = reactions
         self.balanced_species = balanced_species
         self.species_to_dgf_ix = species_to_dgf_ix
-        self.balanced_species_ix = jnp.array(
+        self.balanced_species_ix = np.array(
             [i for i, s in enumerate(species) if s in balanced_species],
-            dtype=jnp.int16,
+            dtype=np.int16,
         )
-        self.unbalanced_species_ix = jnp.array(
+        self.unbalanced_species_ix = np.array(
             [i for i, s in enumerate(species) if s not in balanced_species],
-            dtype=jnp.int16,
+            dtype=np.int16,
         )
+
+    def tree_flatten(self):
+        children = (
+            self.S,
+            self.species,
+            self.reactions,
+            self.balanced_species,
+            self.species_to_dgf_ix,
+        )
+        aux_data = None
+        return children, aux_data
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
 
 class RateEquationKineticModelStructure(KineticModelStructure):
@@ -62,6 +81,18 @@ class RateEquationKineticModelStructure(KineticModelStructure):
         )
         self.rate_equations = rate_equations
 
+    def tree_flatten(self):
+        children = (
+            self.S,
+            self.species,
+            self.reactions,
+            self.balanced_species,
+            self.species_to_dgf_ix,
+            self.rate_equations,
+        )
+        aux_data = None
+        return children, aux_data
+
 
 class KineticModel(eqx.Module, ABC):
     """Abstract base class for kinetic models."""
@@ -75,6 +106,7 @@ class KineticModel(eqx.Module, ABC):
         conc_balanced: Float[Array, " n_balanced"],
     ) -> Float[Array, " n"]: ...
 
+    @eqx.filter_jit
     def dcdt(
         self, t: ScalarLike, conc: Float[Array, " n_balanced"], args=None
     ) -> Float[Array, " n_balanced"]:
@@ -87,14 +119,15 @@ class KineticModel(eqx.Module, ABC):
         :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
 
         """  # Noqa: E501
-        sv = self.structure.S @ self.flux(conc)
-        return sv[self.structure.balanced_species_ix]
+        v = self.flux(conc)
+        sv = self.structure.S @ v
+        return jnp.array(sv[self.structure.balanced_species_ix])
 
 
 class RateEquationModel(KineticModel):
     """A kinetic model that specifies its fluxes using RateEquation objects."""
 
-    rate_equations: list[RateEquation] = eqx.field(default_factory=list)
+    structure: RateEquationKineticModelStructure
 
     def flux(
         self,

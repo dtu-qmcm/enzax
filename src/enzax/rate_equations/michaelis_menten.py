@@ -25,15 +25,15 @@ def get_irreversible_michaelis_menten_input(
     ci_ix: NDArray[np.int16],
 ) -> IrreversibleMichaelisMentenInput:
     Sj = S[:, rxn_ix]
-    ix_substrate = np.argwhere(Sj < 0.0)
+    ix_substrate = np.argwhere(Sj < 0.0).flatten()
     return IrreversibleMichaelisMentenInput(
         kcat=jnp.exp(parameters.log_kcat[rxn_ix]),
         enzyme=jnp.exp(parameters.log_enzyme[rxn_ix]),
         ix_substrate=ix_substrate,
-        substrate_kms=jnp.exp(parameters.log_km[rxn_ix]),
+        substrate_kms=jnp.exp(parameters.log_km[rxn_ix][0]),
         substrate_stoichiometry=Sj[ix_substrate],
         ix_ki_species=ci_ix,
-        ki=parameters.jnp.exp(parameters.log_ki[rxn_ix]),
+        ki=jnp.exp(parameters.log_ki[rxn_ix]),
     )
 
 
@@ -141,7 +141,7 @@ def free_enzyme_ratio_rmm(
     product_conc: Float[Array, " n_product"],
     substrate_kms: Float[Array, " n_substrate"],
     product_kms: Float[Array, " n_product"],
-    inhibitor_conc: Float[Array, " n_ki"],
+    ix_ki_species: Float[Array, " n_ki"],
     ki: Float[Array, " n_ki"],
     substrate_stoichiometry: NDArray[np.float64],
     product_stoichiometry: NDArray[np.float64],
@@ -157,14 +157,16 @@ def free_enzyme_ratio_rmm(
             ((product_conc / product_kms) + 1.0)
             ** jnp.abs(product_stoichiometry)
         )
-        + jnp.sum(inhibitor_conc / ki)
+        + jnp.sum(ix_ki_species / ki)
     )
 
 
 class IrreversibleMichaelisMenten(RateEquation):
     """A reaction with irreversible Michaelis Menten kinetics."""
 
-    competitive_inhibitor_ix: NDArray[np.int16]
+    ix_ki_species: NDArray[np.int16] = eqx.field(
+        default_factory=lambda: np.array([], dtype=np.int64)
+    )
 
     def get_input(
         self,
@@ -178,7 +180,7 @@ class IrreversibleMichaelisMenten(RateEquation):
             rxn_ix=rxn_ix,
             S=S,
             species_to_dgf_ix=species_to_dgf_ix,
-            ci_ix=self.competitive_inhibitor_ix,
+            ci_ix=self.ix_ki_species,
         )
 
     def __call__(
@@ -204,12 +206,10 @@ class IrreversibleMichaelisMenten(RateEquation):
 class ReversibleMichaelisMenten(RateEquation):
     """A reaction with reversible Michaelis Menten kinetics."""
 
-    competitive_inhibitor_ix: NDArray[np.int16] = eqx.field(
-        default_factory=lambda: np.array([], dtype=np.int16), static=True
+    ix_ki_species: NDArray[np.int16] = eqx.field(
+        default_factory=lambda: np.array([], dtype=np.int16)
     )
-    water_stoichiometry: float = eqx.field(
-        default_factory=lambda: 0.0, static=True
-    )
+    water_stoichiometry: float = eqx.field(default_factory=lambda: 0.0)
 
     def get_input(
         self,
@@ -223,7 +223,7 @@ class ReversibleMichaelisMenten(RateEquation):
             rxn_ix=rxn_ix,
             S=S,
             species_to_dgf_ix=species_to_dgf_ix,
-            ci_ix=self.competitive_inhibitor_ix,
+            ci_ix=self.ix_ki_species,
             water_stoichiometry=self.water_stoichiometry,
         )
 
@@ -251,7 +251,7 @@ class ReversibleMichaelisMenten(RateEquation):
         fer = free_enzyme_ratio_rmm(
             substrate_conc=conc[rmm_input.ix_substrate],
             product_conc=conc[rmm_input.ix_product],
-            inhibitor_conc=conc[rmm_input.ix_ki_species],
+            ix_ki_species=conc[rmm_input.ix_ki_species],
             substrate_kms=rmm_input.substrate_kms,
             product_kms=rmm_input.product_kms,
             substrate_stoichiometry=rmm_input.substrate_stoichiometry,
