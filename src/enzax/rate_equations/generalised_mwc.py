@@ -108,10 +108,10 @@ def generalised_mwc_effect(
 class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
     """A reaction with irreversible Michaelis Menten kinetics and allostery."""
 
-    ix_inhibitors: NDArray[np.int16] = eqx.field(
+    ix_allosteric_inhibitors: NDArray[np.int16] = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
-    ix_activators: NDArray[np.int16] = eqx.field(
+    ix_allosteric_activators: NDArray[np.int16] = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
     subunits: int = 1
@@ -141,14 +141,14 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
             substrate_conc=conc[aimm_input.ix_substrate],
             substrate_km=aimm_input.substrate_kms,
             ki=aimm_input.ki,
-            inhibitor_conc=conc[self.ix_inhibitors],
+            inhibitor_conc=conc[self.ix_ki_species],
             substrate_stoichiometry=aimm_input.substrate_stoichiometry,
         )
         allosteric_effect = generalised_mwc_effect(
-            conc_inhibitor=conc[self.ix_inhibitors],
+            conc_inhibitor=conc[self.ix_allosteric_inhibitors],
             dc_inhibitor=aimm_input.dc_inhibitor,
             dc_activator=aimm_input.dc_activator,
-            conc_activator=conc[self.ix_activators],
+            conc_activator=conc[self.ix_allosteric_activators],
             free_enzyme_ratio=fer,
             tc=aimm_input.tc,
             subunits=self.subunits,

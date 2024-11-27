@@ -25,25 +25,19 @@ class ExampleParameterSet(eqx.Module):
     log_tc: dict[int, Array]
 
 
-EXAMPLE_S = np.array(
-    [[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]], dtype=np.float64
-)
-EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1, 0.3])
+EXAMPLE_S = np.array([[-1], [1]], dtype=np.float64)
+EXAMPLE_CONC = jnp.array([0.5, 0.2])
 EXAMPLE_PARAMETERS = ExampleParameterSet(
-    log_km={
-        0: jnp.array([[0.1], [-0.2]]),
-        1: jnp.array([[0.5], [0.0]]),
-        2: jnp.array([[-1.0], [0.5]]),
-    },
-    log_kcat={0: jnp.array(-0.1), 1: jnp.array(0.0), 2: jnp.array(0.1)},
+    log_km={0: jnp.array([[0.1], [-0.2]])},
+    log_kcat={0: jnp.array(-0.1)},
     dgf=jnp.array([-3.0, 1.0]),
-    log_ki={0: jnp.array([1.0]), 1: jnp.array([1.0]), 2: jnp.array([])},
+    log_ki={0: jnp.array([1.0])},
     temperature=jnp.array(310.0),
-    log_enzyme={0: jnp.array(0.3), 1: jnp.array(0.2), 2: jnp.array(0.1)},
-    log_conc_unbalanced=jnp.array([0.5, 0.3]),
-    log_tc={0: jnp.array(-0.2), 1: jnp.array(0.3)},
-    log_dc_activator={0: jnp.array([-0.1]), 1: jnp.array([])},
-    log_dc_inhibitor={0: jnp.array([]), 1: jnp.array([0.2])},
+    log_enzyme={0: jnp.array(0.3)},
+    log_conc_unbalanced=jnp.array([]),
+    log_tc={0: jnp.array(-0.2)},
+    log_dc_activator={0: jnp.array([-0.1])},
+    log_dc_inhibitor={0: jnp.array([0.2])},
 )
 EXAMPLE_SPECIES_TO_DGF_IX = np.array([0, 0, 1, 1])
 
@@ -81,7 +75,7 @@ def test_allosteric_irreversible_michaelis_menten():
     expected_rate = 0.05608589
     f = AllostericIrreversibleMichaelisMenten(
         ix_ki_species=np.array([], dtype=np.int16),
-        ix_activators=np.array([2], dtype=np.int16),
+        ix_allosteric_activators=np.array([2], dtype=np.int16),
         subunits=1,
     )
     f_input = f.get_input(
