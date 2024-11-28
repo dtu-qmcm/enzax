@@ -152,19 +152,31 @@ parameters = ParameterDefinition(
         ]
     ),
     log_km={
-        1: [jnp.array([0.000106919, 0.00203015])],  # MAT1 met-L, atp
-        2: [jnp.array([0.00113258, 0.00236759])],  # MAT3 met-L atp
-        3: [jnp.array([9.37e-06])],  # amet METH-Gen
-        4: [jnp.array([0.000520015, 0.00253545])],  # amet GNMT1,  # gly GNMT1
+        1: [jnp.log(jnp.array([0.000106919, 0.00203015]))],  # MAT1 met-L, atp
+        2: [jnp.log(jnp.array([0.00113258, 0.00236759]))],  # MAT3 met-L atp
+        3: [jnp.log(jnp.array([9.37e-06]))],  # amet METH-Gen
+        4: [
+            jnp.log(jnp.array([0.000520015, 0.00253545]))
+        ],  # amet GNMT1,  # gly GNMT1
         5: [
-            jnp.array([2.32e-05]),  # ahcys AHC1
-            jnp.array([1.06e-05, 5.66e-06]),  # hcys-L AHC1,  # adn AHC1
+            jnp.log(jnp.array([2.32e-05])),  # ahcys AHC1
+            jnp.log(
+                jnp.array([1.06e-05, 5.66e-06])
+            ),  # hcys-L AHC1,  # adn AHC1
         ],
-        6: [jnp.array([1.71e-06, 6.94e-05])],  # hcys-L MS1,  # 5mthf MS1
-        7: [jnp.array([1.98e-05, 0.00845898])],  # hcys-L BHMT1,  # glyb BHMT1
-        8: [jnp.array([4.24e-05, 2.83e-06])],  # hcys-L CBS1,  # ser-L CBS1
-        9: [jnp.array([8.08e-05, 2.09e-05])],  # mlthf MTHFR1,  # nadph MTHFR1
-        10: [jnp.array([4.39e-05])],  # met-L PROT1
+        6: [
+            jnp.log(jnp.array([1.71e-06, 6.94e-05]))
+        ],  # hcys-L MS1,  # 5mthf MS1
+        7: [
+            jnp.log(jnp.array([1.98e-05, 0.00845898]))
+        ],  # hcys-L BHMT1,  # glyb BHMT1
+        8: [
+            jnp.log(jnp.array([4.24e-05, 2.83e-06]))
+        ],  # hcys-L CBS1,  # ser-L CBS1
+        9: [
+            jnp.log(jnp.array([8.08e-05, 2.09e-05]))
+        ],  # mlthf MTHFR1,  # nadph MTHFR1
+        10: [jnp.log(jnp.array([4.39e-05]))],  # met-L PROT1
     },
     temperature=jnp.array(298.15),
     log_ki={
