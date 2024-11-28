@@ -17,7 +17,9 @@ import functools
 jax.config.update("jax_enable_x64", True)
 SEED = 1234
 
-methionine_pldf_grad_file = importlib.resources.files(data) / "t.eqx"
+methionine_pldf_grad_file = (
+    importlib.resources.files(data) / "expected_methionine_gradient.json"
+)
 
 obs_conc = jnp.array(
     [
