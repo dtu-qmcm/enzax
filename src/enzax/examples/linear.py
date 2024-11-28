@@ -56,7 +56,7 @@ parameters = ParameterDefinition(
         2: jnp.array([[-1.0], [0.5]]),
     },
     log_kcat={0: jnp.array(-0.1), 1: jnp.array(0.0), 2: jnp.array(0.1)},
-    dgf=jnp.array([-3.0, 1.0]),
+    dgf=jnp.array([-3.0, -1.0]),
     log_ki={0: jnp.array([]), 1: jnp.array([1.0]), 2: jnp.array([])},
     temperature=jnp.array(310.0),
     log_enzyme={
