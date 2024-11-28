@@ -36,7 +36,7 @@ def get_allosteric_irreversible_michaelis_menten_input(
     ci_ix: NDArray[np.int16],
 ) -> AllostericIrreversibleMichaelisMentenInput:
     Sj = S[:, rxn_ix]
-    ix_substrate = np.argwhere(Sj < 0.0)
+    ix_substrate = np.argwhere(Sj < 0.0).flatten()
     return AllostericIrreversibleMichaelisMentenInput(
         kcat=jnp.exp(parameters.log_kcat[rxn_ix]),
         enzyme=jnp.exp(parameters.log_enzyme[rxn_ix]),
@@ -60,9 +60,9 @@ def get_allosteric_reversible_michaelis_menten_input(
     water_stoichiometry: float,
 ) -> AllostericReversibleMichaelisMentenInput:
     Sj = S[:, rxn_ix]
-    ix_reactant = np.argwhere(Sj != 0.0)
-    ix_substrate = np.argwhere(Sj < 0.0)
-    ix_product = np.argwhere(Sj > 0.0)
+    ix_reactant = np.argwhere(Sj != 0.0).flatten()
+    ix_substrate = np.argwhere(Sj < 0.0).flatten()
+    ix_product = np.argwhere(Sj > 0.0).flatten()
     return AllostericReversibleMichaelisMentenInput(
         kcat=jnp.exp(parameters.log_kcat[rxn_ix]),
         enzyme=jnp.exp(parameters.log_enzyme[rxn_ix]),
