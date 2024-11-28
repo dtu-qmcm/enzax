@@ -241,20 +241,25 @@ structure = RateEquationKineticModelStructure(
     balanced_species=balanced_species,
     rate_equations=[
         Drain(sign=1.0),  # met-L source
-        IrreversibleMichaelisMenten(),  # MAT1
+        IrreversibleMichaelisMenten(  # MAT1
+            ix_ki_species=np.array([4], dtype=np.int16),
+        ),
         AllostericIrreversibleMichaelisMenten(  # MAT3
             subunits=2,
             ix_allosteric_activators=np.array([0, 4], dtype=np.int16),
         ),
-        IrreversibleMichaelisMenten(),  # METH
+        IrreversibleMichaelisMenten(  # METH
+            ix_ki_species=np.array([5], dtype=np.int16)
+        ),
         AllostericIrreversibleMichaelisMenten(  # GNMT1
             subunits=4,
             ix_allosteric_inhibitors=np.array([12], dtype=np.int16),
             ix_allosteric_activators=np.array([4], dtype=np.int16),
+            ix_ki_species=np.array([5], dtype=np.int16),
         ),
-        ReversibleMichaelisMenten(
+        ReversibleMichaelisMenten(  # AHC
             water_stoichiometry=-1.0,
-        ),  # AHC
+        ),
         IrreversibleMichaelisMenten(),  # MS
         IrreversibleMichaelisMenten(),  # BHMT
         AllostericIrreversibleMichaelisMenten(  # CBS1
