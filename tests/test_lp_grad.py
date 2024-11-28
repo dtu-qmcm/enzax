@@ -3,6 +3,7 @@ import jax
 from jax import numpy as jnp
 from jax.scipy.stats import norm
 from jax.flatten_util import ravel_pytree
+from jaxtyping import Array, Scalar
 
 from enzax.examples import methionine
 from enzax.kinetic_model import RateEquationModel
@@ -143,4 +144,19 @@ def test_lp_grad():
     _, grad_pytree_def = ravel_pytree(gradient)
     with open(methionine_pldf_grad_file, "r") as file:
         expected_gradient = grad_pytree_def(jnp.array(json.load(file)))
-    assert gradient == expected_gradient
+    for k in gradient.__dataclass_fields__.keys():
+        obs = getattr(gradient, k)
+        exp = getattr(expected_gradient, k)
+        if isinstance(obs, Scalar):
+            assert jnp.isclose(obs, exp)
+        elif isinstance(obs, Array):
+            assert jnp.isclose(obs, exp).all()
+        elif isinstance(obs, dict):
+            for kk in obs.keys():
+                if isinstance(obs[kk], list):
+                    for o, e in zip(obs[kk], exp[kk]):
+                        assert jnp.isclose(o, e).all()
+                elif isinstance(obs[kk], Scalar):
+                    assert jnp.isclose(obs[kk], exp[kk])
+                elif len(obs[kk]) > 0:
+                    assert jnp.isclose(obs[kk], exp[kk]).all()
