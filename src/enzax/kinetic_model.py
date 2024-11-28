@@ -32,13 +32,16 @@ class KineticModelStructure:
         species,
         reactions,
         balanced_species,
-        species_to_dgf_ix,
+        species_to_dgf_ix=None,
     ):
         self.S = S
         self.species = species
         self.reactions = reactions
         self.balanced_species = balanced_species
-        self.species_to_dgf_ix = species_to_dgf_ix
+        if species_to_dgf_ix is None:
+            self.species_to_dgf_ix = np.arange(len(species), dtype=np.int16)
+        else:
+            self.species_to_dgf_ix = species_to_dgf_ix
         self.balanced_species_ix = np.array(
             [i for i, s in enumerate(species) if s in balanced_species],
             dtype=np.int16,
@@ -73,8 +76,8 @@ class RateEquationKineticModelStructure(KineticModelStructure):
         species,
         reactions,
         balanced_species,
-        species_to_dgf_ix,
         rate_equations,
+        species_to_dgf_ix=None,
     ):
         super().__init__(
             S, species, reactions, balanced_species, species_to_dgf_ix

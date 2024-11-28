@@ -73,7 +73,7 @@ def get_reversible_michaelis_menten_input(
         substrate_kms=jnp.exp(parameters.log_km[rxn_ix][0]),
         product_kms=jnp.exp(parameters.log_km[rxn_ix][1]),
         ki=jnp.exp(parameters.log_ki[rxn_ix]),
-        dgf=jnp.exp(parameters.dgf[species_to_dgf_ix][ix_reactant]),
+        dgf=parameters.dgf[species_to_dgf_ix][ix_reactant],
         temperature=parameters.temperature,
         ix_ki_species=ci_ix,
         ix_reactant=ix_reactant,
