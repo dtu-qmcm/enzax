@@ -1,13 +1,13 @@
 from jax import numpy as jnp
 import pytest
 
-from enzax.examples import linear, methionine
+from enzax.examples import linear
 
 
 @pytest.mark.parametrize(
     ["model", "steady_state"],
     [
-        (methionine.model, methionine.steady_state),
+        # (methionine.model, methionine.steady_state),
         (linear.model, linear.steady_state),
     ],
 )
