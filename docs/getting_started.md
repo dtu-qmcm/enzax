@@ -18,9 +18,14 @@ Enzax provides building blocks for you to construct a wide range of differentiab
 
 Here we write a model describing a simple linear pathway with two state variables, two boundary species and three reactions.
 
-First we import some enzax classes:
+First we import some enzax classes, as well as [equinox](https://github.com/patrick-kidger/equinox) and both JAX and standard versions of numpy:
 
 ```python
+import equinox
+
+from jax import numpy as jnp
+import numpy as np
+
 from enzax.kinetic_model import (
     KineticModelStructure,
     RateEquationModel,
@@ -32,113 +37,78 @@ from enzax.rate_equations import (
 
 ```
 
-Next we specify our model's structure by providing a stoichiometric matrix and saying which of its rows represent state variables (aka "balanced species") and which represent boundary or "unbalanced" species:
+Next we specify our model's structure by providing a stoichiometric matrix and saying which of its rows represent state variables (aka "balanced species") and which reactions have which rate equations.
 
 ```python
-structure = KineticModelStructure(
-    S=jnp.array(
-        [[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]], dtype=jnp.float64
+S = np.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]])
+reactions = ["r1", "r2", "r3"]
+species = ["m1e", "m1c", "m2c", "m2e"]
+balanced_species = ["m1c", "m2c"]
+rate_equations = [
+    AllostericReversibleMichaelisMenten(
+        ix_allosteric_activators=np.array([2]), subunits=1
     ),
-    balanced_species=jnp.array([1, 2]),
-    unbalanced_species=jnp.array([0, 3]),
+    AllostericReversibleMichaelisMenten(
+        ix_allosteric_inhibitors=np.array([1]), ix_ki_species=np.array([1])
+    ),
+    ReversibleMichaelisMenten(water_stoichiometry=0.0),
+]
+structure = KineticModelStructure(
+    S=S,
+    species=species,
+    balanced_species=balanced_species,
+    rate_equations=rate_equations,
 )
 ```
 
-Next we provide some kinetic parameter values:
+Next we define what a set of kinetic parameters looks like for our problem, and provide a set of parameters matching this definition:
 
 ```python
-from enzax.parameters import AllostericMichaelisMentenParameters
+class ParameterDefinition(eqx.Module):
+    log_substrate_km: dict[int, Array]
+    log_product_km: dict[int, Array]
+    log_kcat: dict[int, Scalar]
+    log_enzyme: dict[int, Array]
+    log_ki: dict[int, Array]
+    dgf: Array
+    temperature: Scalar
+    log_conc_unbalanced: Array
+    log_dc_inhibitor: dict[int, Array]
+    log_dc_activator: dict[int, Array]
+    log_tc: dict[int, Array]
 
-parameters = AllostericMichaelisMentenParameters(
-    log_kcat=jnp.array([-0.1, 0.0, 0.1]),
-    log_enzyme=jnp.log(jnp.array([0.3, 0.2, 0.1])),
-    dgf=jnp.array([-3, -1.0]),
-    log_km=jnp.array([0.1, -0.2, 0.5, 0.0, -1.0, 0.5]),
-    log_ki=jnp.array([1.0]),
-    log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
+parameters = ParameterDefinition(
+    log_substrate_km={
+        0: jnp.array([0.1]),
+        1: jnp.array([0.5]),
+        2: jnp.array([-1.0]),
+    },
+    log_product_km={
+        0: jnp.array([-0.2]),
+        1: jnp.array([0.0]),
+        2: jnp.array([0.5]),
+    },
+    log_kcat={0: jnp.array(-0.1), 1: jnp.array(0.0), 2: jnp.array(0.1)},
+    dgf=jnp.array([-3.0, -1.0]),
+    log_ki={0: jnp.array([]), 1: jnp.array([1.0]), 2: jnp.array([])},
     temperature=jnp.array(310.0),
-    log_transfer_constant=jnp.array([-0.2, 0.3]),
-    log_dissociation_constant=jnp.array([-0.1, 0.2]),
-    log_drain=jnp.array([]),
+    log_enzyme={
+        0: jnp.log(jnp.array(0.3)),
+        1: jnp.log(jnp.array(0.2)),
+        2: jnp.log(jnp.array(0.1)),
+    },
+    log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
+    log_tc={0: jnp.array(-0.2), 1: jnp.array(0.3)},
+    log_dc_activator={0: jnp.array([-0.1]), 1: jnp.array([])},
+    log_dc_inhibitor={0: jnp.array([]), 1: jnp.array([0.2])},
 )
 ```
-Now we can use enzax's rate laws to specify how each reaction behaves:
-
-```python
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
-
-r0 = AllostericReversibleMichaelisMenten(
-    kcat_ix=0,
-    enzyme_ix=0,
-    km_ix=jnp.array([0, 1], dtype=jnp.int16),
-    ki_ix=jnp.array([], dtype=jnp.int16),
-    reactant_stoichiometry=jnp.array([-1, 1], dtype=jnp.int16),
-    reactant_to_dgf=jnp.array([0, 0], dtype=jnp.int16),
-    ix_ki_species=jnp.array([], dtype=jnp.int16),
-    substrate_km_positions=jnp.array([0], dtype=jnp.int16),
-    substrate_reactant_positions=jnp.array([0], dtype=jnp.int16),
-    ix_substrate=jnp.array([0], dtype=jnp.int16),
-    ix_product=jnp.array([1], dtype=jnp.int16),
-    ix_reactants=jnp.array([0, 1], dtype=jnp.int16),
-    product_reactant_positions=jnp.array([1], dtype=jnp.int16),
-    product_km_positions=jnp.array([1], dtype=jnp.int16),
-    water_stoichiometry=jnp.array(0.0),
-    tc_ix=0,
-    ix_dc_inhibition=jnp.array([], dtype=jnp.int16),
-    ix_dc_activation=jnp.array([0], dtype=jnp.int16),
-    species_activation=jnp.array([2], dtype=jnp.int16),
-    species_inhibition=jnp.array([], dtype=jnp.int16),
-    subunits=1,
-)
-r1 = AllostericReversibleMichaelisMenten(
-    kcat_ix=1,
-    enzyme_ix=1,
-    km_ix=jnp.array([2, 3], dtype=jnp.int16),
-    ki_ix=jnp.array([0]),
-    reactant_stoichiometry=jnp.array([-1, 1], dtype=jnp.int16),
-    reactant_to_dgf=jnp.array([0, 1], dtype=jnp.int16),
-    ix_ki_species=jnp.array([1]),
-    substrate_km_positions=jnp.array([0], dtype=jnp.int16),
-    substrate_reactant_positions=jnp.array([0], dtype=jnp.int16),
-    ix_substrate=jnp.array([1], dtype=jnp.int16),
-    ix_product=jnp.array([2], dtype=jnp.int16),
-    ix_reactants=jnp.array([1, 2], dtype=jnp.int16),
-    product_reactant_positions=jnp.array([1], dtype=jnp.int16),
-    product_km_positions=jnp.array([1], dtype=jnp.int16),
-    water_stoichiometry=jnp.array(0.0),
-    tc_ix=1,
-    ix_dc_inhibition=jnp.array([1], dtype=jnp.int16),
-    ix_dc_activation=jnp.array([], dtype=jnp.int16),
-    species_activation=jnp.array([], dtype=jnp.int16),
-    species_inhibition=jnp.array([1], dtype=jnp.int16),
-    subunits=1,
-)
-r2 = ReversibleMichaelisMenten(
-    kcat_ix=2,
-    enzyme_ix=2,
-    km_ix=jnp.array([4, 5], dtype=jnp.int16),
-    ki_ix=jnp.array([], dtype=jnp.int16),
-    ix_substrate=jnp.array([2], dtype=jnp.int16),
-    ix_product=jnp.array([3], dtype=jnp.int16),
-    ix_reactants=jnp.array([2, 3], dtype=jnp.int16),
-    reactant_to_dgf=jnp.array([1, 1], dtype=jnp.int16),
-    reactant_stoichiometry=jnp.array([-1, 1], dtype=jnp.int16),
-    ix_ki_species=jnp.array([], dtype=jnp.int16),
-    substrate_km_positions=jnp.array([0], dtype=jnp.int16),
-    substrate_reactant_positions=jnp.array([0], dtype=jnp.int16),
-    product_reactant_positions=jnp.array([1], dtype=jnp.int16),
-    product_km_positions=jnp.array([1], dtype=jnp.int16),
-    water_stoichiometry=jnp.array(0.0),
-)
-```
+Note that the parameters use `jnp` whereas the structure uses `np`. This is because we want JAX to trace the parameters, whereas the structure should be static. Read more about this [here](https://jax.readthedocs.io/en/latest/notebooks/thinking_in_jax.html#static-vs-traced-operations).
 
 Now we can declare our model:
 
 ```python
-model = RateEquationModel(structure, parameters, [r0, r1, r2])
+model = RateEquationModel(structure, parameters)
 ```
 
 To test out the model, we can see if it returns some fluxes and state variable rates when provided a set of balanced species concentrations:
@@ -181,9 +151,7 @@ model = methionine.model
 
 def get_steady_state_from_params(parameters: PyTree):
     """Get the steady state with a one-argument non-pure function."""
-    _model = RateEquationModel(
-        parameters, model.structure, model.rate_equations
-    )
+    _model = RateEquationModel(parameters, model.structure)
     return get_kinetic_model_steady_state(_model, guess)
 
 jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
