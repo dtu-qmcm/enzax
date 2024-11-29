@@ -33,9 +33,7 @@ def main():
 
             This lets us get the Jacobian wrt (just) the parameters.
             """
-            _model = RateEquationModel(
-                parameters, model.structure, model.rate_equations
-            )
+            _model = RateEquationModel(parameters, model.structure)
             return get_kinetic_model_steady_state(_model, guess)
 
         # solve once for jitting
