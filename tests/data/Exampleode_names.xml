@@ -1,0 +1,710 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created by COPASI version 4.44 (Build 295) on 2024-11-19 13:35 with libSBML version 5.20.0. -->
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model metaid="COPASI0" id="ExampleODE" name="ExampleODE">
+    <annotation>
+      <copasi:COPASI xmlns:copasi="http://www.copasi.org/static/sbml">
+        <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+          <rdf:Description rdf:about="#COPASI0">
+            <dcterms:created>
+              <rdf:Description>
+                <dcterms:W3CDTF>2024-10-21T11:38:04Z</dcterms:W3CDTF>
+              </rdf:Description>
+            </dcterms:created>
+          </rdf:Description>
+        </rdf:RDF>
+      </copasi:COPASI>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+        <rdf:Description rdf:about="#COPASI0">
+          <dcterms:created rdf:parseType="Resource">
+            <dcterms:W3CDTF>2024-10-21T11:38:04Z</dcterms:W3CDTF>
+          </dcterms:created>
+          <dcterms:modified rdf:parseType="Resource">
+            <dcterms:W3CDTF>2024-10-21T11:38:04Z</dcterms:W3CDTF>
+          </dcterms:modified>
+        </rdf:Description>
+      </rdf:RDF>
+    </annotation>
+    <listOfFunctionDefinitions>
+      <functionDefinition id="r3_0" name="r3">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E3 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kcat_r3 </ci>
+            </bvar>
+            <bvar>
+              <ci> B </ci>
+            </bvar>
+            <bvar>
+              <ci> Kms_r3 </ci>
+            </bvar>
+            <bvar>
+              <ci> D </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_r3 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kmp_r3 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> E3 </ci>
+                <ci> Kcat_r3 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> B </ci>
+                    <ci> Kms_r3 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <divide/>
+                      <ci> D </ci>
+                      <ci> Kms_r3 </ci>
+                    </apply>
+                    <ci> Keq_r3 </ci>
+                  </apply>
+                </apply>
+                <cn> 1 </cn>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> B </ci>
+                  <ci> Kms_r3 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> D </ci>
+                  <ci> Kmp_r3 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="r2a" name="r2a">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E </ci>
+            </bvar>
+            <bvar>
+              <ci> Kcat_r2a </ci>
+            </bvar>
+            <bvar>
+              <ci> S </ci>
+            </bvar>
+            <bvar>
+              <ci> Kms_r2a </ci>
+            </bvar>
+            <bvar>
+              <ci> P </ci>
+            </bvar>
+            <bvar>
+              <ci> Kmp_r2a </ci>
+            </bvar>
+            <bvar>
+              <ci> L0_r2a </ci>
+            </bvar>
+            <bvar>
+              <ci> A </ci>
+            </bvar>
+            <bvar>
+              <ci> Ka_r2a </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_r2 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> E </ci>
+                <ci> Kcat_r2a </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> S </ci>
+                    <ci> Kms_r2a </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <divide/>
+                      <ci> P </ci>
+                      <ci> Kms_r2a </ci>
+                    </apply>
+                    <ci> Keq_r2 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> S </ci>
+                      <ci> Kms_r2a </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <ci> P </ci>
+                      <ci> Kmp_r2a </ci>
+                    </apply>
+                  </apply>
+                </apply>
+                <cn> 1 </cn>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <times/>
+                  <ci> L0_r2a </ci>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <divide/>
+                      <cn> 1 </cn>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> S </ci>
+                          <ci> Kms_r2a </ci>
+                        </apply>
+                        <apply>
+                          <divide/>
+                          <ci> P </ci>
+                          <ci> Kmp_r2a </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <plus/>
+                      <cn> 1 </cn>
+                      <apply>
+                        <divide/>
+                        <ci> A </ci>
+                        <ci> Ka_r2a </ci>
+                      </apply>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="r4_0" name="r4">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kcat_r4 </ci>
+            </bvar>
+            <bvar>
+              <ci> C </ci>
+            </bvar>
+            <bvar>
+              <ci> Kms_r4 </ci>
+            </bvar>
+            <bvar>
+              <ci> D </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_r4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kmp_r4 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> E4 </ci>
+                <ci> Kcat_r4 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> C </ci>
+                    <ci> Kms_r4 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <divide/>
+                      <ci> D </ci>
+                      <ci> Kms_r4 </ci>
+                    </apply>
+                    <ci> Keq_r4 </ci>
+                  </apply>
+                </apply>
+                <cn> 1 </cn>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> C </ci>
+                  <ci> Kms_r4 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> D </ci>
+                  <ci> Kmp_r4 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="r1_0" name="r1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E </ci>
+            </bvar>
+            <bvar>
+              <ci> Kcat_r1 </ci>
+            </bvar>
+            <bvar>
+              <ci> S </ci>
+            </bvar>
+            <bvar>
+              <ci> Kms_r1 </ci>
+            </bvar>
+            <bvar>
+              <ci> P </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_r1 </ci>
+            </bvar>
+            <bvar>
+              <ci> Kmp_r1 </ci>
+            </bvar>
+            <bvar>
+              <ci> I </ci>
+            </bvar>
+            <bvar>
+              <ci> Ki_r1 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> E </ci>
+                <ci> Kcat_r1 </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> S </ci>
+                    <ci> Kms_r1 </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <divide/>
+                      <ci> P </ci>
+                      <ci> Kms_r1 </ci>
+                    </apply>
+                    <ci> Keq_r1 </ci>
+                  </apply>
+                </apply>
+                <cn> 1 </cn>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <divide/>
+                  <ci> S </ci>
+                  <ci> Kms_r1 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> P </ci>
+                  <ci> Kmp_r1 </ci>
+                </apply>
+                <apply>
+                  <divide/>
+                  <ci> I </ci>
+                  <ci> Ki_r1 </ci>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="r2b_0" name="r2b">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E </ci>
+            </bvar>
+            <bvar>
+              <ci> Kcat_r2b </ci>
+            </bvar>
+            <bvar>
+              <ci> S </ci>
+            </bvar>
+            <bvar>
+              <ci> Kms_r2b </ci>
+            </bvar>
+            <bvar>
+              <ci> P </ci>
+            </bvar>
+            <bvar>
+              <ci> Kmp_r2b </ci>
+            </bvar>
+            <bvar>
+              <ci> L0_r2b </ci>
+            </bvar>
+            <bvar>
+              <ci> I </ci>
+            </bvar>
+            <bvar>
+              <ci> Ki_r2b </ci>
+            </bvar>
+            <bvar>
+              <ci> Keq_r2 </ci>
+            </bvar>
+            <apply>
+              <divide/>
+              <apply>
+                <times/>
+                <ci> E </ci>
+                <ci> Kcat_r2b </ci>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <divide/>
+                    <ci> S </ci>
+                    <ci> Kms_r2b </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <divide/>
+                      <ci> P </ci>
+                      <ci> Kms_r2b </ci>
+                    </apply>
+                    <ci> Keq_r2 </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <divide/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> S </ci>
+                      <ci> Kms_r2b </ci>
+                    </apply>
+                    <apply>
+                      <divide/>
+                      <ci> P </ci>
+                      <ci> Kmp_r2b </ci>
+                    </apply>
+                  </apply>
+                </apply>
+                <cn> 1 </cn>
+              </apply>
+              <apply>
+                <plus/>
+                <cn> 1 </cn>
+                <apply>
+                  <times/>
+                  <ci> L0_r2b </ci>
+                  <apply>
+                    <divide/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <plus/>
+                      <cn> 1 </cn>
+                      <apply>
+                        <divide/>
+                        <ci> S </ci>
+                        <ci> Kms_r2b </ci>
+                      </apply>
+                      <apply>
+                        <divide/>
+                        <ci> P </ci>
+                        <ci> Kmp_r2b </ci>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> I </ci>
+                      <ci> Ki_r2b </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+    </listOfFunctionDefinitions>
+    <listOfUnitDefinitions>
+      <unitDefinition id="length" name="length">
+        <listOfUnits>
+          <unit kind="metre" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="area" name="area">
+        <listOfUnits>
+          <unit kind="metre" exponent="2" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="volume" name="volume">
+        <listOfUnits>
+          <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="time" name="time">
+        <listOfUnits>
+          <unit kind="second" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="substance" name="substance">
+        <listOfUnits>
+          <unit kind="mole" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+    </listOfUnitDefinitions>
+    <listOfCompartments>
+      <compartment id="Cytosol" name="Cytosol" spatialDimensions="3" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="A" name="A" compartment="Cytosol" initialConcentration="4.99999999999998" boundaryCondition="true" constant="true"/>
+      <species id="B" name="B" compartment="Cytosol" initialConcentration="0.999999999999997" boundaryCondition="false" constant="false"/>
+      <species id="C" name="C" compartment="Cytosol" initialConcentration="0.999999999999997" boundaryCondition="false" constant="false"/>
+      <species id="D" name="D" compartment="Cytosol" initialConcentration="0.499999999999998" boundaryCondition="true" constant="true"/>
+      <species id="E1" name="E1" compartment="Cytosol" initialConcentration="0.999999999999996" boundaryCondition="true" constant="true"/>
+      <species id="E2A" name="E2A" compartment="Cytosol" initialConcentration="1.99999999999999" boundaryCondition="true" constant="true"/>
+      <species id="E2B" name="E2B" compartment="Cytosol" initialConcentration="2.99999999999998" boundaryCondition="true" constant="true"/>
+      <species id="E3" name="E3" compartment="Cytosol" initialConcentration="1.99999999999999" boundaryCondition="true" constant="true"/>
+      <species id="E4" name="E4" compartment="Cytosol" initialConcentration="2.99999999999998" boundaryCondition="true" constant="true"/>
+    </listOfSpecies>
+    <listOfReactions>
+      <reaction id="r1" name="r1" reversible="true">
+        <listOfReactants>
+          <speciesReference species="A" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="B" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="E1"/>
+          <modifierSpeciesReference species="D"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> Cytosol </ci>
+              <apply>
+                <ci> r1_0 </ci>
+                <ci> E1 </ci>
+                <ci> Kcat_r1 </ci>
+                <ci> A </ci>
+                <ci> Kms_r1 </ci>
+                <ci> B </ci>
+                <ci> Keq_r1 </ci>
+                <ci> Kmp_r1 </ci>
+                <ci> D </ci>
+                <ci> Ki_r1 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kcat_r1" name="Kcat_r1" value="0.5"/>
+            <parameter id="Kms_r1" name="Kms_r1" value="0.5"/>
+            <parameter id="Keq_r1" name="Keq_r1" value="25.2536"/>
+            <parameter id="Kmp_r1" name="Kmp_r1" value="1"/>
+            <parameter id="Ki_r1" name="Ki_r1" value="1"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="r2" name="r2a" reversible="true">
+        <listOfReactants>
+          <speciesReference species="A" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="C" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="E2A"/>
+          <modifierSpeciesReference species="C"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> Cytosol </ci>
+              <apply>
+                <ci> r2a </ci>
+                <ci> E2A </ci>
+                <ci> Kcat_r2a </ci>
+                <ci> A </ci>
+                <ci> Kms_r2a </ci>
+                <ci> C </ci>
+                <ci> Kmp_r2a </ci>
+                <ci> L0_r2a </ci>
+                <ci> C </ci>
+                <ci> Ka_r2a </ci>
+                <ci> Keq_r2 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kcat_r2a" name="Kcat_r2a" value="2"/>
+            <parameter id="Kms_r2a" name="Kms_r2a" value="2"/>
+            <parameter id="Kmp_r2a" name="Kmp_r2a" value="0.5"/>
+            <parameter id="L0_r2a" name="L0_r2a" value="1"/>
+            <parameter id="Ka_r2a" name="Ka_r2a" value="0.3"/>
+            <parameter id="Keq_r2" name="Keq_r2" value="7.52405"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="r3" name="r3" reversible="true">
+        <listOfReactants>
+          <speciesReference species="B" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="D" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="E3"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> Cytosol </ci>
+              <apply>
+                <ci> r3_0 </ci>
+                <ci> E3 </ci>
+                <ci> Kcat_r3 </ci>
+                <ci> B </ci>
+                <ci> Kms_r3 </ci>
+                <ci> D </ci>
+                <ci> Keq_r3 </ci>
+                <ci> Kmp_r3 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kcat_r3" name="Kcat_r3" value="2"/>
+            <parameter id="Kms_r3" name="Kms_r3" value="0.5"/>
+            <parameter id="Keq_r3" name="Keq_r3" value="2.24172"/>
+            <parameter id="Kmp_r3" name="Kmp_r3" value="2"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="r4" name="r4" reversible="true">
+        <listOfReactants>
+          <speciesReference species="C" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="D" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="E4"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> Cytosol </ci>
+              <apply>
+                <ci> r4_0 </ci>
+                <ci> E4 </ci>
+                <ci> Kcat_r4 </ci>
+                <ci> C </ci>
+                <ci> Kms_r4 </ci>
+                <ci> D </ci>
+                <ci> Keq_r4 </ci>
+                <ci> Kmp_r4 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kcat_r4" name="Kcat_r4" value="1"/>
+            <parameter id="Kms_r4" name="Kms_r4" value="1"/>
+            <parameter id="Keq_r4" name="Keq_r4" value="7.52405"/>
+            <parameter id="Kmp_r4" name="Kmp_r4" value="3"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="r2b" name="r2b" reversible="true">
+        <listOfReactants>
+          <speciesReference species="A" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="C" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="E2B"/>
+          <modifierSpeciesReference species="C"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> Cytosol </ci>
+              <apply>
+                <ci> r2b_0 </ci>
+                <ci> E2B </ci>
+                <ci> Kcat_r2b </ci>
+                <ci> A </ci>
+                <ci> Kms_r2b </ci>
+                <ci> C </ci>
+                <ci> Kmp_r2b </ci>
+                <ci> L0_r2b </ci>
+                <ci> C </ci>
+                <ci> Ki_r2b </ci>
+                <ci> Keq_r2 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="Kcat_r2b" name="Kcat_r2b" value="1"/>
+            <parameter id="Kms_r2b" name="Kms_r2b" value="1"/>
+            <parameter id="Kmp_r2b" name="Kmp_r2b" value="2"/>
+            <parameter id="L0_r2b" name="L0_r2b" value="1"/>
+            <parameter id="Ki_r2b" name="Ki_r2b" value="0.9"/>
+            <parameter id="Keq_r2" name="Keq_r2" value="7.52405"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

@@ -1,6 +1,7 @@
 """Module containing enzax's definition of a kinetic model."""
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -165,3 +166,22 @@ class RateEquationModel(KineticModel):
             )
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)
+        t = [f(conc, self.parameters) for f in self.rate_equations]
+        out = jnp.array(t)
+        return out
+
+
+class KineticModelSbml(KineticModel):
+    balanced_ids: PyTree
+    sym_module: Any
+
+    def flux(
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
+    ) -> Float[Array, " n"]:
+        flux = jnp.array(
+            self.sym_module(
+                **self.parameters, **dict(zip(self.balanced_ids, conc_balanced))
+            )
+        )
+        return flux
