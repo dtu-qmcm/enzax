@@ -16,7 +16,8 @@ from enzax.rate_equations import (
 
 
 class ParameterDefinition(eqx.Module):
-    log_km: dict[int, Array]
+    log_substrate_km: dict[int, Array]
+    log_product_km: dict[int, Array]
     log_kcat: dict[int, Scalar]
     log_enzyme: dict[int, Array]
     log_ki: dict[int, Array]
@@ -50,10 +51,15 @@ structure = RateEquationKineticModelStructure(
     rate_equations=rate_equations,
 )
 parameters = ParameterDefinition(
-    log_km={
-        0: jnp.array([[0.1], [-0.2]]),
-        1: jnp.array([[0.5], [0.0]]),
-        2: jnp.array([[-1.0], [0.5]]),
+    log_substrate_km={
+        0: jnp.array([0.1]),
+        1: jnp.array([0.5]),
+        2: jnp.array([-1.0]),
+    },
+    log_product_km={
+        0: jnp.array([-0.2]),
+        1: jnp.array([0.0]),
+        2: jnp.array([0.5]),
     },
     log_kcat={0: jnp.array(-0.1), 1: jnp.array(0.0), 2: jnp.array(0.1)},
     dgf=jnp.array([-3.0, -1.0]),

@@ -13,7 +13,8 @@ from enzax.rate_equations import (
 
 
 class ExampleParameterSet(eqx.Module):
-    log_km: dict[int, Array]
+    log_substrate_km: dict[int, Array]
+    log_product_km: dict[int, Array]
     log_kcat: dict[int, Scalar]
     log_enzyme: dict[int, Array]
     log_ki: dict[int, Array]
@@ -28,7 +29,8 @@ class ExampleParameterSet(eqx.Module):
 EXAMPLE_S = np.array([[-1], [1], [0]], dtype=np.float64)
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
 EXAMPLE_PARAMETERS = ExampleParameterSet(
-    log_km={0: jnp.array([[0.1], [-0.2]])},
+    log_substrate_km={0: jnp.array([0.1])},
+    log_product_km={0: jnp.array([-0.2])},
     log_kcat={0: jnp.array(-0.1)},
     dgf=jnp.array([-3.0, 1.0]),
     log_ki={0: jnp.array([1.0])},

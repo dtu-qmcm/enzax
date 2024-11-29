@@ -13,6 +13,13 @@ from typeguard import typechecked
 from enzax.rate_equation import RateEquation
 
 
+def get_conc(balanced, log_unbalanced, structure):
+    conc = jnp.zeros(structure.S.shape[0])
+    conc = conc.at[structure.balanced_species_ix].set(balanced)
+    conc = conc.at[structure.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
+    return conc
+
+
 @jaxtyped(typechecker=typechecked)
 @register_pytree_node_class
 class KineticModelStructure:
@@ -143,10 +150,10 @@ class RateEquationModel(KineticModel):
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
         """  # Noqa: E501
-        conc = jnp.zeros(self.structure.S.shape[0])
-        conc = conc.at[self.structure.balanced_species_ix].set(conc_balanced)
-        conc = conc.at[self.structure.unbalanced_species_ix].set(
-            jnp.exp(self.parameters.log_conc_unbalanced)
+        conc = get_conc(
+            conc_balanced,
+            self.parameters.log_conc_unbalanced,
+            self.structure,
         )
         flux_list = []
         for i, rate_equation in enumerate(self.structure.rate_equations):

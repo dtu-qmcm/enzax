@@ -54,7 +54,7 @@ def main():
         print(f"\tSteady state concentration: {conc_steady}")
         print(f"\tFlux: {flux}")
         print(f"\tSv: {sv}")
-        print(f"\tLog Km Jacobian: {jac.log_km}")
+        print(f"\tLog substrate Km Jacobian: {jac.log_substrate_km}")
         print(f"\tDgf Jacobian: {jac.dgf}")
 
 

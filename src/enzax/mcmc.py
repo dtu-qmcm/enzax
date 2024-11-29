@@ -106,10 +106,17 @@ def ind_prior_from_truth(truth: Float[Array, " _"], sd: ScalarLike):
 
 def get_idata(samples, info, coords=None, dims=None) -> az.InferenceData:
     """Get an arviz InferenceData from a blackjax NUTS output."""
-    sample_dict = {
-        k: jnp.expand_dims(getattr(samples.position, k), 0)
-        for k in samples.position.__dataclass_fields__.keys()
-    }
+    if coords is None:
+        coords = dict()
+    sample_dict = dict()
+    for k in samples.position.__dataclass_fields__.keys():
+        samples_k = getattr(samples.position, k)
+        if isinstance(samples_k, Array):
+            sample_dict[k] = jnp.expand_dims(samples_k, 0)
+        elif isinstance(samples_k, dict):
+            sample_dict[k] = jnp.expand_dims(
+                jnp.concat([v.T for v in samples_k.values()]).T, 0
+            )
     posterior = az.convert_to_inference_data(
         sample_dict,
         group="posterior",
