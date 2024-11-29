@@ -21,7 +21,7 @@ Here we write a model describing a simple linear pathway with two state variable
 First we import some enzax classes, as well as [equinox](https://github.com/patrick-kidger/equinox) and both JAX and standard versions of numpy:
 
 ```python
-import equinox
+import equinox as eqx
 
 from jax import numpy as jnp
 import numpy as np
