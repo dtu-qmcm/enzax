@@ -33,9 +33,7 @@ def main():
 
             This lets us get the Jacobian wrt (just) the parameters.
             """
-            _model = RateEquationModel(
-                parameters, model.structure, model.rate_equations
-            )
+            _model = RateEquationModel(parameters, model.structure)
             return get_kinetic_model_steady_state(_model, guess)
 
         # solve once for jitting
@@ -54,7 +52,7 @@ def main():
         print(f"\tSteady state concentration: {conc_steady}")
         print(f"\tFlux: {flux}")
         print(f"\tSv: {sv}")
-        print(f"\tLog Km Jacobian: {jac.log_km}")
+        print(f"\tLog substrate Km Jacobian: {jac.log_substrate_km}")
         print(f"\tDgf Jacobian: {jac.dgf}")
 
 
