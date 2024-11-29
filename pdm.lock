@@ -339,18 +339,18 @@ files = [
 
 [[package]]
 name = "equinox"
-version = "0.11.4"
+version = "0.11.7"
 requires_python = "~=3.9"
 summary = "Elegant easy-to-use neural networks in JAX."
 groups = ["default"]
 dependencies = [
-    "jax>=0.4.13",
+    "jax!=0.4.27,>=0.4.13",
     "jaxtyping>=0.2.20",
     "typing-extensions>=4.5.0",
 ]
 files = [
-    {file = "equinox-0.11.4-py3-none-any.whl", hash = "sha256:a9527b1fe0c4778c3c959d9091b1eea28c3fdcca01790a47e71b47df94889315"},
-    {file = "equinox-0.11.4.tar.gz", hash = "sha256:0033d9731083f402a855b12a0777a80aa8507651f7aa86d9f0f9503bcddfd320"},
+    {file = "equinox-0.11.7-py3-none-any.whl", hash = "sha256:1177354e1795061fbad71535fe54096d8887dc059b4ab7d400fea2d47dfaa283"},
+    {file = "equinox-0.11.7.tar.gz", hash = "sha256:96e0216a9d822ec4b1465b0cbfbab14a36fb7e7d62c55f521287db3aaaa251be"},
 ]
 
 [[package]]
@@ -516,12 +516,12 @@ files = [
 
 [[package]]
 name = "jax"
-version = "0.4.31"
+version = "0.4.33"
 requires_python = ">=3.10"
 summary = "Differentiate, compile, and transform Numpy code."
 groups = ["default"]
 dependencies = [
-    "jaxlib<=0.4.31,>=0.4.30",
+    "jaxlib<=0.4.33,>=0.4.33",
     "ml-dtypes>=0.2.0",
     "numpy>=1.24",
     "numpy>=1.26.0; python_version >= \"3.12\"",
@@ -530,13 +530,13 @@ dependencies = [
     "scipy>=1.11.1; python_version >= \"3.12\"",
 ]
 files = [
-    {file = "jax-0.4.31-py3-none-any.whl", hash = "sha256:5688703735133d0dc537e99a1d646198a49c9d472d4715fde4bd437c44151bd7"},
-    {file = "jax-0.4.31.tar.gz", hash = "sha256:fd2d470643a0073d822737f0788f71391656af7e62cc5b2e7995ee390ceac287"},
+    {file = "jax-0.4.33-py3-none-any.whl", hash = "sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f"},
+    {file = "jax-0.4.33.tar.gz", hash = "sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92"},
 ]
 
 [[package]]
 name = "jaxlib"
-version = "0.4.31"
+version = "0.4.33"
 requires_python = ">=3.10"
 summary = "XLA library for JAX"
 groups = ["default"]
@@ -547,11 +547,11 @@ dependencies = [
     "scipy>=1.11.1; python_version >= \"3.12\"",
 ]
 files = [
-    {file = "jaxlib-0.4.31-cp312-cp312-macosx_10_14_x86_64.whl", hash = "sha256:185fb615ab6bd95315fbcbd951d84e71f9835d603db8c03c91faee98ce95ff4d"},
-    {file = "jaxlib-0.4.31-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c9f89c185287e40ee8173a7142d6495311e772cd139a93dca93f0d99c1872832"},
-    {file = "jaxlib-0.4.31-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:4d867a1a0565b31cfdaabbec81e0302c6461bb2ac4b92c04670328d795819803"},
-    {file = "jaxlib-0.4.31-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:1f1afa5fd58a60f67f0ca586e26714aece62eaa2c8334c24d0e8285afc4a7ccd"},
-    {file = "jaxlib-0.4.31-cp312-cp312-win_amd64.whl", hash = "sha256:c4bfd15315e30525514b7262d555bea00745b09ac9818bb14c20ef8afbbab072"},
+    {file = "jaxlib-0.4.33-cp312-cp312-macosx_10_14_x86_64.whl", hash = "sha256:43c63e094948f0486505035b55a685b03ddde61705ce585f84b8c1438da20da0"},
+    {file = "jaxlib-0.4.33-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:3e14b4b50a19370312875541509a7ddc1ef8fc0bd95cff9508db9725038e8297"},
+    {file = "jaxlib-0.4.33-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:4af6ee4070650ff120a92ff8454e70e0ef993434f3f3767a0e898cc484b836e2"},
+    {file = "jaxlib-0.4.33-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:054aa0f122725e000b8f8815b1794067ef2ff821588b62e1fab2a1280847f5c6"},
+    {file = "jaxlib-0.4.33-cp312-cp312-win_amd64.whl", hash = "sha256:94e8d7bdd0506e1471d36d5da1e5838711fbd2ce18dffe7b694cad6b56e64e8c"},
 ]
 
 [[package]]
