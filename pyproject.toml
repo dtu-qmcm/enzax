@@ -13,6 +13,7 @@ dependencies = [
     "python-libsbml>=5.20.4",
     "sympy2jax>=0.0.5",
     "sbmlmath>=0.2.0",
+    "optimistix>=0.0.9",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
