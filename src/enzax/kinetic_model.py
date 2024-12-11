@@ -199,7 +199,7 @@ class KineticModelSbml(KineticModel):
         flux = jnp.array(
             self.sym_module(
                 **self.parameters,
-                **dict(zip(self.structure.balanced_ids, conc_balanced)),
+                **dict(zip(self.structure.balanced_species, conc_balanced)),
             )
         )
         return flux
