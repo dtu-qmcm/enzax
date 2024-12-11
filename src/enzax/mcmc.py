@@ -7,7 +7,6 @@ import arviz as az
 import blackjax
 import chex
 import jax
-from jax._src.random import KeyArray
 import jax.numpy as jnp
 from jax.scipy.stats import norm, multivariate_normal
 from jaxtyping import Array, Float, PyTree, ScalarLike
@@ -64,7 +63,7 @@ def _inference_loop(rng_key, kernel, initial_state, num_samples):
 
 def run_nuts(
     logdensity_fn: Callable,
-    rng_key: KeyArray,
+    rng_key: Array,
     init_parameters: PyTree,
     num_warmup: int,
     num_samples: int,
