@@ -190,7 +190,6 @@ class RateEquationModel(KineticModel):
 
 
 class KineticModelSbml(KineticModel):
-    balanced_ids: PyTree
     sym_module: Any
 
     def flux(
@@ -199,7 +198,8 @@ class KineticModelSbml(KineticModel):
     ) -> Float[Array, " n"]:
         flux = jnp.array(
             self.sym_module(
-                **self.parameters, **dict(zip(self.balanced_ids, conc_balanced))
+                **self.parameters,
+                **dict(zip(self.structure.balanced_ids, conc_balanced)),
             )
         )
         return flux
