@@ -40,7 +40,11 @@ from enzax.rate_equations import (
 Next we specify our model's structure by providing a stoichiometric matrix and saying which of its rows represent state variables (aka "balanced species") and which reactions have which rate equations.
 
 ```python
-S = np.array([[-1, 0, 0], [1, -1, 0], [0, 1, -1], [0, 0, 1]])
+stoichiometry = {
+    "r1": {"m1e": -1, "m1c": 1},
+    "r2": {"m1c": -1, "m2c": 1},
+    "r3": {"m2c": -1, "m2e": 1},
+}
 reactions = ["r1", "r2", "r3"]
 species = ["m1e", "m1c", "m2c", "m2e"]
 balanced_species = ["m1c", "m2c"]
@@ -54,7 +58,7 @@ rate_equations = [
     ReversibleMichaelisMenten(water_stoichiometry=0.0),
 ]
 structure = KineticModelStructure(
-    S=S,
+    stoichiometry=stoichiometry,
     species=species,
     balanced_species=balanced_species,
     rate_equations=rate_equations,
@@ -79,28 +83,28 @@ class ParameterDefinition(eqx.Module):
 
 parameters = ParameterDefinition(
     log_substrate_km={
-        0: jnp.array([0.1]),
-        1: jnp.array([0.5]),
-        2: jnp.array([-1.0]),
+        "r1": jnp.array([0.1]),
+        "r2": jnp.array([0.5]),
+        "r3": jnp.array([-1.0]),
     },
     log_product_km={
-        0: jnp.array([-0.2]),
-        1: jnp.array([0.0]),
-        2: jnp.array([0.5]),
+        "r1": jnp.array([-0.2]),
+        "r2": jnp.array([0.0]),
+        "r3": jnp.array([0.5]),
     },
-    log_kcat={0: jnp.array(-0.1), 1: jnp.array(0.0), 2: jnp.array(0.1)},
+    log_kcat={"r1": jnp.array(-0.1), "r2": jnp.array(0.0), "r3": jnp.array(0.1)},
     dgf=jnp.array([-3.0, -1.0]),
-    log_ki={0: jnp.array([]), 1: jnp.array([1.0]), 2: jnp.array([])},
+    log_ki={"r1": jnp.array([]), "r2": jnp.array([1.0]), "r3": jnp.array([])},
     temperature=jnp.array(310.0),
     log_enzyme={
-        0: jnp.log(jnp.array(0.3)),
-        1: jnp.log(jnp.array(0.2)),
-        2: jnp.log(jnp.array(0.1)),
+        "r1": jnp.log(jnp.array(0.3)),
+        "r2": jnp.log(jnp.array(0.2)),
+        "r3": jnp.log(jnp.array(0.1)),
     },
     log_conc_unbalanced=jnp.log(jnp.array([0.5, 0.1])),
-    log_tc={0: jnp.array(-0.2), 1: jnp.array(0.3)},
-    log_dc_activator={0: jnp.array([-0.1]), 1: jnp.array([])},
-    log_dc_inhibitor={0: jnp.array([]), 1: jnp.array([0.2])},
+    log_tc={"r1": jnp.array(-0.2), "r2": jnp.array(0.3)},
+    log_dc_activator={"r1": jnp.array([-0.1]), "r2": jnp.array([])},
+    log_dc_inhibitor={"r1": jnp.array([]), "r2": jnp.array([0.2])},
 )
 ```
 Note that the parameters use `jnp` whereas the structure uses `np`. This is because we want JAX to trace the parameters, whereas the structure should be static. Read more about this [here](https://jax.readthedocs.io/en/latest/notebooks/thinking_in_jax.html#static-vs-traced-operations).

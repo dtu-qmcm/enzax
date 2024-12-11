@@ -13,33 +13,33 @@ from enzax.rate_equations import (
 
 
 class ExampleParameterSet(eqx.Module):
-    log_substrate_km: dict[int, Array]
-    log_product_km: dict[int, Array]
-    log_kcat: dict[int, Scalar]
-    log_enzyme: dict[int, Array]
-    log_ki: dict[int, Array]
+    log_substrate_km: dict[str, Array]
+    log_product_km: dict[str, Array]
+    log_kcat: dict[str, Scalar]
+    log_enzyme: dict[str, Array]
+    log_ki: dict[str, Array]
     dgf: Array
     temperature: Scalar
     log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[int, Array]
-    log_dc_activator: dict[int, Array]
-    log_tc: dict[int, Array]
+    log_dc_inhibitor: dict[str, Array]
+    log_dc_activator: dict[str, Array]
+    log_tc: dict[str, Array]
 
 
 EXAMPLE_S = np.array([[-1], [1], [0]], dtype=np.float64)
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
 EXAMPLE_PARAMETERS = ExampleParameterSet(
-    log_substrate_km={0: jnp.array([0.1])},
-    log_product_km={0: jnp.array([-0.2])},
-    log_kcat={0: jnp.array(-0.1)},
+    log_substrate_km={"r1": jnp.array([0.1])},
+    log_product_km={"r1": jnp.array([-0.2])},
+    log_kcat={"r1": jnp.array(-0.1)},
     dgf=jnp.array([-3.0, 1.0]),
-    log_ki={0: jnp.array([1.0])},
+    log_ki={"r1": jnp.array([1.0])},
     temperature=jnp.array(310.0),
-    log_enzyme={0: jnp.log(jnp.array(0.3))},
+    log_enzyme={"r1": jnp.log(jnp.array(0.3))},
     log_conc_unbalanced=jnp.array([]),
-    log_tc={0: jnp.array(-0.2)},
-    log_dc_activator={0: jnp.array([-0.1])},
-    log_dc_inhibitor={0: jnp.array([0.2])},
+    log_tc={"r1": jnp.array(-0.2)},
+    log_dc_activator={"r1": jnp.array([-0.1])},
+    log_dc_inhibitor={"r1": jnp.array([0.2])},
 )
 EXAMPLE_SPECIES_TO_DGF_IX = np.array([0, 0, 1, 1])
 
@@ -49,8 +49,8 @@ def test_irreversible_michaelis_menten():
     f = IrreversibleMichaelisMenten()
     f_input = f.get_input(
         parameters=EXAMPLE_PARAMETERS,
-        rxn_ix=0,
-        S=EXAMPLE_S,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
         species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
     )
     rate = f(EXAMPLE_CONC, f_input)
@@ -65,8 +65,8 @@ def test_reversible_michaelis_menten():
     )
     f_input = f.get_input(
         parameters=EXAMPLE_PARAMETERS,
-        rxn_ix=0,
-        S=EXAMPLE_S,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
         species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
     )
     rate = f(EXAMPLE_CONC, f_input)
@@ -82,8 +82,8 @@ def test_allosteric_irreversible_michaelis_menten():
     )
     f_input = f.get_input(
         parameters=EXAMPLE_PARAMETERS,
-        rxn_ix=0,
-        S=EXAMPLE_S,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
         species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
     )
     rate = f(EXAMPLE_CONC, f_input)
@@ -99,8 +99,8 @@ def test_allosteric_reversible_michaelis_menten():
     )
     f_input = f.get_input(
         parameters=EXAMPLE_PARAMETERS,
-        rxn_ix=0,
-        S=EXAMPLE_S,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
         species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
     )
     rate = f(EXAMPLE_CONC, f_input)

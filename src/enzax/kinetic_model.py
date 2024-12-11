@@ -14,6 +14,10 @@ from typeguard import typechecked
 from enzax.rate_equation import RateEquation
 
 
+def get_ix_from_list(s: str, list_of_strings: list[str]):
+    return next(i for i, si in enumerate(list_of_strings) if si == s)
+
+
 def get_conc(balanced, log_unbalanced, structure):
     conc = jnp.zeros(structure.S.shape[0])
     conc = conc.at[structure.balanced_species_ix].set(balanced)
@@ -26,42 +30,53 @@ def get_conc(balanced, log_unbalanced, structure):
 class KineticModelStructure:
     """Structural information about a kinetic model."""
 
-    S: NDArray[np.float64]
+    stoichiometry: dict[str, dict[str, float]]
     species: list[str]
     reactions: list[str]
     balanced_species: list[str]
+    unbalanced_species: list[str]
     species_to_dgf_ix: NDArray[np.int16]
     balanced_species_ix: NDArray[np.int16]
     unbalanced_species_ix: NDArray[np.int16]
+    S: NDArray[np.float64]
 
     def __init__(
         self,
-        S,
+        stoichiometry,
         species,
         reactions,
         balanced_species,
         species_to_dgf_ix=None,
     ):
-        self.S = S
+        self.stoichiometry = stoichiometry
         self.species = species
         self.reactions = reactions
         self.balanced_species = balanced_species
+        self.unbalanced_species = [
+            s for s in species if s not in balanced_species
+        ]
         if species_to_dgf_ix is None:
             self.species_to_dgf_ix = np.arange(len(species), dtype=np.int16)
         else:
             self.species_to_dgf_ix = species_to_dgf_ix
         self.balanced_species_ix = np.array(
-            [i for i, s in enumerate(species) if s in balanced_species],
+            [get_ix_from_list(s, species) for s in self.balanced_species],
             dtype=np.int16,
         )
         self.unbalanced_species_ix = np.array(
-            [i for i, s in enumerate(species) if s not in balanced_species],
+            [get_ix_from_list(s, species) for s in self.unbalanced_species],
             dtype=np.int16,
         )
+        S = np.zeros(shape=(len(species), len(reactions)))
+        for ix_reaction, reaction in enumerate(reactions):
+            for species_i, coeff in stoichiometry[reaction].items():
+                ix_species = get_ix_from_list(species_i, species)
+                S[ix_species, ix_reaction] = coeff
+        self.S = S.astype(np.float64)
 
     def tree_flatten(self):
         children = (
-            self.S,
+            self.stoichiometry,
             self.species,
             self.reactions,
             self.balanced_species,
@@ -80,7 +95,7 @@ class RateEquationKineticModelStructure(KineticModelStructure):
 
     def __init__(
         self,
-        S,
+        stoichiometry,
         species,
         reactions,
         balanced_species,
@@ -88,13 +103,17 @@ class RateEquationKineticModelStructure(KineticModelStructure):
         species_to_dgf_ix=None,
     ):
         super().__init__(
-            S, species, reactions, balanced_species, species_to_dgf_ix
+            stoichiometry,
+            species,
+            reactions,
+            balanced_species,
+            species_to_dgf_ix,
         )
         self.rate_equations = rate_equations
 
     def tree_flatten(self):
         children = (
-            self.S,
+            self.stoichiometry,
             self.species,
             self.reactions,
             self.balanced_species,
@@ -157,18 +176,17 @@ class RateEquationModel(KineticModel):
             self.structure,
         )
         flux_list = []
-        for i, rate_equation in enumerate(self.structure.rate_equations):
+        for reaction_ix, (reaction_id, rate_equation) in enumerate(
+            zip(self.structure.reactions, self.structure.rate_equations)
+        ):
             ipt = rate_equation.get_input(
-                self.parameters,
-                i,
-                self.structure.S,
-                self.structure.species_to_dgf_ix,
+                parameters=self.parameters,
+                reaction_id=reaction_id,
+                reaction_stoichiometry=self.structure.S[:, reaction_ix],
+                species_to_dgf_ix=self.structure.species_to_dgf_ix,
             )
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)
-        t = [f(conc, self.parameters) for f in self.rate_equations]
-        out = jnp.array(t)
-        return out
 
 
 class KineticModelSbml(KineticModel):

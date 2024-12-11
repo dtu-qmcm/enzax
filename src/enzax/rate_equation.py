@@ -21,8 +21,8 @@ class RateEquation(Module, ABC):
     def get_input(
         self,
         parameters: PyTree,
-        rxn_ix: int,
-        S: NDArray[np.float64],
+        reaction_id: str,
+        reaction_stoichiometry: NDArray[np.float64],
         species_to_dgf_ix: NDArray[np.int16],
     ) -> PyTree: ...
 

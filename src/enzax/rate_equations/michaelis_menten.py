@@ -19,21 +19,20 @@ class IrreversibleMichaelisMentenInput(eqx.Module):
 
 def get_irreversible_michaelis_menten_input(
     parameters: PyTree,
-    rxn_ix: int,
-    S: NDArray[np.float64],
+    reaction_id: str,
+    reaction_stoichiometry: NDArray[np.float64],
     species_to_dgf_ix: NDArray[np.int16],
     ci_ix: NDArray[np.int16],
 ) -> IrreversibleMichaelisMentenInput:
-    Sj = S[:, rxn_ix]
-    ix_substrate = np.argwhere(Sj < 0.0).flatten()
+    ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
     return IrreversibleMichaelisMentenInput(
-        kcat=jnp.exp(parameters.log_kcat[rxn_ix]),
-        enzyme=jnp.exp(parameters.log_enzyme[rxn_ix]),
+        kcat=jnp.exp(parameters.log_kcat[reaction_id]),
+        enzyme=jnp.exp(parameters.log_enzyme[reaction_id]),
         ix_substrate=ix_substrate,
-        substrate_kms=jnp.exp(parameters.log_substrate_km[rxn_ix]),
-        substrate_stoichiometry=Sj[ix_substrate],
+        substrate_kms=jnp.exp(parameters.log_substrate_km[reaction_id]),
+        substrate_stoichiometry=reaction_stoichiometry[ix_substrate],
         ix_ki_species=ci_ix,
-        ki=jnp.exp(parameters.log_ki[rxn_ix]),
+        ki=jnp.exp(parameters.log_ki[reaction_id]),
     )
 
 
@@ -57,31 +56,30 @@ class ReversibleMichaelisMentenInput(eqx.Module):
 
 def get_reversible_michaelis_menten_input(
     parameters: PyTree,
-    rxn_ix: int,
-    S: NDArray[np.float64],
+    reaction_id: str,
+    reaction_stoichiometry: NDArray[np.float64],
     species_to_dgf_ix: NDArray[np.int16],
     ci_ix: NDArray[np.int16],
     water_stoichiometry: float,
 ) -> ReversibleMichaelisMentenInput:
-    Sj = S[:, rxn_ix]
-    ix_reactant = np.argwhere(Sj != 0.0).flatten()
-    ix_substrate = np.argwhere(Sj < 0.0).flatten()
-    ix_product = np.argwhere(Sj > 0.0).flatten()
+    ix_reactant = np.argwhere(reaction_stoichiometry != 0.0).flatten()
+    ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
+    ix_product = np.argwhere(reaction_stoichiometry > 0.0).flatten()
     return ReversibleMichaelisMentenInput(
-        kcat=jnp.exp(parameters.log_kcat[rxn_ix]),
-        enzyme=jnp.exp(parameters.log_enzyme[rxn_ix]),
-        substrate_kms=jnp.exp(parameters.log_substrate_km[rxn_ix]),
-        product_kms=jnp.exp(parameters.log_product_km[rxn_ix]),
-        ki=jnp.exp(parameters.log_ki[rxn_ix]),
+        kcat=jnp.exp(parameters.log_kcat[reaction_id]),
+        enzyme=jnp.exp(parameters.log_enzyme[reaction_id]),
+        substrate_kms=jnp.exp(parameters.log_substrate_km[reaction_id]),
+        product_kms=jnp.exp(parameters.log_product_km[reaction_id]),
+        ki=jnp.exp(parameters.log_ki[reaction_id]),
         dgf=parameters.dgf[species_to_dgf_ix][ix_reactant],
         temperature=parameters.temperature,
         ix_ki_species=ci_ix,
         ix_reactant=ix_reactant,
         ix_substrate=ix_substrate,
         ix_product=ix_product,
-        reactant_stoichiometry=Sj[ix_reactant],
-        substrate_stoichiometry=Sj[ix_substrate],
-        product_stoichiometry=Sj[ix_product],
+        reactant_stoichiometry=reaction_stoichiometry[ix_reactant],
+        substrate_stoichiometry=reaction_stoichiometry[ix_substrate],
+        product_stoichiometry=reaction_stoichiometry[ix_product],
         water_stoichiometry=water_stoichiometry,
     )
 
@@ -171,14 +169,14 @@ class IrreversibleMichaelisMenten(RateEquation):
     def get_input(
         self,
         parameters: PyTree,
-        rxn_ix: int,
-        S: NDArray[np.float64],
+        reaction_id: str,
+        reaction_stoichiometry: NDArray[np.float64],
         species_to_dgf_ix: NDArray[np.int16],
     ):
         return get_irreversible_michaelis_menten_input(
             parameters=parameters,
-            rxn_ix=rxn_ix,
-            S=S,
+            reaction_id=reaction_id,
+            reaction_stoichiometry=reaction_stoichiometry,
             species_to_dgf_ix=species_to_dgf_ix,
             ci_ix=self.ix_ki_species,
         )
@@ -214,14 +212,14 @@ class ReversibleMichaelisMenten(RateEquation):
     def get_input(
         self,
         parameters: PyTree,
-        rxn_ix: int,
-        S: NDArray[np.float64],
+        reaction_id: str,
+        reaction_stoichiometry: NDArray[np.float64],
         species_to_dgf_ix: NDArray[np.int16],
     ):
         return get_reversible_michaelis_menten_input(
             parameters=parameters,
-            rxn_ix=rxn_ix,
-            S=S,
+            reaction_id=reaction_id,
+            reaction_stoichiometry=reaction_stoichiometry,
             species_to_dgf_ix=species_to_dgf_ix,
             ci_ix=self.ix_ki_species,
             water_stoichiometry=self.water_stoichiometry,

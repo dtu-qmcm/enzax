@@ -23,45 +23,33 @@ from enzax.rate_equations import (
 
 
 class ParameterDefinition(eqx.Module):
-    log_substrate_km: dict[int, Array]
-    log_product_km: dict[int, Array]
-    log_kcat: dict[int, Scalar]
-    log_enzyme: dict[int, Array]
-    log_ki: dict[int, Array]
+    log_substrate_km: dict[str, Array]
+    log_product_km: dict[str, Array]
+    log_kcat: dict[str, Scalar]
+    log_enzyme: dict[str, Array]
+    log_ki: dict[str, Array]
     dgf: Array
     temperature: Scalar
     log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[int, Array]
-    log_dc_activator: dict[int, Array]
-    log_tc: dict[int, Array]
-    log_drain: dict[int, Scalar]
+    log_dc_inhibitor: dict[str, Array]
+    log_dc_activator: dict[str, Array]
+    log_tc: dict[str, Array]
+    log_drain: dict[str, Scalar]
 
 
-S = np.array(
-    [
-        [1, -1, -1, 0, 0, 0, 1, 1, 0, 0, -1],  # met-L b
-        [0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0],  # atp
-        [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # pi
-        [0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],  # ppi
-        [0, 1, 1, -1, -1, 0, 0, 0, 0, 0, 0],  # amet b
-        [0, 0, 0, 1, 1, -1, 0, 0, 0, 0, 0],  # ahcys b
-        [0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0],  # gly
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],  # sarcs
-        [0, 0, 0, 0, 0, 1, -1, -1, -1, 0, 0],  # hcys-L b
-        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],  # adn
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],  # thf
-        [0, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0],  # 5mthf b
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0],  # mlthf
-        [0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0],  # glyb
-        [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],  # dmgly
-        [0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0],  # ser-L
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # nadp
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0],  # nadph
-        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],  # cyst-L
-    ],
-    dtype=np.float64,
-)
-reactions = []
+stoichiometry = {
+    "the_drain": {"met-L": 1},
+    "MAT1": {"met-L": -1, "atp": -1, "pi": 1, "ppi": 1, "amet": 1},
+    "MAT3": {"met-L": -1, "atp": -1, "pi": 1, "ppi": 1, "amet": 1},
+    "METH-Gen": {"amet": -1, "ahcys": 1},
+    "GNMT1": {"amet": -1, "ahcys": 1, "gly": -1, "sarcs": 1},
+    "AHC1": {"ahcys": -1, "hcys-L": 1, "adn": 1},
+    "MS1": {"hcys-L": -1, "thf": 1, "met-L": 1, "5mthf": -1},
+    "BHMT1": {"hcys-L": -1, "glyb": -1, "met-L": 1, "dmgly": 1},
+    "CBS1": {"hcys-L": -1, "ser-L": -1, "cyst-L": 1},
+    "MTHFR1": {"5mthf": 1, "mlthf": -1, "nadp": 1, "nadph": -1},
+    "PROT1": {"met-L": -1},
+}
 species = [
     "met-L",
     "atp",
@@ -105,30 +93,30 @@ reactions = [
 ]
 parameters = ParameterDefinition(
     log_kcat={
-        1: jnp.log(jnp.array(7.89577)),  # MAT1
-        2: jnp.log(jnp.array(19.9215)),  # MAT3
-        3: jnp.log(jnp.array(1.15777)),  # METH-Gen
-        4: jnp.log(jnp.array(10.5307)),  # GNMT1
-        5: jnp.log(jnp.array(234.284)),  # AHC1
-        6: jnp.log(jnp.array(1.77471)),  # MS1
-        7: jnp.log(jnp.array(13.7676)),  # BHMT1
-        8: jnp.log(jnp.array(7.02307)),  # CBS1
-        9: jnp.log(jnp.array(3.1654)),  # MTHFR1
-        10: jnp.log(jnp.array(0.264744)),  # PROT1
+        "MAT1": jnp.log(jnp.array(7.89577)),  # MAT1
+        "MAT3": jnp.log(jnp.array(19.9215)),  # MAT3
+        "METH-Gen": jnp.log(jnp.array(1.15777)),  # METH-Gen
+        "GNMT1": jnp.log(jnp.array(10.5307)),  # GNMT1
+        "AHC1": jnp.log(jnp.array(234.284)),  # AHC1
+        "MS1": jnp.log(jnp.array(1.77471)),  # MS1
+        "BHMT1": jnp.log(jnp.array(13.7676)),  # BHMT1
+        "CBS1": jnp.log(jnp.array(7.02307)),  # CBS1
+        "MTHFR1": jnp.log(jnp.array(3.1654)),  # MTHFR1
+        "PROT1": jnp.log(jnp.array(0.264744)),  # PROT1
     },
     log_enzyme={
-        1: jnp.log(jnp.array(0.000961712)),  # MAT1
-        2: jnp.log(jnp.array(0.00098812)),  # MAT3
-        3: jnp.log(jnp.array(0.00103396)),  # METH-Gen
-        4: jnp.log(jnp.array(0.000983692)),  # GNMT1
-        5: jnp.log(jnp.array(0.000977878)),  # AHC1
-        6: jnp.log(jnp.array(0.00105094)),  # MS1
-        7: jnp.log(jnp.array(0.000996603)),  # BHMT1
-        8: jnp.log(jnp.array(0.00134056)),  # CBS1
-        9: jnp.log(jnp.array(0.0010054)),  # MTHFR1
-        10: jnp.log(jnp.array(0.000995525)),  # PROT1
+        "MAT1": jnp.log(jnp.array(0.000961712)),  # MAT1
+        "MAT3": jnp.log(jnp.array(0.00098812)),  # MAT3
+        "METH-Gen": jnp.log(jnp.array(0.00103396)),  # METH-Gen
+        "GNMT1": jnp.log(jnp.array(0.000983692)),  # GNMT1
+        "AHC1": jnp.log(jnp.array(0.000977878)),  # AHC1
+        "MS1": jnp.log(jnp.array(0.00105094)),  # MS1
+        "BHMT1": jnp.log(jnp.array(0.000996603)),  # BHMT1
+        "CBS1": jnp.log(jnp.array(0.00134056)),  # CBS1
+        "MTHFR1": jnp.log(jnp.array(0.0010054)),  # MTHFR1
+        "PROT1": jnp.log(jnp.array(0.000995525)),  # PROT1
     },
-    log_drain={0: jnp.log(jnp.array(0.000850127))},
+    log_drain={"the_drain": jnp.log(jnp.array(0.000850127))},
     dgf=jnp.array(
         [
             160.953,  # met-L
@@ -153,32 +141,42 @@ parameters = ParameterDefinition(
         ]
     ),
     log_product_km={
-        5: jnp.log(jnp.array([1.06e-05, 5.66e-06])),  # hcys-L AHC1, adn AHC1
+        "AHC1": jnp.log(
+            jnp.array([1.06e-05, 5.66e-06])
+        ),  # hcys-L AHC1, adn AHC1
     },
     log_substrate_km={
-        1: jnp.log(jnp.array([0.000106919, 0.00203015])),  # MAT1 met-L, atp
-        2: jnp.log(jnp.array([0.00113258, 0.00236759])),  # MAT3 met-L atp
-        3: jnp.log(jnp.array([9.37e-06])),  # METH-Gen amet
-        4: jnp.log(jnp.array([0.000520015, 0.00253545])),  # GNMT1, amet, gly
-        5: jnp.log(jnp.array([2.32e-05])),  # ahcys AHC1
-        6: jnp.log(jnp.array([1.71e-06, 6.94e-05])),  # MS1 hcys-L, 5mthf
-        7: jnp.log(jnp.array([1.98e-05, 0.00845898])),  # BHMT1 hcys-L, glyb
-        8: jnp.log(jnp.array([4.24e-05, 2.83e-06])),  #  CBS1 hcys-L, ser-L
-        9: jnp.log(jnp.array([8.08e-05, 2.09e-05])),  # MTHFR1 mlthf, nadph
-        10: jnp.log(jnp.array([4.39e-05])),  # PROT1 met-L
+        "MAT1": jnp.log(
+            jnp.array([0.000106919, 0.00203015])
+        ),  # MAT1 met-L, atp
+        "MAT3": jnp.log(jnp.array([0.00113258, 0.00236759])),  # MAT3 met-L atp
+        "METH-Gen": jnp.log(jnp.array([9.37e-06])),  # METH-Gen amet
+        "GNMT1": jnp.log(
+            jnp.array([0.000520015, 0.00253545])
+        ),  # GNMT1, amet, gly
+        "AHC1": jnp.log(jnp.array([2.32e-05])),  # ahcys AHC1
+        "MS1": jnp.log(jnp.array([1.71e-06, 6.94e-05])),  # MS1 hcys-L, 5mthf
+        "BHMT1": jnp.log(
+            jnp.array([1.98e-05, 0.00845898])
+        ),  # BHMT1 hcys-L, glyb
+        "CBS1": jnp.log(jnp.array([4.24e-05, 2.83e-06])),  #  CBS1 hcys-L, ser-L
+        "MTHFR1": jnp.log(
+            jnp.array([8.08e-05, 2.09e-05])
+        ),  # MTHFR1 mlthf, nadph
+        "PROT1": jnp.log(jnp.array([4.39e-05])),  # PROT1 met-L
     },
     temperature=jnp.array(298.15),
     log_ki={
-        1: jnp.array([jnp.log(0.000346704)]),  # MAT1
-        2: jnp.array([]),
-        3: jnp.array([jnp.log(5.56e-06)]),  # METH-Gen
-        4: jnp.array([jnp.log(5.31e-05)]),  # GNMT1
-        5: jnp.array([]),
-        6: jnp.array([]),
-        7: jnp.array([]),
-        8: jnp.array([]),
-        9: jnp.array([]),
-        10: jnp.array([]),
+        "MAT1": jnp.array([jnp.log(0.000346704)]),  # MAT1
+        "MAT3": jnp.array([]),
+        "METH-Gen": jnp.array([jnp.log(5.56e-06)]),  # METH-Gen
+        "GNMT1": jnp.array([jnp.log(5.31e-05)]),  # GNMT1
+        "AHC1": jnp.array([]),
+        "MS1": jnp.array([]),
+        "BHMT1": jnp.array([]),
+        "CBS1": jnp.array([]),
+        "MTHFR1": jnp.array([]),
+        "PROT1": jnp.array([]),
     },
     log_conc_unbalanced=jnp.log(
         jnp.array(
@@ -202,29 +200,29 @@ parameters = ParameterDefinition(
         )
     ),
     log_tc={
-        2: jnp.array(jnp.log(0.107657)),  # MAT3
-        4: jnp.array(jnp.log(131.207)),  # GNMT
-        8: jnp.array(jnp.log(1.03452)),  # CBS
-        9: jnp.array(jnp.log(0.392035)),  # MTHFR
+        "MAT3": jnp.array(jnp.log(0.107657)),  # MAT3
+        "GNMT1": jnp.array(jnp.log(131.207)),  # GNMT
+        "CBS1": jnp.array(jnp.log(1.03452)),  # CBS
+        "MTHFR1": jnp.array(jnp.log(0.392035)),  # MTHFR
     },
     log_dc_activator={
-        2: jnp.log(
+        "MAT3": jnp.log(
             jnp.array([0.00059999, 0.000316641])
         ),  # met-L MAT3,  # amet MAT3
-        4: jnp.log(jnp.array([1.98e-05])),  # amet GNMT1
-        8: jnp.array([]),  # CBS1
-        9: jnp.log(jnp.array([2.45e-06])),  # ahcys MTHFR1,
+        "GNMT1": jnp.log(jnp.array([1.98e-05])),  # amet GNMT1
+        "CBS1": jnp.array([]),  # CBS1
+        "MTHFR1": jnp.log(jnp.array([2.45e-06])),  # ahcys MTHFR1,
     },
     log_dc_inhibitor={
-        2: jnp.array([]),  # MAT3
-        4: jnp.log(jnp.array([0.000228576])),  # mlthf GNMT1
-        8: jnp.log(jnp.array([9.30e-05])),  # amet CBS1
-        9: jnp.log(jnp.array([1.46e-05])),  # amet MTHFR1
+        "MAT3": jnp.array([]),  # MAT3
+        "GNMT1": jnp.log(jnp.array([0.000228576])),  # mlthf GNMT1
+        "CBS1": jnp.log(jnp.array([9.30e-05])),  # amet CBS1
+        "MTHFR1": jnp.log(jnp.array([1.46e-05])),  # amet MTHFR1
     },
 )
 
 structure = RateEquationKineticModelStructure(
-    S=S,
+    stoichiometry=stoichiometry,
     species=species,
     reactions=reactions,
     balanced_species=balanced_species,
