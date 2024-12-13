@@ -14,17 +14,17 @@ sym_module = sbml.sympy_to_enzax(reactions_sympy)
 species = [s.getId() for s in model_sbml.getListOfSpecies()]
 
 balanced_species = [
-    b.getId() 
-    for b in model_sbml.getListOfSpecies() 
-    if not b.boundary_condition
+    b.getId() for b in model_sbml.getListOfSpecies() if not b.boundary_condition
 ]
 
-reactions = [reaction.getId() 
+reactions = [reaction.getId() for reaction in model_sbml.getListOfReactions()]
+
+stoichiometry = {
+    reaction.getId(): {
+        r.getSpecies(): -r.getStoichiometry(),
+        p.getSpecies(): p.getStoichiometry(),
+    }
     for reaction in model_sbml.getListOfReactions()
-]
-
-stoichiometry = {reaction.getId(): {r.getSpecies(): -r.getStoichiometry(), p.getSpecies(): p.getStoichiometry()} 
-    for reaction in model_sbml.getListOfReactions() 
     for r in reaction.getListOfReactants()
     for p in reaction.getListOfProducts()
 }
@@ -33,7 +33,7 @@ structure = KineticModelStructure(
     stoichiometry=stoichiometry,
     species=species,
     reactions=reactions,
-    balanced_species=balanced_species
+    balanced_species=balanced_species,
 )
 
 parameters_local = {
@@ -48,17 +48,20 @@ parameters_global = {
     if p.constant
 }
 
-compartments = {c.getId(): c.volume 
-    for c in model_sbml.getListOfCompartments()
-}
+compartments = {c.getId(): c.volume for c in model_sbml.getListOfCompartments()}
 
 unbalanced_species = {
-    u.getId(): u.getInitialConcentration() 
-    for u in model_sbml.getListOfSpecies() 
+    u.getId(): u.getInitialConcentration()
+    for u in model_sbml.getListOfSpecies()
     if u.boundary_condition
 }
 
-para = {**parameters_local, **parameters_global, **compartments, **unbalanced_species}
+para = {
+    **parameters_local,
+    **parameters_global,
+    **compartments,
+    **unbalanced_species,
+}
 
 kinmodel_sbml = KineticModelSbml(
     parameters=para,
