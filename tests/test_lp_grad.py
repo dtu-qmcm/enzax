@@ -1,15 +1,13 @@
 import json
 import jax
-import pytest
 from jax import numpy as jnp
+from jax.scipy.stats import norm
+from jax.flatten_util import ravel_pytree
+from jaxtyping import Array, Scalar
 
 from enzax.examples import methionine
-from enzax.mcmc import (
-    ObservationSet,
-    AllostericMichaelisMentenPriorSet,
-    ind_prior_from_truth,
-    posterior_logdensity_amm,
-)
+from enzax.kinetic_model import RateEquationModel
+from enzax.mcmc import ObservationSet
 from enzax.steady_state import get_kinetic_model_steady_state
 
 import importlib.resources
@@ -21,63 +19,86 @@ jax.config.update("jax_enable_x64", True)
 SEED = 1234
 
 methionine_pldf_grad_file = (
-    importlib.resources.files(data) / "methionine_pldf_grad.json"
+    importlib.resources.files(data) / "expected_methionine_gradient.json"
+)
+
+obs_conc = jnp.array(
+    [
+        3.99618131e-05,
+        1.24186458e-03,
+        9.44053469e-04,
+        4.72041839e-04,
+        2.92625684e-05,
+        2.04876101e-07,
+        1.37054850e-03,
+        9.44053469e-08,
+        3.32476221e-06,
+        9.53494003e-07,
+        2.11467977e-05,
+        6.16881926e-06,
+        2.97376843e-06,
+        1.00785260e-03,
+        4.72026734e-05,
+        1.49849607e-03,
+        1.15174523e-06,
+        2.31424323e-04,
+        2.11467977e-06,
+    ],
+    dtype=jnp.float64,
+)
+obs_flux = jnp.array(
+    [
+        -0.00425181,
+        0.03739644,
+        0.01397071,
+        -0.04154405,
+        -0.05396867,
+        0.01236334,
+        -0.07089178,
+        -0.02136595,
+        0.00152784,
+        -0.02482788,
+        -0.01588131,
+    ],
+    dtype=jnp.float64,
+)
+obs_enzyme = jnp.array(
+    [
+        0.00097884,
+        0.00100336,
+        0.00105027,
+        0.00099059,
+        0.00096148,
+        0.00107917,
+        0.00104588,
+        0.00138744,
+        0.00107483,
+        0.0009662,
+    ],
+    dtype=jnp.float64,
 )
 
 
 def test_lp_grad():
-    model = methionine
     structure = methionine.structure
-    rate_equations = methionine.rate_equations
     true_parameters = methionine.parameters
     true_model = methionine.model
     default_state_guess = jnp.full((5,), 0.01)
     true_states = get_kinetic_model_steady_state(
         true_model, default_state_guess
     )
-    prior = AllostericMichaelisMentenPriorSet(
-        log_kcat=ind_prior_from_truth(true_parameters.log_kcat, 0.1),
-        log_enzyme=ind_prior_from_truth(true_parameters.log_enzyme, 0.1),
-        log_drain=ind_prior_from_truth(true_parameters.log_drain, 0.1),
-        dgf=(
-            ind_prior_from_truth(true_parameters.dgf, 0.1)[0],
-            jnp.diag(
-                jnp.square(ind_prior_from_truth(true_parameters.dgf, 0.1)[1])
-            ),
-        ),
-        log_km=ind_prior_from_truth(true_parameters.log_km, 0.1),
-        log_conc_unbalanced=ind_prior_from_truth(
-            true_parameters.log_conc_unbalanced, 0.1
-        ),
-        temperature=ind_prior_from_truth(true_parameters.temperature, 0.1),
-        log_ki=ind_prior_from_truth(true_parameters.log_ki, 0.1),
-        log_transfer_constant=ind_prior_from_truth(
-            true_parameters.log_transfer_constant, 0.1
-        ),
-        log_dissociation_constant=ind_prior_from_truth(
-            true_parameters.log_dissociation_constant, 0.1
-        ),
-    )
+    flat_true_params, _ = ravel_pytree(methionine.parameters)
     # get true concentration
     true_conc = jnp.zeros(methionine.structure.S.shape[0])
-    true_conc = true_conc.at[methionine.structure.balanced_species].set(
+    true_conc = true_conc.at[methionine.structure.balanced_species_ix].set(
         true_states
     )
-    true_conc = true_conc.at[methionine.structure.unbalanced_species].set(
+    true_conc = true_conc.at[methionine.structure.unbalanced_species_ix].set(
         jnp.exp(true_parameters.log_conc_unbalanced)
     )
-    # get true flux
-    true_flux = true_model.flux(true_states)
-    # simulate observations
     error_conc = 0.03
     error_flux = 0.05
     error_enzyme = 0.03
-    key = jax.random.key(SEED)
-    obs_conc = jnp.exp(jnp.log(true_conc) + jax.random.normal(key) * error_conc)
-    obs_enzyme = jnp.exp(
-        true_parameters.log_enzyme + jax.random.normal(key) * error_enzyme
-    )
-    obs_flux = true_flux + jax.random.normal(key) * error_conc
     obs = ObservationSet(
         conc=obs_conc,
         flux=obs_flux,
@@ -86,25 +107,56 @@ def test_lp_grad():
         flux_scale=error_flux,
         enzyme_scale=error_enzyme,
     )
-    pldf = functools.partial(
-        posterior_logdensity_amm,
-        obs=obs,
-        prior=prior,
-        structure=structure,
-        rate_equations=rate_equations,
-        guess=default_state_guess,
-    )
-    pldf_grad = jax.jacrev(pldf)(methionine.parameters)
-    index_pldf_grad = {
-        p: {
-            c: float(getattr(pldf_grad, p)[i])
-            for i, c in enumerate(model.coords[model.dims[p][0]])
-        }
-        for p in model.dims.keys()
-    }
-    with open(methionine_pldf_grad_file, "r") as file:
-        saved_pldf_grad = file.read()
 
-    true_gradient = json.loads(saved_pldf_grad)
-    for p, vals in true_gradient.items():
-        assert true_gradient[p] == pytest.approx(index_pldf_grad[p])
+    def joint_log_density(params, prior_mean, prior_sd, obs):
+        flat_params, _ = ravel_pytree(params)
+        model = RateEquationModel(params, methionine.structure)
+        steady = get_kinetic_model_steady_state(model, default_state_guess)
+        unbalanced = jnp.exp(params.log_conc_unbalanced)
+        conc = jnp.zeros(structure.S.shape[0])
+        conc = conc.at[structure.balanced_species_ix].set(steady)
+        conc = conc.at[structure.unbalanced_species_ix].set(unbalanced)
+        flux = model.flux(steady)
+        log_prior = norm.pdf(flat_params, prior_mean, prior_sd).sum()
+        flat_log_enzyme, _ = ravel_pytree(params.log_enzyme)
+        log_liklihood = jnp.sum(
+            jnp.array(
+                [
+                    norm.logpdf(
+                        jnp.log(obs.conc), jnp.log(conc), obs.conc_scale
+                    ).sum(),
+                    norm.logpdf(
+                        jnp.log(obs.enzyme), flat_log_enzyme, obs.enzyme_scale
+                    ).sum(),
+                    norm.logpdf(obs.flux, flux, obs.flux_scale).sum(),
+                ]
+            )
+        )
+        return log_prior + log_liklihood
+
+    posterior_log_density = functools.partial(
+        joint_log_density,
+        prior_mean=flat_true_params,
+        prior_sd=0.1,
+        obs=obs,
+    )
+    gradient = jax.jacrev(posterior_log_density)(methionine.parameters)
+    _, grad_pytree_def = ravel_pytree(gradient)
+    with open(methionine_pldf_grad_file, "r") as file:
+        expected_gradient = grad_pytree_def(jnp.array(json.load(file)))
+    for k in gradient.__dataclass_fields__.keys():
+        obs = getattr(gradient, k)
+        exp = getattr(expected_gradient, k)
+        if isinstance(obs, Scalar):
+            assert jnp.isclose(obs, exp)
+        elif isinstance(obs, Array):
+            assert jnp.isclose(obs, exp).all()
+        elif isinstance(obs, dict):
+            for kk in obs.keys():
+                if isinstance(obs[kk], list):
+                    for o, e in zip(obs[kk], exp[kk]):
+                        assert jnp.isclose(o, e).all()
+                elif isinstance(obs[kk], Scalar):
+                    assert jnp.isclose(obs[kk], exp[kk])
+                elif len(obs[kk]) > 0:
+                    assert jnp.isclose(obs[kk], exp[kk]).all()

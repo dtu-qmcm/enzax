@@ -11,54 +11,60 @@ model_sbml = sbml.load_sbml(file_path)
 reactions_sympy = sbml.sbml_to_sympy(model_sbml)
 sym_module = sbml.sympy_to_enzax(reactions_sympy)
 
-parameters_all = [
-    ({p.getId(): p.getValue() for p in r.getKineticLaw().getListOfParameters()})
-    for r in model_sbml.getListOfReactions()
+species = [s.getId() for s in model_sbml.getListOfSpecies()]
+
+balanced_species = [
+    b.getId() for b in model_sbml.getListOfSpecies() if not b.boundary_condition
 ]
-parameters = {}
-for i in parameters_all:
-    parameters.update(i)
+
+reactions = [reaction.getId() for reaction in model_sbml.getListOfReactions()]
+
+stoichiometry = {
+    reaction.getId(): {
+        r.getSpecies(): -r.getStoichiometry(),
+        p.getSpecies(): p.getStoichiometry(),
+    }
+    for reaction in model_sbml.getListOfReactions()
+    for r in reaction.getListOfReactants()
+    for p in reaction.getListOfProducts()
+}
+
+structure = KineticModelStructure(
+    stoichiometry=stoichiometry,
+    species=species,
+    reactions=reactions,
+    balanced_species=balanced_species,
+)
+
+parameters_local = {
+    p.getId(): p.getValue()
+    for r in model_sbml.getListOfReactions()
+    for p in r.getKineticLaw().getListOfParameters()
+}
+
+parameters_global = {
+    p.getId(): p.getValue()
+    for p in model_sbml.getListOfParameters()
+    if p.constant
+}
 
 compartments = {c.getId(): c.volume for c in model_sbml.getListOfCompartments()}
 
-species = [s.getId() for s in model_sbml.getListOfSpecies()]
+unbalanced_species = {
+    u.getId(): u.getInitialConcentration()
+    for u in model_sbml.getListOfSpecies()
+    if u.boundary_condition
+}
 
-balanced_species_dict = {}
-unbalanced_species_dict = {}
-for i in model_sbml.getListOfSpecies():
-    if not i.boundary_condition:
-        balanced_species_dict.update({i.getId(): i.getInitialConcentration()})
-    else:
-        unbalanced_species_dict.update({i.getId(): i.getInitialConcentration()})
-
-balanced_ix = jnp.array([species.index(b) for b in balanced_species_dict])
-unbalanced_ix = jnp.array([species.index(u) for u in unbalanced_species_dict])
-
-para = {**parameters, **compartments, **unbalanced_species_dict}
-
-stoichmatrix = jnp.zeros(
-    (model_sbml.getNumSpecies(), model_sbml.getNumReactions()),
-    dtype=jnp.float64,
-)
-i = 0
-for reaction in model_sbml.getListOfReactions():
-    for r in reaction.getListOfReactants():
-        stoichmatrix = stoichmatrix.at[species.index(r.getSpecies()), i].set(
-            -int(r.getStoichiometry())
-        )
-    for p in reaction.getListOfProducts():
-        stoichmatrix = stoichmatrix.at[species.index(p.getSpecies()), i].set(
-            int(p.getStoichiometry())
-        )
-    i += 1
-
-structure = KineticModelStructure(
-    stoichmatrix, jnp.array(balanced_ix), jnp.array(unbalanced_ix)
-)
+para = {
+    **parameters_local,
+    **parameters_global,
+    **compartments,
+    **unbalanced_species,
+}
 
 kinmodel_sbml = KineticModelSbml(
     parameters=para,
-    balanced_ids=balanced_species_dict,
     structure=structure,
     sym_module=sym_module,
 )

@@ -43,9 +43,7 @@ model = methionine.model
 
 def get_steady_state_from_params(parameters: PyTree):
     """Get the steady state with a one-argument non-pure function."""
-    _model = RateEquationModel(
-        parameters, model.structure, model.rate_equations
-    )
+    _model = RateEquationModel(parameters, model.structure)
     return get_kinetic_model_steady_state(_model, guess)
 
 jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)

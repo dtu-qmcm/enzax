@@ -51,7 +51,6 @@ def get_kinetic_model_steady_state(
         t1,
         dt0,
         guess,
-        args=model,
         max_steps=max_steps,
         stepsize_controller=controller,
         event=event,
