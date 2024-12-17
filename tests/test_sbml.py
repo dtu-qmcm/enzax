@@ -17,7 +17,7 @@ exampleode_file = importlib.resources.files(data) / "exampleode.xml"
     ],
 )
 def test_load_libsbml_model(file_path):
-    sbml.load_libsbml_model(file_path)
+    sbml.load_libsbml_model_from_file(file_path)
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_load_libsbml_model(file_path):
     ],
 )
 def test_sbml_to_enzax(path, expected, guess):
-    libsbml_model = sbml.load_libsbml_model(path)
+    libsbml_model = sbml.load_libsbml_model_from_file(path)
     model = sbml.sbml_to_enzax(libsbml_model)
     steady_state = get_kinetic_model_steady_state(model, guess)
     assert jnp.isclose(steady_state, expected).all()

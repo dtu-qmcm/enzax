@@ -49,6 +49,7 @@ def get_steady_state_from_params(parameters: PyTree):
 jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
 
 ```
+
 ### Load a kinetic model from an sbml file
 
 ```python
