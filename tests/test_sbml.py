@@ -1,7 +1,9 @@
+from jax import numpy as jnp
 import pytest
 import importlib.resources
 from tests import data
 from enzax import sbml
+from enzax.steady_state import get_kinetic_model_steady_state
 
 brusselator_file = importlib.resources.files(data) / "brusselator.xml"
 exampleode_file = importlib.resources.files(data) / "exampleode.xml"
@@ -14,19 +16,22 @@ exampleode_file = importlib.resources.files(data) / "exampleode.xml"
         exampleode_file,
     ],
 )
-def test_load_sbml(file_path):
-    sbml.load_sbml(file_path)
+def test_load_libsbml_model(file_path):
+    sbml.load_libsbml_model(file_path)
 
 
 @pytest.mark.parametrize(
-    "model",
+    ["path", "expected", "guess"],
     [
-        sbml.load_sbml(brusselator_file),
-        sbml.load_sbml(exampleode_file),
+        (
+            exampleode_file,
+            jnp.array([0.78276539, 3.65098512]),
+            jnp.array([0.01, 0.01]),
+        ),
     ],
 )
-def test_sbml_to_sympy(model):
-    sbml.sbml_to_sympy(model)
-
-
-def test_sympy_to_enzax(): ...
+def test_sbml_to_enzax(path, expected, guess):
+    libsbml_model = sbml.load_libsbml_model(path)
+    model = sbml.sbml_to_enzax(libsbml_model)
+    steady_state = get_kinetic_model_steady_state(model, guess)
+    assert jnp.isclose(steady_state, expected).all()

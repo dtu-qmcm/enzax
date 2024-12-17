@@ -49,3 +49,16 @@ def get_steady_state_from_params(parameters: PyTree):
 jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
 
 ```
+### Load a kinetic model from an sbml file
+
+```python
+from enzax.sbml import load_libsbml_model_from_url, sbml_to_enzax
+
+url = "https://raw.githubusercontent.com/dtu-qmcm/enzax/refs/heads/main/tests/data/exampleode.xml"
+
+libsbml_model = load_libsbml_model_from_url(url)
+# or to load an sbml file from your computer:
+# libsbml_model = load_libsbml_model_from_file(path_to_file)
+
+model = sbml_to_enzax(libsbml_model)
+```
