@@ -184,3 +184,8 @@ def get_steady_state_from_params(parameters: PyTree):
 
 jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
 ```
+
+!!! note
+
+    The parameters in the sbml file have to have unique identifiers.
+    In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.  

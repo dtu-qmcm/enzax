@@ -58,7 +58,7 @@ def sympy_to_enzax(reactions_sympy):
 
 
 def get_sbml_parameters(model: libsbml.Model) -> dict:
-    kinetic_law_parameters = {
+    local_parameters = {
         p.getId(): p.getValue()
         for r in model.getListOfReactions()
         for p in r.getKineticLaw().getListOfParameters()
@@ -71,16 +71,16 @@ def get_sbml_parameters(model: libsbml.Model) -> dict:
         for u in model.getListOfSpecies()
         if u.boundary_condition
     }
-    other_parameters = {
+    global_parameters = {
         p.getId(): p.getValue()
         for p in model.getListOfParameters()
         if p.constant
     }
     return {
-        **kinetic_law_parameters,
+        **local_parameters,
         **compartment_volumes,
         **unbalanced_species,
-        **other_parameters,
+        **global_parameters,
     }
 
 
@@ -122,7 +122,7 @@ def get_sbml_sym_module(model: libsbml.Model):
 
 
 def sbml_to_enzax(model: libsbml.Model) -> KineticModelSbml:
-    """Convert a KineticModelSbml object into a libsbml.Model."""
+    """Convert a libsbml.Model object into a KineticModelSbml."""
     parameters = get_sbml_parameters(model)
     structure = get_sbml_structure(model)
     sym_module = get_sbml_sym_module(model)

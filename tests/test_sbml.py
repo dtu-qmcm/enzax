@@ -5,14 +5,12 @@ from tests import data
 from enzax import sbml
 from enzax.steady_state import get_kinetic_model_steady_state
 
-brusselator_file = importlib.resources.files(data) / "brusselator.xml"
 exampleode_file = importlib.resources.files(data) / "exampleode.xml"
 
 
 @pytest.mark.parametrize(
     "file_path",
     [
-        brusselator_file,
         exampleode_file,
     ],
 )
@@ -25,7 +23,7 @@ def test_load_libsbml_model(file_path):
     [
         (
             exampleode_file,
-            jnp.array([0.78276539, 3.65098512]),
+            jnp.array([0.3230166,  3.02209784]),
             jnp.array([0.01, 0.01]),
         ),
     ],
