@@ -112,7 +112,7 @@ Note that the parameters use `jnp` whereas the structure uses `np`. This is beca
 Now we can declare our model:
 
 ```python
-model = RateEquationModel(structure, parameters)
+model = RateEquationModel(parameters, structure)
 ```
 
 To test out the model, we can see if it returns some fluxes and state variable rates when provided a set of balanced species concentrations:
@@ -124,7 +124,7 @@ flux
 ```
 
 ```python
-dcdt = model.dcdt(conc)
+dcdt = model.dcdt(0, conc)
 dcdt
 ```
 
