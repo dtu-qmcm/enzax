@@ -5,23 +5,9 @@ from typing import Callable, TypedDict, Unpack
 
 import arviz as az
 import blackjax
-import chex
 import jax
 import jax.numpy as jnp
-from jax.scipy.stats import norm, multivariate_normal
 from jaxtyping import Array, Float, PyTree, ScalarLike
-
-
-@chex.dataclass
-class ObservationSet:
-    """Measurements from a single experiment."""
-
-    conc: Float[Array, " m"]
-    flux: Float[Array, " n"]
-    enzyme: Float[Array, " e"]
-    conc_scale: ScalarLike
-    flux_scale: ScalarLike
-    enzyme_scale: ScalarLike
 
 
 class AdaptationKwargs(TypedDict):
@@ -31,21 +17,6 @@ class AdaptationKwargs(TypedDict):
     max_num_doublings: int
     is_mass_matrix_diagonal: bool
     target_acceptance_rate: float
-
-
-def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
-    """Total log density for an independent normal distribution."""
-    return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
-
-
-def mv_normal_prior_logdensity(
-    param: Float[Array, " _"],
-    prior: tuple[Float[Array, " _"], Float[Array, " _ _"]],
-):
-    """Total log density for an multivariate normal distribution."""
-    return jnp.sum(
-        multivariate_normal.logpdf(param, mean=prior[0], cov=prior[1])
-    )
 
 
 @functools.partial(jax.jit, static_argnames=["kernel", "num_samples"])

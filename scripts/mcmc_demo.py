@@ -4,12 +4,15 @@ import functools
 import logging
 import warnings
 
+from dataclasses import fields
+
 import arviz as az
+import equinox as eqx
 import jax
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 from jax.scipy.stats import norm
-from jaxtyping import Array
+from jaxtyping import Array, Float, PyTree
 
 from enzax.examples import methionine
 from enzax.kinetic_model import RateEquationModel, get_conc
@@ -17,6 +20,7 @@ from enzax.mcmc import (
     ObservationSet,
     get_idata,
     run_nuts,
+    merge_fixed_and_free_parameters,
 )
 from enzax.steady_state import get_kinetic_model_steady_state
 
@@ -25,15 +29,29 @@ SEED = 1234
 jax.config.update("jax_enable_x64", True)
 
 
-def joint_log_density(params, prior_mean, prior_sd, obs, guess):
+def joint_log_density(
+    free_params: PyTree,
+    fixed_params: PyTree,
+    prior_mean: PyTree,
+    prior_sd: PyTree,
+    obs: ObservationSet,
+    guess: Float[Array, " _"],
+):
+    params = merge_fixed_and_free_parameters(free_params, fixed_params)
     # find the steady state concentration and flux
     model = RateEquationModel(params, methionine.structure)
     steady = get_kinetic_model_steady_state(model, guess)
     conc = get_conc(steady, params.log_conc_unbalanced, methionine.structure)
     flux = model.flux(steady)
     # prior
-    flat_params, _ = ravel_pytree(params)
-    log_prior = norm.logpdf(flat_params, loc=prior_mean, scale=prior_sd).sum()
+    flat_free_params, _ = ravel_pytree(free_params)
+    flat_prior_mean, _ = ravel_pytree(prior_mean)
+    flat_prior_sd, _ = ravel_pytree(prior_sd)
+    log_prior = norm.logpdf(
+        flat_free_params,
+        loc=flat_prior_mean,
+        scale=flat_prior_sd,
+    ).sum()
     # likelihood
     flat_log_enzyme, _ = ravel_pytree(params.log_enzyme)
     log_likelihood = (
@@ -52,10 +70,20 @@ def main():
     true_model = methionine.model
     default_guess = jnp.full((5,), 0.01)
     true_steady = get_kinetic_model_steady_state(true_model, default_guess)
+    # prior
+    priors = {}
+    free_param_names = ["temperature"]
+
+    fixed = eqx.tree_at(lambda pt: (pt[k] for k pt.keys() if k not in free_param_names), true_parameters, replace=None)
+    pdb
+
+    fixed_params = filter_fixed(true_parameters)
+    prior_mean = filter_free(true_parameters)
+    prior_sd = jax.tree.map(lambda arr: jnp.full_like(arr, 0.1), prior_mean)
     # get true concentration
     true_conc = get_conc(
         true_steady,
-        true_parameters.log_conc_unbalanced,
+        true_parameters["log_conc_unbalanced"],
         methionine.structure,
     )
     # get true flux
@@ -65,7 +93,7 @@ def main():
     error_flux = 0.05
     error_enzyme = 0.03
     key = jax.random.key(SEED)
-    true_log_enz_flat, _ = ravel_pytree(true_parameters.log_enzyme)
+    true_log_enz_flat, _ = ravel_pytree(true_parameters["log_enzyme"])
     key_conc, key_enz, key_flux, key_nuts = jax.random.split(key, num=4)
     obs_conc = jnp.exp(
         jnp.log(true_conc) + jax.random.normal(key_conc) * error_conc
@@ -86,12 +114,14 @@ def main():
     posterior_log_density = jax.jit(
         functools.partial(
             joint_log_density,
+            fixed_params=fixed_params,
             obs=obs,
-            prior_mean=flat_true_params,
-            prior_sd=0.1,
+            prior_mean=prior_mean,
+            prior_sd=prior_sd,
             guess=default_guess,
         )
     )
+    __import__("pdb").set_trace()
     samples, info = run_nuts(
         posterior_log_density,
         key_nuts,

@@ -172,7 +172,7 @@ class RateEquationModel(KineticModel):
         """  # Noqa: E501
         conc = get_conc(
             conc_balanced,
-            self.parameters.log_conc_unbalanced,
+            self.parameters["log_conc_unbalanced"],
             self.structure,
         )
         flux_list = []

@@ -15,20 +15,6 @@ from enzax.rate_equations import (
 )
 
 
-class ParameterDefinition(eqx.Module):
-    log_substrate_km: dict[str, Array]
-    log_product_km: dict[str, Array]
-    log_kcat: dict[str, Scalar]
-    log_enzyme: dict[str, Array]
-    log_ki: dict[str, Array]
-    dgf: Array
-    temperature: Scalar
-    log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[str, Array]
-    log_dc_activator: dict[str, Array]
-    log_tc: dict[str, Array]
-
-
 stoichiometry = {
     "r1": {"m1e": -1, "m1c": 1},
     "r2": {"m1c": -1, "m2c": 1},
@@ -54,7 +40,7 @@ structure = RateEquationKineticModelStructure(
     species_to_dgf_ix=np.array([0, 0, 1, 1]),
     rate_equations=rate_equations,
 )
-parameters = ParameterDefinition(
+parameters = dict(
     log_substrate_km={
         "r1": jnp.array([0.1]),
         "r2": jnp.array([0.5]),

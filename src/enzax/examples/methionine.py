@@ -22,21 +22,6 @@ from enzax.rate_equations import (
 )
 
 
-class ParameterDefinition(eqx.Module):
-    log_substrate_km: dict[str, Array]
-    log_product_km: dict[str, Array]
-    log_kcat: dict[str, Scalar]
-    log_enzyme: dict[str, Array]
-    log_ki: dict[str, Array]
-    dgf: Array
-    temperature: Scalar
-    log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[str, Array]
-    log_dc_activator: dict[str, Array]
-    log_tc: dict[str, Array]
-    log_drain: dict[str, Scalar]
-
-
 stoichiometry = {
     "the_drain": {"met-L": 1},
     "MAT1": {"met-L": -1, "atp": -1, "pi": 1, "ppi": 1, "amet": 1},
@@ -91,7 +76,7 @@ reactions = [
     "MTHFR1",
     "PROT1",
 ]
-parameters = ParameterDefinition(
+parameters = dict(
     log_kcat={
         "MAT1": jnp.log(jnp.array(7.89577)),  # MAT1
         "MAT3": jnp.log(jnp.array(19.9215)),  # MAT3
