@@ -64,6 +64,6 @@ libsbml_model = load_libsbml_model_from_url(url)
 model = sbml_to_enzax(libsbml_model)
 ```
 
-> [!NOTE] 
+> [!NOTE]
 > The parameters in the sbml file have to have unique identifiers.
-> In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.  
+> In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.

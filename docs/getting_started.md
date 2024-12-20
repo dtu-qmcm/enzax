@@ -152,6 +152,11 @@ libsbml_model = load_libsbml_model_from_url(url)
 model = sbml_to_enzax(libsbml_model)
 ```
 
+!!! note
+
+    The parameters in the sbml file have to have unique identifiers.
+    In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.
+
 ## Find a kinetic model's steady state
 
 Enzax provides a few example kinetic models, including [`methionine`](https://github.com/dtu-qmcm/enzax/blob/main/src/enzax/examples/methionine.py), a model of the mammalian methionine cycle.
@@ -184,8 +189,3 @@ def get_steady_state_from_params(parameters: PyTree):
 
 jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
 ```
-
-!!! note
-
-    The parameters in the sbml file have to have unique identifiers.
-    In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.  

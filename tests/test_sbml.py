@@ -23,7 +23,7 @@ def test_load_libsbml_model(file_path):
     [
         (
             exampleode_file,
-            jnp.array([0.3230166,  3.02209784]),
+            jnp.array([0.3230166, 3.02209784]),
             jnp.array([0.01, 0.01]),
         ),
     ],
