@@ -123,7 +123,10 @@ def get_idata(samples, info, coords=None, dims=None) -> az.InferenceData:
         dims=dims,
     )
     sample_stats = az.convert_to_inference_data(
-        {"diverging": info.is_divergent}, group="sample_stats"
+        {
+            "diverging": info.is_divergent,
+            "energy": info.energy,
+        }, group="sample_stats",
     )
     idata = az.concat(posterior, sample_stats)
     assert idata is not None
