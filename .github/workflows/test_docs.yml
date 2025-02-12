@@ -18,14 +18,20 @@ jobs:
     steps:
 
     - uses: actions/checkout@v4
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
       with:
-        python-version: 3.12
-    - name: install enzax with development packages
-      run: pip install -e .\[docs\]
+        # Install a specific version of uv.
+        version: "0.5.5"
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install the project
+      run: uv sync --all-extras --dev
+
     - name: build docs with mkdocs
-      run: mkdocs build
+      run: uv run mkdocs build
+
     - name: Audit with Lighthouse
       uses: treosh/lighthouse-ci-action@v12
       with:
