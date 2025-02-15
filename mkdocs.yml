@@ -24,8 +24,6 @@ plugins:
           members_order: source
           group_by_category: false
           filters: ["!^_"]
-          docstring_options:
-            warn_unknown_params: false
 
 markdown_extensions:
   - admonition
