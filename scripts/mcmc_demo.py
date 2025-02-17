@@ -4,64 +4,26 @@ import functools
 import logging
 import warnings
 
-from dataclasses import fields
 
 import arviz as az
-import equinox as eqx
 import jax
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
-from jax.scipy.stats import norm
-from jaxtyping import Array, Float, PyTree
+from jaxtyping import Array
 
 from enzax.examples import methionine
-from enzax.kinetic_model import RateEquationModel, get_conc
-from enzax.mcmc import (
-    ObservationSet,
-    get_idata,
-    run_nuts,
-    merge_fixed_and_free_parameters,
-)
+from enzax.kinetic_model import get_conc
+from enzax.mcmc import get_idata, run_nuts
 from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.statistical_modelling import (
+    enzax_log_density,
+    FreeParamSpec,
+    split_given_free,
+)
 
 SEED = 1234
 
 jax.config.update("jax_enable_x64", True)
-
-
-def joint_log_density(
-    free_params: PyTree,
-    fixed_params: PyTree,
-    prior_mean: PyTree,
-    prior_sd: PyTree,
-    obs: ObservationSet,
-    guess: Float[Array, " _"],
-):
-    params = merge_fixed_and_free_parameters(free_params, fixed_params)
-    # find the steady state concentration and flux
-    model = RateEquationModel(params, methionine.structure)
-    steady = get_kinetic_model_steady_state(model, guess)
-    conc = get_conc(steady, params.log_conc_unbalanced, methionine.structure)
-    flux = model.flux(steady)
-    # prior
-    flat_free_params, _ = ravel_pytree(free_params)
-    flat_prior_mean, _ = ravel_pytree(prior_mean)
-    flat_prior_sd, _ = ravel_pytree(prior_sd)
-    log_prior = norm.logpdf(
-        flat_free_params,
-        loc=flat_prior_mean,
-        scale=flat_prior_sd,
-    ).sum()
-    # likelihood
-    flat_log_enzyme, _ = ravel_pytree(params.log_enzyme)
-    log_likelihood = (
-        norm.logpdf(jnp.log(obs.conc), jnp.log(conc), obs.conc_scale).sum()
-        + norm.logpdf(
-            jnp.log(obs.enzyme), flat_log_enzyme, obs.enzyme_scale
-        ).sum()
-        + norm.logpdf(obs.flux, flux, obs.flux_scale).sum()
-    )
-    return log_prior + log_likelihood
 
 
 def main():
@@ -70,16 +32,21 @@ def main():
     true_model = methionine.model
     default_guess = jnp.full((5,), 0.01)
     true_steady = get_kinetic_model_steady_state(true_model, default_guess)
-    # prior
-    priors = {}
-    free_param_names = ["temperature"]
 
-    fixed = eqx.tree_at(lambda pt: (pt[k] for k pt.keys() if k not in free_param_names), true_parameters, replace=None)
-    pdb
-
-    fixed_params = filter_fixed(true_parameters)
-    prior_mean = filter_free(true_parameters)
+    # get free and fixed parameter pytrees in the right format
+    free_spec = [
+        FreeParamSpec(path=("log_kcat", "r1"), ix=(), inits=jnp.array([0.3])),
+        FreeParamSpec(path=("temperature",), ix=(), inits=jnp.array([3.3])),
+        FreeParamSpec(path=("dgf",), ix=((0, 2),), inits=jnp.array([33.3])),
+    ]
+    free_params, fixed_params = split_given_free(true_parameters, free_spec)
+    prior_mean = free_params
     prior_sd = jax.tree.map(lambda arr: jnp.full_like(arr, 0.1), prior_mean)
+    prior = jax.tree.transpose(
+        outer_treedef=jax.tree.structure(prior_mean),
+        inner_treedef=None,
+        pytree_to_transpose=[prior_mean, prior_sd],
+    )
     # get true concentration
     true_conc = get_conc(
         true_steady,
@@ -101,27 +68,19 @@ def main():
     obs_enzyme = jnp.exp(
         true_log_enz_flat + jax.random.normal(key_enz) * error_enzyme
     )
-    obs_flux = true_flux + jax.random.normal(key_flux) * error_conc
-    obs = ObservationSet(
-        conc=obs_conc,
-        flux=obs_flux,
-        enzyme=obs_enzyme,
-        conc_scale=error_conc,
-        flux_scale=error_flux,
-        enzyme_scale=error_enzyme,
-    )
-    flat_true_params, _ = ravel_pytree(true_parameters)
+    obs_flux = true_flux + jax.random.normal(key_flux) * error_flux
+    print(obs_conc)
+    print(obs_enzyme)
+    print(obs_flux)
     posterior_log_density = jax.jit(
         functools.partial(
-            joint_log_density,
-            fixed_params=fixed_params,
-            obs=obs,
-            prior_mean=prior_mean,
-            prior_sd=prior_sd,
+            enzax_log_density,
+            fixed_parameters=fixed_params,
+            observations=[],
+            prior=prior,
             guess=default_guess,
         )
     )
-    __import__("pdb").set_trace()
     samples, info = run_nuts(
         posterior_log_density,
         key_nuts,
@@ -142,9 +101,9 @@ def main():
     else:
         logging.info("No post-warmup divergent transitions!")
     print("True parameter values vs posterior:")
-    for param in true_parameters.__dataclass_fields__.keys():
-        true_val = getattr(true_parameters, param)
-        model_p = getattr(samples.position, param)
+    for param in free_params.keys():
+        true_val = true_parameters[param]
+        model_p = samples.position[param]
         if isinstance(true_val, Array):
             model_low = jnp.quantile(model_p, 0.01, axis=0)
             model_high = jnp.quantile(model_p, 0.99, axis=0)
@@ -153,6 +112,8 @@ def main():
                 {k: jnp.quantile(v, q, axis=0) for k, v in model_p.items()}
                 for q in (0.01, 0.99)
             )
+        else:
+            raise ValueError("Unexpectd parameter type")
         print(f" {param}:")
         print(f"  true value: {true_val}")
         print(f"  posterior 1%: {model_low}")

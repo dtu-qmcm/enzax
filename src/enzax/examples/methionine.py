@@ -5,10 +5,8 @@ https://doi.org/10.1021/acssynbio.3c00662
 
 """
 
-import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
 
 from enzax.kinetic_model import (
     RateEquationKineticModelStructure,
