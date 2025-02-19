@@ -15,11 +15,9 @@ from enzax.examples import methionine
 from enzax.kinetic_model import get_conc
 from enzax.mcmc import get_idata, run_nuts
 from enzax.steady_state import get_kinetic_model_steady_state
-from enzax.statistical_modelling import (
-    enzax_log_density,
-    FreeParamSpec,
-    split_given_free,
-)
+from enzax.statistical_modelling import enzax_log_density
+
+import equinox as eqx
 
 SEED = 1234
 
@@ -33,18 +31,25 @@ def main():
     default_guess = jnp.full((5,), 0.01)
     true_steady = get_kinetic_model_steady_state(true_model, default_guess)
 
-    # get free and fixed parameter pytrees in the right format
-    free_spec = [
-        FreeParamSpec(path=("log_kcat", "r1"), ix=(), inits=jnp.array([0.3])),
-        FreeParamSpec(path=("temperature",), ix=(), inits=jnp.array([3.3])),
-        FreeParamSpec(path=("dgf",), ix=((0, 2),), inits=jnp.array([33.3])),
-    ]
-    free_params, fixed_params = split_given_free(true_parameters, free_spec)
+    def get_free_params(params):
+        return (
+            params["log_kcat"]["MAT1"],
+            params["temperature"],
+            params["dgf"],
+        )
+
+    false_tree = jax.tree.map(lambda _: False, true_parameters)
+    freespec = eqx.tree_at(
+        get_free_params,
+        false_tree,
+        replace_fn=lambda _: True,
+    )
+    free_params, fixed_params = eqx.partition(true_parameters, freespec)
     prior_mean = free_params
     prior_sd = jax.tree.map(lambda arr: jnp.full_like(arr, 0.1), prior_mean)
     prior = jax.tree.transpose(
-        outer_treedef=jax.tree.structure(prior_mean),
-        inner_treedef=None,
+        outer_treedef=jax.tree.structure(("*", "*")),
+        inner_treedef=jax.tree.structure(prior_mean),
         pytree_to_transpose=[prior_mean, prior_sd],
     )
     # get true concentration
@@ -75,6 +80,7 @@ def main():
     posterior_log_density = jax.jit(
         functools.partial(
             enzax_log_density,
+            structure=true_model.structure,
             fixed_parameters=fixed_params,
             observations=[],
             prior=prior,
@@ -84,7 +90,7 @@ def main():
     samples, info = run_nuts(
         posterior_log_density,
         key_nuts,
-        true_parameters,
+        free_params,
         num_warmup=200,
         num_samples=200,
         initial_step_size=0.0001,

@@ -2,6 +2,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 import operator
+from typing import Union
 
 from enzax.kinetic_model import (
     RateEquationKineticModelStructure,
@@ -15,6 +16,9 @@ from jax import numpy as jnp
 from jax.scipy.stats import multivariate_normal, norm
 from jaxtyping import Array, Float, PyTree, Scalar
 import equinox as eqx
+
+FloatArray = Float[Array, " _"]
+ParamDict = dict[str, Union[FloatArray, "ParamDict"]]
 
 
 @dataclass
@@ -34,6 +38,20 @@ class ObservationSet:
     enzyme: list[Measurement]
 
 
+@dataclass
+class FreeParamSpec:
+    path: tuple[str, ...]
+    ix: tuple[tuple[int, ...], ...]
+    inits: Float[Array, " _"]
+
+
+@dataclass
+class FixedParamSpec:
+    path: tuple[str, ...]
+    ix: tuple[tuple[int, ...], ...]
+    fixed_values: Float[Array, " _"]
+
+
 def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
     """Total log density for an independent normal distribution."""
     return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
@@ -50,7 +68,9 @@ def mv_normal_prior_logdensity(
 
 
 def prior_from_truth(
-    true_params: PyTree, sd: float, is_multivariate: PyTree[bool] | None = None
+    true_params: ParamDict,
+    sd: float,
+    is_multivariate: PyTree[bool] | None = None,
 ) -> PyTree:
     """Get a PyTree of priors from a PyTree of true values and an sd.
 
@@ -111,15 +131,15 @@ def merge_fixed_and_free_parameters(free: PyTree, fixed: PyTree) -> PyTree:
     return jax.tree.map(merge_leaves, free, fixed, is_leaf=lambda x: x is None)
 
 
-def enzax_prior_logdensity(parameters: PyTree, prior: PyTree) -> Scalar:
-    def enzax_prior_logdensity_leaf(param_leaf, param_prior):
+def enzax_prior_logdensity(prior: PyTree, parameters: PyTree) -> Scalar:
+    def enzax_prior_logdensity_leaf(param_prior, param_leaf):
         loc, scale = param_prior
         return norm.logpdf(param_leaf, loc, scale).sum()
 
     prior_logdensities = jax.tree.map(
         enzax_prior_logdensity_leaf,
-        parameters,
         prior,
+        parameters,
         is_leaf=lambda node: isinstance(node, tuple),
     )
     return jax.tree.reduce(operator.add, prior_logdensities)
@@ -143,37 +163,20 @@ def enzax_log_density(
     if guess is None:
         guess = jnp.full((len(structure.balanced_species_ix)), 0.01)
     if fixed_parameters is not None:
-        parameters = merge_fixed_and_free_parameters(
-            free_parameters,
-            fixed_parameters,
-        )
+        parameters = eqx.combine(free_parameters, fixed_parameters)
     else:
         parameters = free_parameters
     # find the steady state concentration and flux
     model = RateEquationModel(parameters, structure)
     steady = get_kinetic_model_steady_state(model, guess)
-    conc = get_conc(steady, parameters.log_conc_unbalanced, structure)
+    conc = get_conc(steady, parameters["log_conc_unbalanced"], structure)
     flux = model.flux(steady)
-    flat_log_enzyme, _ = ravel_pytree(parameters.log_enzyme)
+    flat_log_enzyme, _ = ravel_pytree(parameters["log_enzyme"])
     enzyme = jnp.exp(flat_log_enzyme)
-    log_prior = enzax_prior_logdensity(free_parameters, prior)
+    log_prior = enzax_prior_logdensity(prior, free_parameters)
     log_likelihood = enzax_log_likelihood(observations, conc, flux, enzyme)
     # likelihood
     return log_prior + log_likelihood
-
-
-@dataclass
-class FreeParamSpec:
-    path: tuple[str, ...]
-    ix: tuple[tuple[int, ...], ...]
-    inits: Float[Array, " _"]
-
-
-@dataclass
-class FixedParamSpec:
-    path: tuple[str, ...]
-    ix: tuple[tuple[int, ...], ...]
-    fixed_values: Float[Array, " _"]
 
 
 def search(to_search: dict, queries: tuple[str, ...]):
