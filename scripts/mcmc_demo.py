@@ -5,26 +5,57 @@ import logging
 import warnings
 
 
-import arviz as az
 import jax
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
-from jaxtyping import Array
 
 from enzax.examples import methionine
 from enzax.kinetic_model import get_conc
-from enzax.mcmc import get_idata, run_nuts
+from enzax.mcmc import run_nuts
 from enzax.steady_state import get_kinetic_model_steady_state
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
 
 import equinox as eqx
+from jaxtyping import PyTree
 
 SEED = 1234
 
 jax.config.update("jax_enable_x64", True)
 
 
+def get_free_params(params: PyTree) -> PyTree:
+    """Given a parameter pytree, return the free parameters.
+
+    To get the free and fixed parameter pytrees with the right structure using
+    pytree manipulation functions from equinox:
+
+    ```python
+    import equinox as eqx
+    is_free = eqx.tree_at(
+        get_free_params,
+        jax.tree.map(lambda _: False, true_parameters),
+        replace_fn=lambda _: True,
+    )
+    free_params, fixed_params = eqx.partition(true_parameters, is_free)
+    ```
+
+    """
+    return (
+        params["log_kcat"]["MAT1"],
+        params["temperature"],
+        params["dgf"],
+    )
+
+
 def simulate(key, truth, error):
+    """Simulate observations from the true model.
+
+    Args:
+        key: jax.random key
+        truth: tuple of true concentration, log enzyme and flux
+        error: tuple of concentration, enzyme and flux error
+
+    """
     key_conc, key_enz, key_flux = jax.random.split(key, num=3)
     true_conc, true_log_enz, true_flux = truth
     conc_err, enz_err, flux_err = error
@@ -41,14 +72,6 @@ def main():
     true_model = methionine.model
     default_guess = jnp.full((5,), 0.01)
     true_steady = get_kinetic_model_steady_state(true_model, default_guess)
-
-    def get_free_params(params):
-        return (
-            params["log_kcat"]["MAT1"],
-            params["temperature"],
-            params["dgf"],
-        )
-
     is_free = eqx.tree_at(
         get_free_params,
         jax.tree.map(lambda _: False, true_parameters),
@@ -92,19 +115,17 @@ def main():
             guess=default_guess,
         )
     )
-    samples, info = run_nuts(
+    states, info = run_nuts(
         posterior_log_density,
         key_nuts,
         free_params,
-        num_warmup=200,
-        num_samples=200,
+        num_warmup=2,
+        num_samples=2,
         initial_step_size=0.0001,
         max_num_doublings=10,
         is_mass_matrix_diagonal=False,
         target_acceptance_rate=0.95,
     )
-    idata = get_idata(samples, info)
-    print(az.summary(idata))
     if jnp.any(info.is_divergent):
         n_divergent = info.is_divergent.sum()
         msg = f"There were {n_divergent} post-warmup divergent transitions."
@@ -112,21 +133,13 @@ def main():
     else:
         logging.info("No post-warmup divergent transitions!")
     print("True parameter values vs posterior:")
-    for param in free_params.keys():
-        true_val = true_parameters[param]
-        model_p = samples.position[param]
-        if isinstance(true_val, Array):
-            model_low = jnp.quantile(model_p, 0.01, axis=0)
-            model_high = jnp.quantile(model_p, 0.99, axis=0)
-        elif isinstance(true_val, dict):
-            model_low, model_high = (
-                {k: jnp.quantile(v, q, axis=0) for k, v in model_p.items()}
-                for q in (0.01, 0.99)
-            )
-        else:
-            raise ValueError("Unexpectd parameter type")
-        print(f" {param}:")
-        print(f"  true value: {true_val}")
+    for (path, leaf_true), leaf_model in zip(
+        jax.tree.leaves_with_path(free_params), jax.tree.leaves(states.position)
+    ):
+        model_low = jnp.quantile(leaf_model, 0.01, axis=0)
+        model_high = jnp.quantile(leaf_model, 0.99, axis=0)
+        print(f" {'|'.join(k.key for k in path)}:")
+        print(f"  true value: {leaf_true}")
         print(f"  posterior 1%: {model_low}")
         print(f"  posterior 99%: {model_high}")
 

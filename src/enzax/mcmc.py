@@ -3,7 +3,6 @@
 import functools
 from typing import Callable, TypedDict, Unpack
 
-import arviz as az
 import blackjax
 import jax
 import jax.numpy as jnp
@@ -72,30 +71,3 @@ def ind_prior_from_truth(truth: Float[Array, " _"], sd: ScalarLike):
 
     """
     return jnp.vstack((truth, jnp.full(truth.shape, sd)))
-
-
-def get_idata(samples, info, coords=None, dims=None) -> az.InferenceData:
-    """Get an arviz InferenceData from a blackjax NUTS output."""
-    if coords is None:
-        coords = dict()
-    sample_dict = dict()
-    for k in samples.position.__dataclass_fields__.keys():
-        samples_k = getattr(samples.position, k)
-        if isinstance(samples_k, Array):
-            sample_dict[k] = jnp.expand_dims(samples_k, 0)
-        elif isinstance(samples_k, dict):
-            sample_dict[k] = jnp.expand_dims(
-                jnp.concat([v.T for v in samples_k.values()]).T, 0
-            )
-    posterior = az.convert_to_inference_data(
-        sample_dict,
-        group="posterior",
-        coords=coords,
-        dims=dims,
-    )
-    sample_stats = az.convert_to_inference_data(
-        {"diverging": info.is_divergent}, group="sample_stats"
-    )
-    idata = az.concat(posterior, sample_stats)
-    assert idata is not None
-    return idata
