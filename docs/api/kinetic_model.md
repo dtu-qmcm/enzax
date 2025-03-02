@@ -6,4 +6,5 @@
       members:
         - KineticModelStructure
         - KineticModel
+        - KineticModelSbml
         - RateEquationModel
