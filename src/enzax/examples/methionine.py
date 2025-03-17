@@ -5,10 +5,8 @@ https://doi.org/10.1021/acssynbio.3c00662
 
 """
 
-import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
 
 from enzax.kinetic_model import (
     RateEquationKineticModelStructure,
@@ -20,21 +18,6 @@ from enzax.rate_equations import (
     IrreversibleMichaelisMenten,
     ReversibleMichaelisMenten,
 )
-
-
-class ParameterDefinition(eqx.Module):
-    log_substrate_km: dict[str, Array]
-    log_product_km: dict[str, Array]
-    log_kcat: dict[str, Scalar]
-    log_enzyme: dict[str, Array]
-    log_ki: dict[str, Array]
-    dgf: Array
-    temperature: Scalar
-    log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[str, Array]
-    log_dc_activator: dict[str, Array]
-    log_tc: dict[str, Array]
-    log_drain: dict[str, Scalar]
 
 
 stoichiometry = {
@@ -91,7 +74,7 @@ reactions = [
     "MTHFR1",
     "PROT1",
 ]
-parameters = ParameterDefinition(
+parameters = dict(
     log_kcat={
         "MAT1": jnp.log(jnp.array(7.89577)),  # MAT1
         "MAT3": jnp.log(jnp.array(19.9215)),  # MAT3

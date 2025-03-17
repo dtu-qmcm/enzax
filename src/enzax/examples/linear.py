@@ -1,9 +1,7 @@
 """A simple linear kinetic model."""
 
-import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
 
 from enzax.kinetic_model import (
     RateEquationKineticModelStructure,
@@ -13,20 +11,6 @@ from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
 )
-
-
-class ParameterDefinition(eqx.Module):
-    log_substrate_km: dict[str, Array]
-    log_product_km: dict[str, Array]
-    log_kcat: dict[str, Scalar]
-    log_enzyme: dict[str, Array]
-    log_ki: dict[str, Array]
-    dgf: Array
-    temperature: Scalar
-    log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[str, Array]
-    log_dc_activator: dict[str, Array]
-    log_tc: dict[str, Array]
 
 
 stoichiometry = {
@@ -54,7 +38,7 @@ structure = RateEquationKineticModelStructure(
     species_to_dgf_ix=np.array([0, 0, 1, 1]),
     rate_equations=rate_equations,
 )
-parameters = ParameterDefinition(
+parameters = dict(
     log_substrate_km={
         "r1": jnp.array([0.1]),
         "r2": jnp.array([0.5]),
