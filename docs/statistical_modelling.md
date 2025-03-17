@@ -10,7 +10,7 @@ Users are highly encouraged to post more examples to enzax's wiki: <https://gith
 
 ## Fixing parameters
 
-Quite often when statisticasl modelling with kinetic models, you are only interested in uncertainty related to certain parameters and want to treat  all other parameters as if they were known exactly.
+Quite often when statistical modelling with kinetic models, you are only interested in uncertainty related to certain parameters and want to treat  all other parameters as if they were known exactly.
 
 The simplest way to do this is to not include the known parameters in the kinetic model in the first place. However, it can get tedious to rewrite the model every time you want to change which parameters are fixed. More conveniently, it is possible to mask an existing set of parameters. Here's how to do it.
 
@@ -70,6 +70,8 @@ When we want to add the fixed parameters back in, we can use equinox's `combine`
 new_parameters = eqx.combine(new_free_parameters, fixed_parameters)
 new_parameters
 ```
+
+Note that this method of splitting fixed and free paremeters works for arbitary pytrees, and can easily be adjusted so that the fixed parameters rather than the free ones are user-specified.
 
 ## Posterior sampling
 
