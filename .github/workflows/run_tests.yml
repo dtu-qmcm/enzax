@@ -33,7 +33,7 @@ jobs:
       run: uv sync --all-extras --dev
 
     - name: pre-commit checks
-      uses: pre-commit/action@v2.0.3
+      uses: pre-commit/action@v3.0.1
 
     - name: Run tests
       run: uv run pytest tests
