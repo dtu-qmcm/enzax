@@ -18,7 +18,7 @@ To develop enzax locally you will probably need to install it with development d
 $ pip install enzax'[dev]'
 ```
 
-You can see what these dependencies are by checking the `[tool.pdm.dev-dependencies]` table in enzax's [`pyproject.toml` file](https://github.com/dtu-qmcm/enzax/blob/main/pyproject.toml).
+You can see what these dependencies are by checking the `[dependencies]` table in enzax's [`pyproject.toml` file](https://github.com/dtu-qmcm/enzax/blob/main/pyproject.toml).
 
 ## Releasing new versions of enzax
 
