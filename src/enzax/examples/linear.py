@@ -11,9 +11,9 @@ from enzax.rate_equations import (
 
 
 stoichiometry = {
-    "r1": {"m1e": -1, "m1c": 1},
-    "r2": {"m1c": -1, "m2c": 1},
-    "r3": {"m2c": -1, "m2e": 1},
+    "r1": {"m1e": -1.0, "m1c": 1.0},
+    "r2": {"m1c": -1.0, "m2c": 1.0},
+    "r3": {"m2c": -1.0, "m2e": 1.0},
 }
 reactions = ["r1", "r2", "r3"]
 species = ["m1e", "m1c", "m2c", "m2e"]

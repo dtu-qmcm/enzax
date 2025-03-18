@@ -23,43 +23,35 @@ class KineticModel(eqx.Module):
     species: list[str] = eqx.field(static=True)
     reactions: list[str] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
-    unbalanced_species: list[str] = eqx.field(static=True)
-    species_to_dgf_ix: NDArray[np.int16] = eqx.field(static=True)
-    balanced_species_ix: NDArray[np.int16] = eqx.field(static=True)
-    unbalanced_species_ix: NDArray[np.int16] = eqx.field(static=True)
-    S: NDArray[np.float64] = eqx.field(static=True)
+    unbalanced_species: list[str] = eqx.field(static=True, init=False)
+    species_to_dgf_ix: NDArray[np.int16] = eqx.field(
+        static=True, default=slice(None)
+    )
+    balanced_species_ix: NDArray[np.int16] = eqx.field(static=True, init=False)
+    unbalanced_species_ix: NDArray[np.int16] = eqx.field(
+        static=True, init=False
+    )
+    S: NDArray[np.float64] = eqx.field(static=True, init=False)
 
-    def __init__(
-        self,
-        stoichiometry,
-        species,
-        reactions,
-        balanced_species,
-        species_to_dgf_ix=None,
-    ):
-        self.stoichiometry = stoichiometry
-        self.species = species
-        self.reactions = reactions
-        self.balanced_species = balanced_species
+    def __post_init__(self, species_to_dgf_ix=None):
         self.unbalanced_species = [
-            s for s in species if s not in balanced_species
+            s for s in self.species if s not in self.balanced_species
         ]
-        if species_to_dgf_ix is None:
-            self.species_to_dgf_ix = np.arange(len(species), dtype=np.int16)
-        else:
-            self.species_to_dgf_ix = species_to_dgf_ix
         self.balanced_species_ix = np.array(
-            [get_ix_from_list(s, species) for s in self.balanced_species],
+            [get_ix_from_list(s, self.species) for s in self.balanced_species],
             dtype=np.int16,
         )
         self.unbalanced_species_ix = np.array(
-            [get_ix_from_list(s, species) for s in self.unbalanced_species],
+            [
+                get_ix_from_list(s, self.species)
+                for s in self.unbalanced_species
+            ],
             dtype=np.int16,
         )
-        S = np.zeros(shape=(len(species), len(reactions)))
-        for ix_reaction, reaction in enumerate(reactions):
-            for species_i, coeff in stoichiometry[reaction].items():
-                ix_species = get_ix_from_list(species_i, species)
+        S = np.zeros(shape=(len(self.species), len(self.reactions)))
+        for ix_reaction, reaction in enumerate(self.reactions):
+            for species_i, coeff in self.stoichiometry[reaction].items():
+                ix_species = get_ix_from_list(species_i, self.species)
                 S[ix_species, ix_reaction] = coeff
         self.S = S.astype(np.float64)
 
@@ -115,25 +107,9 @@ class KineticModel(eqx.Module):
 class RateEquationModel(KineticModel):
     """A kinetic model that specifies its fluxes using RateEquation objects."""
 
-    rate_equations: list[RateEquation]
-
-    def __init__(
-        self,
-        rate_equations: list[RateEquation],
-        stoichiometry,
-        species,
-        reactions,
-        balanced_species,
-        species_to_dgf_ix=None,
-    ):
-        super().__init__(
-            stoichiometry,
-            species,
-            reactions,
-            balanced_species,
-            species_to_dgf_ix=None,
-        )
-        self.rate_equations = rate_equations
+    rate_equations: list[RateEquation] = eqx.field(
+        static=True, default_factory=list
+    )
 
     def flux(
         self,
@@ -163,7 +139,7 @@ class RateEquationModel(KineticModel):
 
 
 class KineticModelSbml(KineticModel):
-    sym_module: Any
+    sym_module: Any = eqx.field(static=True, default=None)
 
     def flux(
         self,
