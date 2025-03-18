@@ -1,13 +1,13 @@
 [project]
 name = "enzax"
-version = "0.2.0"
+version = "0.1.2"
 description = "Differentiable models of enzyme-catalysed reaction networks"
 authors = [
     {name = "Teddy Groves", email = "tedgro@dtu.dk"},
 ]
 dependencies = [
     "blackjax>=1.2.1",
-    "diffrax>=0.6.0",
+    "diffrax>=0.7.0",
     "jaxtyping>=0.2.38",
     "arviz>=0.19.0",
     "equinox>=0.11.12",
@@ -32,6 +32,9 @@ docs = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pdm]
+distribution = true
 
 [tool.ruff]
 line-length = 80

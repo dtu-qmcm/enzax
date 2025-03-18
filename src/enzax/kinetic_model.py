@@ -1,15 +1,13 @@
 """Module containing enzax's definition of a kinetic model."""
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
-from jax.tree_util import register_pytree_node_class
-from jaxtyping import Array, Float, PyTree, ScalarLike, jaxtyped
+from jaxtyping import Array, Float, PyTree
 from numpy.typing import NDArray
-from typeguard import typechecked
 
 from enzax.rate_equation import RateEquation
 
@@ -18,27 +16,18 @@ def get_ix_from_list(s: str, list_of_strings: list[str]):
     return next(i for i, si in enumerate(list_of_strings) if si == s)
 
 
-def get_conc(balanced, log_unbalanced, structure):
-    conc = jnp.zeros(structure.S.shape[0])
-    conc = conc.at[structure.balanced_species_ix].set(balanced)
-    conc = conc.at[structure.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
-    return conc
-
-
-@jaxtyped(typechecker=typechecked)
-@register_pytree_node_class
-class KineticModelStructure:
+class KineticModel(eqx.Module):
     """Structural information about a kinetic model."""
 
-    stoichiometry: dict[str, dict[str, float]]
-    species: list[str]
-    reactions: list[str]
-    balanced_species: list[str]
-    unbalanced_species: list[str]
-    species_to_dgf_ix: NDArray[np.int16]
-    balanced_species_ix: NDArray[np.int16]
-    unbalanced_species_ix: NDArray[np.int16]
-    S: NDArray[np.float64]
+    stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
+    species: list[str] = eqx.field(static=True)
+    reactions: list[str] = eqx.field(static=True)
+    balanced_species: list[str] = eqx.field(static=True)
+    unbalanced_species: list[str] = eqx.field(static=True)
+    species_to_dgf_ix: NDArray[np.int16] = eqx.field(static=True)
+    balanced_species_ix: NDArray[np.int16] = eqx.field(static=True)
+    unbalanced_species_ix: NDArray[np.int16] = eqx.field(static=True)
+    S: NDArray[np.float64] = eqx.field(static=True)
 
     def __init__(
         self,
@@ -89,17 +78,52 @@ class KineticModelStructure:
     def tree_unflatten(cls, aux_data, children):
         return cls(*children)
 
+    def get_conc(self, balanced, log_unbalanced):
+        conc = jnp.zeros(self.S.shape[0])
+        conc = conc.at[self.balanced_species_ix].set(balanced)
+        conc = conc.at[self.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
+        return conc
 
-class RateEquationKineticModelStructure(KineticModelStructure):
+    @abstractmethod
+    def flux(
+        self,
+        conc_balanced: Float[Array, " n_balanced"],
+        parameters: PyTree,
+    ) -> Float[Array, " n"]: ...
+
+    def dcdt(
+        self,
+        conc: Float[Array, " n_balanced"],
+        parameters: PyTree,
+    ) -> Float[Array, " n_balanced"]:
+        """Get the rate of change of balanced species concentrations.
+
+        :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+
+        :param parameters: A PyTree of parameters.
+
+        :return: a one dimensional array of floats representing the rate of change of balanced species concentrations. Has same size as self.structure.ix_balanced.
+        """  # Noqa: E501
+        v = self.flux(conc, parameters)
+        sv = self.S @ v
+        return jnp.array(sv[self.balanced_species_ix])
+
+    def __call__(self, t, y, parameters):
+        return self.dcdt(y, parameters)
+
+
+class RateEquationModel(KineticModel):
+    """A kinetic model that specifies its fluxes using RateEquation objects."""
+
     rate_equations: list[RateEquation]
 
     def __init__(
         self,
+        rate_equations: list[RateEquation],
         stoichiometry,
         species,
         reactions,
         balanced_species,
-        rate_equations,
         species_to_dgf_ix=None,
     ):
         super().__init__(
@@ -107,61 +131,14 @@ class RateEquationKineticModelStructure(KineticModelStructure):
             species,
             reactions,
             balanced_species,
-            species_to_dgf_ix,
+            species_to_dgf_ix=None,
         )
         self.rate_equations = rate_equations
 
-    def tree_flatten(self):
-        children = (
-            self.stoichiometry,
-            self.species,
-            self.reactions,
-            self.balanced_species,
-            self.species_to_dgf_ix,
-            self.rate_equations,
-        )
-        aux_data = None
-        return children, aux_data
-
-
-class KineticModel(eqx.Module, ABC):
-    """Abstract base class for kinetic models."""
-
-    parameters: PyTree
-    structure: KineticModelStructure = eqx.field(static=True)
-
-    @abstractmethod
     def flux(
         self,
         conc_balanced: Float[Array, " n_balanced"],
-    ) -> Float[Array, " n"]: ...
-
-    @eqx.filter_jit
-    def dcdt(
-        self, t: ScalarLike, conc: Float[Array, " n_balanced"], args=None
-    ) -> Float[Array, " n_balanced"]:
-        """Get the rate of change of balanced species concentrations.
-
-        Note that the signature is as required for a Diffrax vector field function, hence the redundant variable t and the weird name "args".
-
-        :param t: redundant variable representing time.
-
-        :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
-
-        """  # Noqa: E501
-        v = self.flux(conc)
-        sv = self.structure.S @ v
-        return jnp.array(sv[self.structure.balanced_species_ix])
-
-
-class RateEquationModel(KineticModel):
-    """A kinetic model that specifies its fluxes using RateEquation objects."""
-
-    structure: RateEquationKineticModelStructure
-
-    def flux(
-        self,
-        conc_balanced: Float[Array, " n_balanced"],
+        parameters: PyTree,
     ) -> Float[Array, " n"]:
         """Get fluxes from balanced species concentrations.
 
@@ -170,20 +147,16 @@ class RateEquationModel(KineticModel):
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
         """  # Noqa: E501
-        conc = get_conc(
-            conc_balanced,
-            self.parameters["log_conc_unbalanced"],
-            self.structure,
-        )
+        conc = self.get_conc(conc_balanced, parameters["log_conc_unbalanced"])
         flux_list = []
         for reaction_ix, (reaction_id, rate_equation) in enumerate(
-            zip(self.structure.reactions, self.structure.rate_equations)
+            zip(self.reactions, self.rate_equations)
         ):
             ipt = rate_equation.get_input(
-                parameters=self.parameters,
+                parameters=parameters,
                 reaction_id=reaction_id,
-                reaction_stoichiometry=self.structure.S[:, reaction_ix],
-                species_to_dgf_ix=self.structure.species_to_dgf_ix,
+                reaction_stoichiometry=self.S[:, reaction_ix],
+                species_to_dgf_ix=self.species_to_dgf_ix,
             )
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)
@@ -195,11 +168,12 @@ class KineticModelSbml(KineticModel):
     def flux(
         self,
         conc_balanced: Float[Array, " n_balanced"],
+        parameters,
     ) -> Float[Array, " n"]:
         flux = jnp.array(
             self.sym_module(
-                **self.parameters,
-                **dict(zip(self.structure.balanced_species, conc_balanced)),
+                **parameters,
+                **dict(zip(self.balanced_species, conc_balanced)),
             )
         )
         return flux

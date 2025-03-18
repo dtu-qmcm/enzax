@@ -5,7 +5,7 @@ from jax import numpy as jnp
 from jaxtyping import Array, Scalar
 
 from enzax.examples import methionine
-from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
 
 import functools
@@ -103,15 +103,15 @@ def test_lp_grad():
     true_parameters = methionine.parameters
     true_model = methionine.model
     default_state_guess = jnp.full((5,), 0.01)
-    true_states = get_kinetic_model_steady_state(
-        true_model, default_state_guess
+    true_states = get_steady_state(
+        true_model,
+        default_state_guess,
+        true_parameters,
     )
     # get true concentration
-    true_conc = jnp.zeros(methionine.structure.S.shape[0])
-    true_conc = true_conc.at[methionine.structure.balanced_species_ix].set(
-        true_states
-    )
-    true_conc = true_conc.at[methionine.structure.unbalanced_species_ix].set(
+    true_conc = jnp.zeros(true_model.S.shape[0])
+    true_conc = true_conc.at[true_model.balanced_species_ix].set(true_states)
+    true_conc = true_conc.at[true_model.unbalanced_species_ix].set(
         jnp.exp(true_parameters["log_conc_unbalanced"])  # pyright: ignore[reportArgumentType]
     )
     error_conc = jnp.full_like(obs_conc, 0.03)
@@ -125,7 +125,7 @@ def test_lp_grad():
     posterior_log_density = jax.jit(
         functools.partial(
             enzax_log_density,
-            structure=true_model.structure,
+            model=true_model,
             fixed_parameters=None,
             measurements=measurements,
             prior=prior,
