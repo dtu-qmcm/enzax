@@ -1,6 +1,6 @@
 [project]
 name = "enzax"
-version = "0.1.2"
+version = "0.2.1"
 description = "Differentiable models of enzyme-catalysed reaction networks"
 authors = [
     {name = "Teddy Groves", email = "tedgro@dtu.dk"},
