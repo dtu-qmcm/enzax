@@ -55,6 +55,8 @@ parameters = {
     **compartments,
     **unbalanced_species,
 }
+
+
 def main():
     kinmodel_sbml = KineticModelSbml(
         stoichiometry=stoichiometry,
@@ -74,6 +76,7 @@ def main():
     guess = jnp.full((2), 0.01)
     steady_state = get_steady_state(kinmodel_sbml, guess, parameters)
     print("steady_state: ", steady_state)
+
 
 if __name__ == "__main__":
     main()
