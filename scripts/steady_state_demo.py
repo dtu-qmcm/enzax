@@ -17,7 +17,6 @@ def main():
     model = example.model
     parameters = example.parameters
 
-    __import__("pdb").set_trace()
     # compare good and bad guess
     for guess in [BAD_GUESS, GOOD_GUESS]:
         # solve once for jitting
