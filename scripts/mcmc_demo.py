@@ -10,9 +10,8 @@ from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 from enzax.examples import methionine
-from enzax.kinetic_model import get_conc
 from enzax.mcmc import run_nuts
-from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
 
 import equinox as eqx
@@ -69,9 +68,9 @@ def simulate(key, truth, error):
 def main():
     """Demonstrate How to make a Bayesian kinetic model with enzax."""
     true_parameters = methionine.parameters
-    true_model = methionine.model
+    model = methionine.model
     default_guess = jnp.full((5,), 0.01)
-    true_steady = get_kinetic_model_steady_state(true_model, default_guess)
+    true_steady = get_steady_state(model, default_guess, true_parameters)
     is_free = eqx.tree_at(
         get_free_params,
         jax.tree.map(lambda _: False, true_parameters),
@@ -85,12 +84,11 @@ def main():
     )
     prior = prior_from_truth(free_params, sd=0.1, is_multivariate=is_mv)
     # get true concentration, flux and log enzyme
-    true_conc = get_conc(
+    true_conc = methionine.model.get_conc(
         true_steady,
         true_parameters["log_conc_unbalanced"],
-        methionine.structure,
     )
-    true_flux = true_model.flux(true_steady)
+    true_flux = model.flux(true_steady, methionine.parameters)
     true_log_enz_flat, _ = ravel_pytree(true_parameters["log_enzyme"])
     # simulate observations
     conc_err = jnp.full_like(true_conc, 0.03)
@@ -105,15 +103,13 @@ def main():
         error=measurement_errors,
     )
     measurements = tuple(zip(measurement_values, measurement_errors))
-    posterior_log_density = jax.jit(
-        functools.partial(
-            enzax_log_density,
-            structure=true_model.structure,
-            fixed_parameters=fixed_params,
-            measurements=measurements,
-            prior=prior,
-            guess=default_guess,
-        )
+    posterior_log_density = functools.partial(
+        enzax_log_density,
+        model=model,
+        fixed_parameters=fixed_params,
+        measurements=measurements,
+        prior=prior,
+        guess=default_guess,
     )
     states, info = run_nuts(
         posterior_log_density,

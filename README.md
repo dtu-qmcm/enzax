@@ -26,26 +26,23 @@ from jax import numpy as jnp
 
 guess = jnp.full((5,) 0.01)
 
-steady_state = get_kinetic_model_steady_state(methionine.model, guess)
+steady_state = get_steady_state(methionine.model, guess, methionine.parameters)
 ```
 
 ### Find a steady state's Jacobian with respect to all parameters
 
 ```python
 import jax
-from enzax.examples import methionine
-from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.examples.methionine import model, parameters
+from enzax.steady_state import get_steady_state
 from jax import numpy as jnp
-from jaxtyping import PyTree
 
-guess = jnp.full((5,) 0.01)
-model = methionine.model
+guess = jnp.full((5,), 0.01)
 
-def get_steady_state_from_params(parameters: PyTree):
-    """Get the steady state with a one-argument non-pure function."""
-    _model = RateEquationModel(parameters, model.structure)
-    return get_kinetic_model_steady_state(_model, guess)
-
-jacobian = jax.jacrev(get_steady_state_from_params)(model.parameters)
-
+jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
+jacobian["log_kcat"]["GNMT1"]
+```
+```
+Array([-3.83561770e-07, -9.66801636e-06,  3.38183140e-10,  3.15564928e-09,
+        5.28588273e-08], dtype=float64, weak_type=True)
 ```

@@ -3,10 +3,7 @@
 import numpy as np
 from jax import numpy as jnp
 
-from enzax.kinetic_model import (
-    RateEquationKineticModelStructure,
-    RateEquationModel,
-)
+from enzax.kinetic_model import RateEquationModel
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
@@ -14,9 +11,9 @@ from enzax.rate_equations import (
 
 
 stoichiometry = {
-    "r1": {"m1e": -1, "m1c": 1},
-    "r2": {"m1c": -1, "m2c": 1},
-    "r3": {"m2c": -1, "m2e": 1},
+    "r1": {"m1e": -1.0, "m1c": 1.0},
+    "r2": {"m1c": -1.0, "m2c": 1.0},
+    "r3": {"m2c": -1.0, "m2e": 1.0},
 }
 reactions = ["r1", "r2", "r3"]
 species = ["m1e", "m1c", "m2c", "m2e"]
@@ -30,7 +27,7 @@ rate_equations = [
     ),
     ReversibleMichaelisMenten(water_stoichiometry=0.0),
 ]
-structure = RateEquationKineticModelStructure(
+model = RateEquationModel(
     stoichiometry=stoichiometry,
     species=species,
     reactions=reactions,
@@ -67,6 +64,4 @@ parameters = dict(
     log_dc_activator={"r1": jnp.array([-0.1]), "r2": jnp.array([])},
     log_dc_inhibitor={"r1": jnp.array([]), "r2": jnp.array([0.2])},
 )
-true_model = RateEquationModel(structure=structure, parameters=parameters)
 steady_state = jnp.array([0.43658744, 0.12695706])
-model = RateEquationModel(parameters, structure)

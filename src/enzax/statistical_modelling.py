@@ -1,12 +1,8 @@
 import operator
 from typing import Union
 
-from enzax.kinetic_model import (
-    RateEquationKineticModelStructure,
-    RateEquationModel,
-    get_conc,
-)
-from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.kinetic_model import RateEquationModel
+from enzax.steady_state import get_steady_state
 import jax
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
@@ -155,6 +151,7 @@ def enzax_prior_logdensity(parameters: PyTree, prior: PyTree) -> Scalar:
     return jax.tree.reduce(operator.add, prior_logdensities)
 
 
+@jax.jit
 def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     conc_hat, conc_obs, conc_err = conc
     enz_hat, enz_obs, enz_err = enzyme
@@ -167,26 +164,27 @@ def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     return llik_conc + llik_enz + llik_flux
 
 
+@jax.jit
 def enzax_log_density(
     free_parameters: PyTree,
-    structure: RateEquationKineticModelStructure,
+    model: RateEquationModel,
     measurements: PyTree,
     prior: PyTree,
     fixed_parameters: PyTree | None = None,
     guess: Float[Array, " _"] | None = None,
 ) -> Scalar:
     if guess is None:
-        guess = jnp.full((len(structure.balanced_species_ix)), 0.01)
+        guess = jnp.full((len(model.balanced_species_ix)), 0.01)
     if fixed_parameters is not None:
         parameters = eqx.combine(free_parameters, fixed_parameters)
     else:
         parameters = free_parameters
-    model = RateEquationModel(parameters, structure)
-    steady = get_kinetic_model_steady_state(model, guess)
-    conc_hat = get_conc(steady, parameters["log_conc_unbalanced"], structure)
+
+    steady = get_steady_state(model, guess, parameters)
+    conc_hat = model.get_conc(steady, parameters["log_conc_unbalanced"])
     flat_log_enzyme, _ = ravel_pytree(parameters["log_enzyme"])
     enz_hat = jnp.exp(jnp.array(flat_log_enzyme))
-    flux_hat = model.flux(steady)
+    flux_hat = model.flux(steady, parameters)
     conc_msts, enz_msts, flux_msts = measurements
     log_prior = enzax_prior_logdensity(free_parameters, prior)
     log_likelihood = enzax_log_likelihood(

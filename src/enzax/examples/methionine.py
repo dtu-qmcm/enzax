@@ -8,10 +8,7 @@ https://doi.org/10.1021/acssynbio.3c00662
 import numpy as np
 from jax import numpy as jnp
 
-from enzax.kinetic_model import (
-    RateEquationKineticModelStructure,
-    RateEquationModel,
-)
+from enzax.kinetic_model import RateEquationModel
 from enzax.rate_equations import (
     AllostericIrreversibleMichaelisMenten,
     Drain,
@@ -204,7 +201,7 @@ parameters = dict(
     },
 )
 
-structure = RateEquationKineticModelStructure(
+model = RateEquationModel(
     stoichiometry=stoichiometry,
     species=species,
     reactions=reactions,
@@ -253,4 +250,3 @@ steady_state = jnp.array(
         6.534400e-06,  # 5mthf
     ]
 )
-model = RateEquationModel(parameters, structure)

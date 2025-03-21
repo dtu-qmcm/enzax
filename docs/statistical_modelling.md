@@ -17,8 +17,7 @@ The simplest way to do this is to not include the known parameters in the kineti
 In this example, we fix some parameters of the `methionine` model provided by enzax, a medium-to-small sized model that describes the mammalian methionine cycle. We can load this model and its parameters as follows:
 
 ```python
-from enzax.examples import methionine
-true_parameters = methionine.parameters
+from enzax.examples.methionine import parameters as true_parameters
 true_parameters
 ```
 
@@ -26,10 +25,7 @@ The parameters are a pretty large dictionary. Suppose we want to make a statisti
 
 ```python
 def get_free_params(params):
-    return (
-        params["log_kcat"]["MAT1"],
-        params["temperature"],
-    )
+    return params["log_kcat"]["MAT1"], params["temperature"]
 ```
 
 Next, we use some functions from the library [equinox](https://github.com/patrick-kidger/equinox)---`tree_at` and `partition`---as well as `jax.tree.map`to create dictionaries of free and fixed parameters based on our function.
@@ -71,7 +67,7 @@ new_parameters = eqx.combine(new_free_parameters, fixed_parameters)
 new_parameters
 ```
 
-Note that this method of splitting fixed and free paremeters works for arbitary pytrees, and can easily be adjusted so that the fixed parameters rather than the free ones are user-specified.
+Note that this method of splitting fixed and free parameters works for arbitrary pytrees, and can easily be adjusted so that the fixed parameters rather than the free ones are user-specified.
 
 ## Posterior sampling
 
