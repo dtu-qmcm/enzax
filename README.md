@@ -58,7 +58,7 @@ libsbml_model = load_libsbml_model_from_url(url)
 # or to load an sbml file from your computer:
 # libsbml_model = load_libsbml_model_from_file(path_to_file)
 
-model = sbml_to_enzax(libsbml_model)
+model, parameters = sbml_to_enzax(libsbml_model)
 ```
 
 > [!NOTE]

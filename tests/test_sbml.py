@@ -3,7 +3,7 @@ import pytest
 import importlib.resources
 from tests import data
 from enzax import sbml
-from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.steady_state import get_steady_state
 
 exampleode_file = importlib.resources.files(data) / "exampleode.xml"
 
@@ -30,6 +30,6 @@ def test_load_libsbml_model(file_path):
 )
 def test_sbml_to_enzax(path, expected, guess):
     libsbml_model = sbml.load_libsbml_model_from_file(path)
-    model = sbml.sbml_to_enzax(libsbml_model)
-    steady_state = get_kinetic_model_steady_state(model, guess)
+    model, parameters = sbml.sbml_to_enzax(libsbml_model)
+    steady_state = get_steady_state(model, guess, parameters)
     assert jnp.isclose(steady_state, expected).all()

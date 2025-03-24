@@ -5,7 +5,7 @@ import requests
 import sympy2jax
 from sbmlmath import SBMLMathMLParser
 
-from enzax.kinetic_model import KineticModelSbml, KineticModelStructure
+from enzax.kinetic_model import KineticModelSbml
 
 
 def _get_libsbml_model_from_doc(doc):
@@ -21,14 +21,30 @@ def _get_libsbml_model_from_doc(doc):
 
 
 def load_libsbml_model_from_file(file_path: Path) -> libsbml.Model:
-    """Load a libsbml.Model object from local file at file_path."""
+    """Load a libsbml.Model object from local file at file_path.
+
+    Args:
+        file_path: The path to the SBML file.
+
+    Returns:
+        A libsbml.Model object.
+
+    """
     reader = libsbml.SBMLReader()
     doc = reader.readSBML(file_path)
     return _get_libsbml_model_from_doc(doc)
 
 
 def load_libsbml_model_from_url(url: str) -> libsbml.Model:
-    """Load a libsbml.Model object from a url."""
+    """Load a libsbml.Model object from a url.
+
+    Args:
+        url: The url to the SBML file.
+
+    Returns:
+        A libsbml.Model object
+
+    """
     reader = libsbml.SBMLReader()
     with requests.get(url) as response:
         doc = reader.readSBMLFromString(response.text)
@@ -94,25 +110,38 @@ def get_reaction_stoichiometry(reaction: libsbml.Reaction) -> dict[str, float]:
     return reactant_stoichiometries | product_stoichiometries
 
 
-def get_sbml_structure(model_sbml: libsbml.Model) -> KineticModelStructure:
-    species = [s.getId() for s in model_sbml.getListOfSpecies()]
+def get_kinetic_model_from_sbml(
+    libsbml_model: libsbml.Model,
+) -> KineticModelSbml:
+    """Turn a libsbml.Model into a KineticModelSbml.
+
+    Args:
+        libsbml_model: The libsbml.Model to convert.
+
+    Returns:
+        A KineticModelSbml
+
+    """
+    species = [s.getId() for s in libsbml_model.getListOfSpecies()]
     balanced_species = [
         b.getId()
-        for b in model_sbml.getListOfSpecies()
+        for b in libsbml_model.getListOfSpecies()
         if not b.boundary_condition
     ]
     reactions = [
-        reaction.getId() for reaction in model_sbml.getListOfReactions()
+        reaction.getId() for reaction in libsbml_model.getListOfReactions()
     ]
     stoichiometry = {
         reaction.getId(): get_reaction_stoichiometry(reaction)
-        for reaction in model_sbml.getListOfReactions()
+        for reaction in libsbml_model.getListOfReactions()
     }
-    return KineticModelStructure(
+    sym_module = get_sbml_sym_module(libsbml_model)
+    return KineticModelSbml(
         stoichiometry=stoichiometry,
         species=species,
         reactions=reactions,
         balanced_species=balanced_species,
+        sym_module=sym_module,
     )
 
 
@@ -121,13 +150,18 @@ def get_sbml_sym_module(model: libsbml.Model):
     return sympy_to_enzax(reactions_sympy)
 
 
-def sbml_to_enzax(model: libsbml.Model) -> KineticModelSbml:
-    """Convert a libsbml.Model object into a KineticModelSbml."""
-    parameters = get_sbml_parameters(model)
-    structure = get_sbml_structure(model)
-    sym_module = get_sbml_sym_module(model)
-    return KineticModelSbml(
-        parameters=parameters,
-        structure=structure,
-        sym_module=sym_module,
-    )
+def sbml_to_enzax(
+    libsbml_model: libsbml.Model,
+) -> tuple[KineticModelSbml, dict]:
+    """Turn a libsbml.Model into a KineticModelSbml plus parameters.
+
+    Args:
+        libsbml_model: The libsbml.Model to convert.
+
+    Returns:
+        A tuple of a KineticModelSbml and a dictionary of parameters
+
+    """
+    parameters = get_sbml_parameters(libsbml_model)
+    model = get_kinetic_model_from_sbml(libsbml_model)
+    return model, parameters
