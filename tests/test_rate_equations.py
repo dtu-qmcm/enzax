@@ -1,9 +1,7 @@
 """Unit tests for rate equations."""
 
-import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
 from enzax.rate_equations import (
     AllostericIrreversibleMichaelisMenten,
     AllostericReversibleMichaelisMenten,
@@ -12,23 +10,9 @@ from enzax.rate_equations import (
 )
 
 
-class ExampleParameterSet(eqx.Module):
-    log_substrate_km: dict[str, Array]
-    log_product_km: dict[str, Array]
-    log_kcat: dict[str, Scalar]
-    log_enzyme: dict[str, Array]
-    log_ki: dict[str, Array]
-    dgf: Array
-    temperature: Scalar
-    log_conc_unbalanced: Array
-    log_dc_inhibitor: dict[str, Array]
-    log_dc_activator: dict[str, Array]
-    log_tc: dict[str, Array]
-
-
 EXAMPLE_S = np.array([[-1], [1], [0]], dtype=np.float64)
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
-EXAMPLE_PARAMETERS = ExampleParameterSet(
+EXAMPLE_PARAMETERS = dict(
     log_substrate_km={"r1": jnp.array([0.1])},
     log_product_km={"r1": jnp.array([-0.2])},
     log_kcat={"r1": jnp.array(-0.1)},

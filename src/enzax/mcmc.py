@@ -3,25 +3,10 @@
 import functools
 from typing import Callable, TypedDict, Unpack
 
-import arviz as az
 import blackjax
-import chex
 import jax
 import jax.numpy as jnp
-from jax.scipy.stats import norm, multivariate_normal
 from jaxtyping import Array, Float, PyTree, ScalarLike
-
-
-@chex.dataclass
-class ObservationSet:
-    """Measurements from a single experiment."""
-
-    conc: Float[Array, " m"]
-    flux: Float[Array, " n"]
-    enzyme: Float[Array, " e"]
-    conc_scale: ScalarLike
-    flux_scale: ScalarLike
-    enzyme_scale: ScalarLike
 
 
 class AdaptationKwargs(TypedDict):
@@ -31,21 +16,6 @@ class AdaptationKwargs(TypedDict):
     max_num_doublings: int
     is_mass_matrix_diagonal: bool
     target_acceptance_rate: float
-
-
-def ind_normal_prior_logdensity(param, prior: Float[Array, "2 _"]):
-    """Total log density for an independent normal distribution."""
-    return norm.logpdf(param, loc=prior[0], scale=prior[1]).sum()
-
-
-def mv_normal_prior_logdensity(
-    param: Float[Array, " _"],
-    prior: tuple[Float[Array, " _"], Float[Array, " _ _"]],
-):
-    """Total log density for an multivariate normal distribution."""
-    return jnp.sum(
-        multivariate_normal.logpdf(param, mean=prior[0], cov=prior[1])
-    )
 
 
 @functools.partial(jax.jit, static_argnames=["kernel", "num_samples"])
@@ -101,30 +71,3 @@ def ind_prior_from_truth(truth: Float[Array, " _"], sd: ScalarLike):
 
     """
     return jnp.vstack((truth, jnp.full(truth.shape, sd)))
-
-
-def get_idata(samples, info, coords=None, dims=None) -> az.InferenceData:
-    """Get an arviz InferenceData from a blackjax NUTS output."""
-    if coords is None:
-        coords = dict()
-    sample_dict = dict()
-    for k in samples.position.__dataclass_fields__.keys():
-        samples_k = getattr(samples.position, k)
-        if isinstance(samples_k, Array):
-            sample_dict[k] = jnp.expand_dims(samples_k, 0)
-        elif isinstance(samples_k, dict):
-            sample_dict[k] = jnp.expand_dims(
-                jnp.concat([v.T for v in samples_k.values()]).T, 0
-            )
-    posterior = az.convert_to_inference_data(
-        sample_dict,
-        group="posterior",
-        coords=coords,
-        dims=dims,
-    )
-    sample_stats = az.convert_to_inference_data(
-        {"diverging": info.is_divergent}, group="sample_stats"
-    )
-    idata = az.concat(posterior, sample_stats)
-    assert idata is not None
-    return idata

@@ -8,30 +8,33 @@ import diffrax
 import equinox as eqx
 import lineax as lx
 from jaxtyping import Array, Float, PyTree
-
-from enzax.kinetic_model import KineticModel
+from jax import numpy as jnp
 
 
 @eqx.filter_jit()
-def get_kinetic_model_steady_state(
-    model: KineticModel,
+def get_steady_state(
+    rhs,
     guess: Float[Array, " n_balanced"],
+    parameters: PyTree,
 ) -> PyTree:
     """Get the steady state of a kinetic model, using diffrax.
 
     The better the guess (generally) the faster and more reliable the solving.
 
-    :param model: a KineticModel object
+    :param rhs: a function matching diffrax's required signature for an ODE
+    right hand side. It should take in three arguments: an array of real
+    numbers `t`, a PyTree of states `y` and a PyTree of auxiliary arguments `
+    args`. It should return a PyTree with the same shape as `y`.
 
-    :param guess: a JAX array of floats. Must have the same length as the
-    model's number of balanced species.
+    :param guess: a JAX array of floats. Must have the same length as `rhs`'s
+    `y` and return value.
 
     """
-    term = diffrax.ODETerm(model.dcdt)
+    term = diffrax.ODETerm(rhs)
     solver = diffrax.Kvaerno5()
-    t0 = 0
-    t1 = 900
-    dt0 = 0.000001
+    t0 = jnp.array(0)
+    t1 = jnp.array(1000)
+    dt0 = jnp.array(0.000001)
     max_steps = None
     controller = diffrax.PIDController(
         pcoeff=0.1,
@@ -45,16 +48,17 @@ def get_kinetic_model_steady_state(
         linear_solver=lx.AutoLinearSolver(well_posed=False)
     )
     sol = diffrax.diffeqsolve(
-        term,
-        solver,
-        t0,
-        t1,
-        dt0,
-        guess,
+        terms=term,
+        solver=solver,
+        t0=t0,
+        t1=t1,
+        dt0=dt0,
+        y0=guess,
         max_steps=max_steps,
         stepsize_controller=controller,
         event=event,
         adjoint=adjoint,
+        args=parameters,
     )
     if sol.ys is not None:
         return sol.ys[0]

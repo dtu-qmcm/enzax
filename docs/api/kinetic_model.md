@@ -4,6 +4,6 @@
       filters:
         - "!check"
       members:
-        - KineticModelStructure
         - KineticModel
+        - KineticModelSbml
         - RateEquationModel

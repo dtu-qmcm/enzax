@@ -26,13 +26,13 @@ def get_irreversible_michaelis_menten_input(
 ) -> IrreversibleMichaelisMentenInput:
     ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
     return IrreversibleMichaelisMentenInput(
-        kcat=jnp.exp(parameters.log_kcat[reaction_id]),
-        enzyme=jnp.exp(parameters.log_enzyme[reaction_id]),
+        kcat=jnp.exp(parameters["log_kcat"][reaction_id]),
+        enzyme=jnp.exp(parameters["log_enzyme"][reaction_id]),
         ix_substrate=ix_substrate,
-        substrate_kms=jnp.exp(parameters.log_substrate_km[reaction_id]),
+        substrate_kms=jnp.exp(parameters["log_substrate_km"][reaction_id]),
         substrate_stoichiometry=reaction_stoichiometry[ix_substrate],
         ix_ki_species=ci_ix,
-        ki=jnp.exp(parameters.log_ki[reaction_id]),
+        ki=jnp.exp(parameters["log_ki"][reaction_id]),
     )
 
 
@@ -66,13 +66,13 @@ def get_reversible_michaelis_menten_input(
     ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
     ix_product = np.argwhere(reaction_stoichiometry > 0.0).flatten()
     return ReversibleMichaelisMentenInput(
-        kcat=jnp.exp(parameters.log_kcat[reaction_id]),
-        enzyme=jnp.exp(parameters.log_enzyme[reaction_id]),
-        substrate_kms=jnp.exp(parameters.log_substrate_km[reaction_id]),
-        product_kms=jnp.exp(parameters.log_product_km[reaction_id]),
-        ki=jnp.exp(parameters.log_ki[reaction_id]),
-        dgf=parameters.dgf[species_to_dgf_ix][ix_reactant],
-        temperature=parameters.temperature,
+        kcat=jnp.exp(parameters["log_kcat"][reaction_id]),
+        enzyme=jnp.exp(parameters["log_enzyme"][reaction_id]),
+        substrate_kms=jnp.exp(parameters["log_substrate_km"][reaction_id]),
+        product_kms=jnp.exp(parameters["log_product_km"][reaction_id]),
+        ki=jnp.exp(parameters["log_ki"][reaction_id]),
+        dgf=parameters["dgf"][species_to_dgf_ix][ix_reactant],
+        temperature=parameters["temperature"],
         ix_ki_species=ci_ix,
         ix_reactant=ix_reactant,
         ix_substrate=ix_substrate,
