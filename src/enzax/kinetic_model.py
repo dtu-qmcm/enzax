@@ -147,7 +147,7 @@ class KineticModelSbml(KineticModel):
         conc_balanced: Float[Array, " n_balanced"],
         parameters,
     ) -> Float[Array, " n"]:
-        if type(self.sym_module) == list:
+        if isinstance(self.sym_module, list):
             assign_species = {}
             for a in self.sym_module[1].keys():
                 assign_species.update(
