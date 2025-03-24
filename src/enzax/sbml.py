@@ -67,7 +67,7 @@ def sbml_to_sympy(model):
     ]
 
     output = {"reactions": reactions_sympy}  # Store output in a dictionary
-    
+
     assignments_sbml = model.getListOfRules()
     if assignments_sbml:
         assignments_sympy = {
@@ -80,18 +80,20 @@ def sbml_to_sympy(model):
             )
             for a in assignments_sbml
         }
-        
+
         output["assignments"] = assignments_sympy
-    
+        
     return output
-    return reactions_sympy
 
 
 def sympy_to_enzax(reactions_sympy):
-    if reactions_sympy.get('assignments'):
-        sym_module = [sympy2jax.SymbolicModule(reactions_sympy['reactions']), reactions_sympy['assignments']]
+    if reactions_sympy.get("assignments"):
+        sym_module = [
+            sympy2jax.SymbolicModule(reactions_sympy["reactions"]),
+            reactions_sympy["assignments"]
+        ]
     else:
-        sym_module = sympy2jax.SymbolicModule(reactions_sympy['reactions'])
+        sym_module = sympy2jax.SymbolicModule(reactions_sympy["reactions"])
     return sym_module
 
 
