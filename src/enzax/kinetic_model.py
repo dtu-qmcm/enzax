@@ -150,7 +150,7 @@ class KineticModelSbml(KineticModel):
         if type(self.sym_module) == list:
             assign_species = {}
             for a in self.sym_module[1].keys():
-               assign_species.update(
+                assign_species.update(
                     {
                         a: sympy2jax.SymbolicModule(self.sym_module[1][a])(
                             **assign_species,

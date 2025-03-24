@@ -82,7 +82,7 @@ def sbml_to_sympy(model):
         }
 
         output["assignments"] = assignments_sympy
-        
+
     return output
 
 
@@ -90,7 +90,7 @@ def sympy_to_enzax(reactions_sympy):
     if reactions_sympy.get("assignments"):
         sym_module = [
             sympy2jax.SymbolicModule(reactions_sympy["reactions"]),
-            reactions_sympy["assignments"]
+            reactions_sympy["assignments"],
         ]
     else:
         sym_module = sympy2jax.SymbolicModule(reactions_sympy["reactions"])
