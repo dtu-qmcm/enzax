@@ -65,11 +65,33 @@ def sbml_to_sympy(model):
         )
         for r in reactions_sbml
     ]
+
+    output = {"reactions": reactions_sympy}  # Store output in a dictionary
+    
+    assignments_sbml = model.getListOfRules()
+    if assignments_sbml:
+        assignments_sympy = {
+            a.variable: SBMLMathMLParser().parse_str(
+                libsbml.writeMathMLToString(
+                    libsbml.parseL3Formula(
+                        libsbml.formulaToL3String(a.getMath())
+                    )
+                )
+            )
+            for a in assignments_sbml
+        }
+        
+        output["assignments"] = assignments_sympy
+    
+    return output
     return reactions_sympy
 
 
 def sympy_to_enzax(reactions_sympy):
-    sym_module = sympy2jax.SymbolicModule(reactions_sympy)
+    if reactions_sympy.get('assignments'):
+        sym_module = [sympy2jax.SymbolicModule(reactions_sympy['reactions']), reactions_sympy['assignments']]
+    else:
+        sym_module = sympy2jax.SymbolicModule(reactions_sympy['reactions'])
     return sym_module
 
 
@@ -85,7 +107,7 @@ def get_sbml_parameters(model: libsbml.Model) -> dict:
     unbalanced_species = {
         u.getId(): u.getInitialConcentration()
         for u in model.getListOfSpecies()
-        if u.boundary_condition
+        if u.boundary_condition and u.constant
     }
     global_parameters = {
         p.getId(): p.getValue()
