@@ -46,3 +46,21 @@ jacobian["log_kcat"]["GNMT1"]
 Array([-3.83561770e-07, -9.66801636e-06,  3.38183140e-10,  3.15564928e-09,
         5.28588273e-08], dtype=float64, weak_type=True)
 ```
+
+### Load a kinetic model from an sbml file
+
+```python
+from enzax.sbml import load_libsbml_model_from_url, sbml_to_enzax
+
+url = "https://raw.githubusercontent.com/dtu-qmcm/enzax/refs/heads/main/tests/data/exampleode.xml"
+
+libsbml_model = load_libsbml_model_from_url(url)
+# or to load an sbml file from your computer:
+# libsbml_model = load_libsbml_model_from_file(path_to_file)
+
+model, parameters = sbml_to_enzax(libsbml_model)
+```
+
+> [!NOTE]
+> The parameters in the sbml file have to have unique identifiers.
+> In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.

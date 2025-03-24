@@ -120,6 +120,35 @@ dcdt = model.dcdt(conc, parameters)
 dcdt
 ```
 
+## Load a kinetic model from SBML
+
+Enzax supports loading kinetic models from SBML files, either locally:
+
+```python
+from pathlib import Path
+from enzax.sbml import load_libsbml_model_from_file, sbml_to_enzax
+
+path = Path("path") / "to" / "sbml_file.xml"
+libsbml_model = load_libsbml_model_from_file(path)
+model = sbml_to_enzax(libsbml_model)
+```
+
+
+or from a url:
+
+```python
+from enzax.sbml import load_libsbml_model_from_url, sbml_to_enzax
+
+url = "https://raw.githubusercontent.com/dtu-qmcm/enzax/refs/heads/main/tests/data/exampleode.xml"
+libsbml_model = load_libsbml_model_from_url(url)
+model = sbml_to_enzax(libsbml_model)
+```
+
+!!! note
+
+    The parameters in the sbml file have to have unique identifiers.
+    In CopasiUI it is possible to make Global Quantities as assignments and odes. Enzax currently does not support this.
+
 ## Find a kinetic model's steady state
 
 Enzax provides a few example kinetic models, including [`methionine`](https://github.com/dtu-qmcm/enzax/blob/main/src/enzax/examples/methionine.py), a model of the mammalian methionine cycle.
