@@ -15,6 +15,7 @@ from enzax.statistical_modelling import enzax_prior_logdensity
 
 jax.config.update("jax_enable_x64", True)
 
+
 def load_smallbone(path):
     """
     Function for parsing the Smallbone model.
@@ -63,7 +64,7 @@ def load_smallbone(path):
             pattern = rf"\b{o}\b"
             formula_string = re.sub(pattern, n, formula_string)
         r.getKineticLaw().setMath(libsbml.parseL3Formula(formula_string))
-        
+
     model, parameters = sbml_to_enzax(model_libsbml)
 
     init_conc = jnp.array(
@@ -72,13 +73,13 @@ def load_smallbone(path):
             for b in model_libsbml.getListOfSpecies()
             if not b.boundary_condition
         ]
-    ) 
+    )
     return model, parameters, init_conc
 
 
 @eqx.filter_jit()
 def get_conc_assingment_species(balanced, parameters, model):
-    """ 
+    """
     Function for combining concentration with unbalanced species defined as assignments.
 
     Parameters:

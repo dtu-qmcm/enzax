@@ -28,17 +28,17 @@ def get_free_params(params: PyTree) -> PyTree:
         params["kcat_ADH_ADH1"],
         params["Vmax_ATPase"],
         params["kcat_ENO_ENO1"],
-        params["kcat_ENO_ENO2"], 
+        params["kcat_ENO_ENO2"],
         params["kcat_FBA"],
         params["Vmax_GPD"],
         params["kcat_GPM"],
         params["Vmax_GPP"],
-        params["kcat_HXK_HXK1"], 
-        params["kcat_HXK_HXK2"], 
+        params["kcat_HXK_HXK1"],
+        params["kcat_HXK_HXK2"],
         params["kcat_PDC_PDC1"],
         params["kcat_PDC_PDC5"],
         params["kcat_PDC_PDC6"],
-        params["kcat_PFK"], 
+        params["kcat_PFK"],
         params["kcat_PGI"],
         params["kcat_PGK"],
         params["Vmax_PGM"],
@@ -61,6 +61,7 @@ def simulate(key, truth, error):
         jnp.exp(jnp.log(true_conc) + jax.random.normal(key_conc) * conc_err),
         true_flux + jax.random.normal(key_flux) * flux_err,
     )
+
 
 def main():
     # The path should be updated.
