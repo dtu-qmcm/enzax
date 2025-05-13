@@ -25,7 +25,7 @@ def load_smallbone(path):
     ----------
     path: str
         The path to SBML-files
-    
+
     Returns
     --------
     model: KineticModelSbml
@@ -53,8 +53,8 @@ def load_smallbone(path):
             p.getName() for p in r.getKineticLaw().getListOfParameters()
         ]
         for p in r.getKineticLaw().getListOfParameters():
-            p.setId(p.getId() + '_' + r.getId())
-            p.setName(p.getName() + '_' + r.getId())
+            p.setId(p.getId() + "_" + r.getId())
+            p.setName(p.getName() + "_" + r.getId())
         newnames = [
             p.getName() for p in r.getKineticLaw().getListOfParameters()
         ]
@@ -66,7 +66,7 @@ def load_smallbone(path):
         
     model, parameters = sbml_to_enzax(model_libsbml)
 
-    init_conc =jnp.array(
+    init_conc = jnp.array(
         [
             b.getInitialConcentration()
             for b in model_libsbml.getListOfSpecies()
@@ -127,7 +127,7 @@ def enzax_log_density_sbml(
     prior_log: PyTree,
     fixed_parameters: PyTree | None = None,
     guess: Float[Array, " _"] | None = None,
-) -> Scalar:    
+) -> Scalar:
     free_parameters = jax.tree.map(lambda x: jnp.exp(x), free_parameters_log)
 
     if guess is None:

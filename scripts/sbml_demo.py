@@ -22,37 +22,35 @@ SEED = 1234
 
 jax.config.update("jax_enable_x64", True)
 
-#SBML_FILE_PATH = Path("enzax") / "examples" / "smallbone_model18.xml"
-
 
 def get_free_params(params: PyTree) -> PyTree:
     return (
-        params['kcat_ADH_ADH1'],
-        params['Vmax_ATPase'],
-        params['kcat_ENO_ENO1'],
-        params['kcat_ENO_ENO2'], 
-        params['kcat_FBA'],
-        params['Vmax_GPD'],
-        params['kcat_GPM'],
-        params['Vmax_GPP'],
-        params['kcat_HXK_HXK1'], 
-        params['kcat_HXK_HXK2'], 
-        params['kcat_PDC_PDC1'],
-        params['kcat_PDC_PDC5'],
-        params['kcat_PDC_PDC6'],
-        params['kcat_PFK'], 
-        params['kcat_PGI'],
-        params['kcat_PGK'],
-        params['Vmax_PGM'],
-        params['kcat_PYK_CDC19'],
-        params['kcat_TDH_TDH1'],
-        params['kcat_TDH_TDH2'],
-        params['kcat_TDH_TDH3'],
-        params['kcat_TPI'],
-        params['Vmax_TPP'],
-        params['Vmax_TPS'],
-        params['Vmax_UGP'],
-        params['Vmax_HXT'],
+        params["kcat_ADH_ADH1"],
+        params["Vmax_ATPase"],
+        params["kcat_ENO_ENO1"],
+        params["kcat_ENO_ENO2"], 
+        params["kcat_FBA"],
+        params["Vmax_GPD"],
+        params["kcat_GPM"],
+        params["Vmax_GPP"],
+        params["kcat_HXK_HXK1"], 
+        params["kcat_HXK_HXK2"], 
+        params["kcat_PDC_PDC1"],
+        params["kcat_PDC_PDC5"],
+        params["kcat_PDC_PDC6"],
+        params["kcat_PFK"], 
+        params["kcat_PGI"],
+        params["kcat_PGK"],
+        params["Vmax_PGM"],
+        params["kcat_PYK_CDC19"],
+        params["kcat_TDH_TDH1"],
+        params["kcat_TDH_TDH2"],
+        params["kcat_TDH_TDH3"],
+        params["kcat_TPI"],
+        params["Vmax_TPP"],
+        params["Vmax_TPS"],
+        params["Vmax_UGP"],
+        params["Vmax_HXT"],
     )
 
 def simulate(key, truth, error):
