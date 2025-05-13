@@ -9,8 +9,11 @@ import jax.numpy as jnp
 from jaxtyping import PyTree
 
 import equinox as eqx
-
-from enzax.examples.smallbone import load_smallbone, get_conc_assingment_species, enzax_log_density_sbml
+from enzax.examples.smallbone import (
+    load_smallbone,
+    get_conc_assingment_species,
+    enzax_log_density_sbml,
+)
 from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import prior_from_truth
 from enzax.mcmc import run_nuts
@@ -21,8 +24,9 @@ jax.config.update("jax_enable_x64", True)
 
 #SBML_FILE_PATH = Path("enzax") / "examples" / "smallbone_model18.xml"
 
+
 def get_free_params(params: PyTree) -> PyTree:
-    return(
+    return (
         params['kcat_ADH_ADH1'],
         params['Vmax_ATPase'],
         params['kcat_ENO_ENO1'],
@@ -89,17 +93,13 @@ def main():
     free_params_log, _ = eqx.partition(parameters_log, is_free)
     prior_log = prior_from_truth(free_params_log, sd=0.1)
 
-    true_conc = get_conc_assingment_species(
-        steady_state,
-        parameters,
-        model
-    )
+    true_conc = get_conc_assingment_species(steady_state, parameters, model)
 
     true_flux = model.flux(steady_state, parameters)
 
     # simulate observations
-    conc_err = jnp.full_like(true_conc, 0.03) 
-    flux_err = jnp.full_like(true_flux, 0.05) 
+    conc_err = jnp.full_like(true_conc, 0.03)
+    flux_err = jnp.full_like(true_flux, 0.05)
     key = jax.random.key(SEED)
     key_sim, key_nuts = jax.random.split(key, num=2)
     measurement_errors = (conc_err, flux_err)
@@ -138,6 +138,7 @@ def main():
     else:
         logging.info("No post-warmup divergent transitions!")
         print("No post-warmup divergent transitions!")
+
 
 if __name__ == "__main__":
     main()

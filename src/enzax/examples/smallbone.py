@@ -17,17 +17,19 @@ jax.config.update("jax_enable_x64", True)
 
 def load_smallbone(path):
     """
-    Function for parsing the Smallbone model. Incures all parameters have specific names. Checks for initial concentrations set at 0 and changes them to 1e-5.
+    Function for parsing the Smallbone model.
+    Incures all parameters have specific names.
+    Checks for initial concentrations set at 0 and changes them to 1e-5.
 
-    Parameters 
+    Parameters
     ----------
     path: str
         The path to SBML-files
     
     Returns
     --------
-    model:
-        A kinetic model 
+    model: KineticModelSbml
+        A kinetic model
     parameters: PyTree
         Parameters defined in the SBML-file
     init_conc: a JAX array of floats
@@ -40,41 +42,51 @@ def load_smallbone(path):
 
     model_libsbml = model_libsbml01.clone()
 
-    [ic.setInitialConcentration(1e-5) for ic in model_libsbml.getListOfSpecies() if ic.getInitialConcentration() == 0]
+    [
+        ic.setInitialConcentration(1e-5)
+        for ic in model_libsbml.getListOfSpecies()
+        if ic.getInitialConcentration() == 0
+    ]
 
     for r in model_libsbml.getListOfReactions():
-        oldnames = [p.getName() for p in r.getKineticLaw().getListOfParameters()]
+        oldnames = [
+            p.getName() for p in r.getKineticLaw().getListOfParameters()
+        ]
         for p in r.getKineticLaw().getListOfParameters():
-            p.setId(p.getId()+'_'+r.getId())
-            p.setName(p.getName()+'_'+r.getId())
-        newnames = [p.getName() for p in r.getKineticLaw().getListOfParameters()]
+            p.setId(p.getId() + '_' + r.getId())
+            p.setName(p.getName() + '_' + r.getId())
+        newnames = [
+            p.getName() for p in r.getKineticLaw().getListOfParameters()
+        ]
         formula_string = r.getKineticLaw().getFormula()
         for o, n in zip(oldnames, newnames):
-            pattern = rf'\b{o}\b'
+            pattern = rf"\b{o}\b"
             formula_string = re.sub(pattern, n, formula_string)
         r.getKineticLaw().setMath(libsbml.parseL3Formula(formula_string))
         
     model, parameters = sbml_to_enzax(model_libsbml)
 
-    init_conc =jnp.array([
-        b.getInitialConcentration()
-        for b in model_libsbml.getListOfSpecies()
-        if not b.boundary_condition
-    ]) 
+    init_conc =jnp.array(
+        [
+            b.getInitialConcentration()
+            for b in model_libsbml.getListOfSpecies()
+            if not b.boundary_condition
+        ]
+    ) 
     return model, parameters, init_conc
 
 
 @eqx.filter_jit()
 def get_conc_assingment_species(balanced, parameters, model):
     """ 
-    Function for combining concentration when some unbalanced species are defined as assignments. 
+    Function for combining concentration with unbalanced species defined as assignments.
 
     Parameters:
     -----------
     balanced: JAX array of type float
         A JAX array containing the concentration for balaned species
     parameters: PyTree
-        A dictonary containing the parameters, including unbalanced species. 
+        A dictonary containing the parameters, including unbalanced species.
     model: KineticModelSbml
 
     """
@@ -90,10 +102,9 @@ def get_conc_assingment_species(balanced, parameters, model):
             }
         )
     conc = conc.at[model.balanced_species_ix].set(balanced)
-    conc = conc.at[model.unbalanced_species_ix].set(jnp.array([
-        parameters_new[a] 
-        for a in model.unbalanced_species
-    ]))
+    conc = conc.at[model.unbalanced_species_ix].set(
+        jnp.array([parameters_new[a] for a in model.unbalanced_species])
+    )
     return conc
 
 
@@ -116,8 +127,7 @@ def enzax_log_density_sbml(
     prior_log: PyTree,
     fixed_parameters: PyTree | None = None,
     guess: Float[Array, " _"] | None = None,
-) -> Scalar:
-    
+) -> Scalar:    
     free_parameters = jax.tree.map(lambda x: jnp.exp(x), free_parameters_log)
 
     if guess is None:
