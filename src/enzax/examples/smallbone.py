@@ -80,7 +80,8 @@ def load_smallbone(path):
 @eqx.filter_jit()
 def get_conc_assingment_species(balanced, parameters, model):
     """
-    Function for combining concentration with unbalanced species defined as assignments.
+    Function for combining concentrations with unbalanced species defined as
+    assignments.
 
     Parameters:
     -----------

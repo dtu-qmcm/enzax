@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import functools
 import logging
 import warnings
@@ -53,6 +51,7 @@ def get_free_params(params: PyTree) -> PyTree:
         params["Vmax_HXT"],
     )
 
+
 def simulate(key, truth, error):
     key_conc, key_flux = jax.random.split(key, num=2)
     true_conc, true_flux = truth
@@ -65,7 +64,8 @@ def simulate(key, truth, error):
 
 def main():
     # The path should be updated.
-    file_path = "C:/Users/afjsl/Documents/enzax_clone/src/enzax/examples/smallbone2013_model18_modified.xml"
+    file_path = "C:/Users/afjsl/Documents/enzax_clone/src/enzax/examples/" \
+    "smallbone2013_model18_modified.xml"
     model, parameters, initial_conc = load_smallbone(file_path)
 
     y0 = initial_conc
@@ -122,8 +122,8 @@ def main():
         logdensity_fn=posterior_log_density,
         rng_key=key_nuts,
         init_parameters=free_params_log,
-        num_warmup=10,
-        num_samples=10,
+        num_warmup=2,
+        num_samples=2,
         initial_step_size=0.0001,
         max_num_doublings=8,
         is_mass_matrix_diagonal=False,
