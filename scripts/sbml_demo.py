@@ -64,8 +64,10 @@ def simulate(key, truth, error):
 
 def main():
     # The path should be updated.
-    file_path = "C:/Users/afjsl/Documents/enzax_clone/src/enzax/examples/" \
-    "smallbone2013_model18_modified.xml"
+    file_path = (
+        "C:/Users/afjsl/Documents/enzax_clone/src/enzax/examples/"
+        "smallbone2013_model18_modified.xml"
+    )
     model, parameters, initial_conc = load_smallbone(file_path)
 
     y0 = initial_conc
