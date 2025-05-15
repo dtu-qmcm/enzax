@@ -20,6 +20,9 @@ SEED = 1234
 
 jax.config.update("jax_enable_x64", True)
 
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 
 def get_free_params(params: PyTree) -> PyTree:
     return (
@@ -63,12 +66,7 @@ def simulate(key, truth, error):
 
 
 def main():
-    # The path should be updated.
-    file_path = (
-        "C:/Users/afjsl/Documents/enzax_clone/src/enzax/examples/"
-        "smallbone2013_model18_modified.xml"
-    )
-    model, parameters, initial_conc = load_smallbone(file_path)
+    model, parameters, initial_conc = load_smallbone()
 
     y0 = initial_conc
     print(f"Flux at {str(y0)}: " + str(model.flux(y0, parameters)))
@@ -90,7 +88,7 @@ def main():
         replace_fn=lambda _: True,
     )
 
-    _, fixed_params = eqx.partition(parameters, is_free)
+    free_params, fixed_params = eqx.partition(parameters, is_free)
     free_params_log, _ = eqx.partition(parameters_log, is_free)
     prior_log = prior_from_truth(free_params_log, sd=0.1)
 
@@ -124,10 +122,10 @@ def main():
         logdensity_fn=posterior_log_density,
         rng_key=key_nuts,
         init_parameters=free_params_log,
-        num_warmup=2,
-        num_samples=2,
+        num_warmup=10,
+        num_samples=10,
         initial_step_size=0.0001,
-        max_num_doublings=8,
+        max_num_doublings=10,
         is_mass_matrix_diagonal=False,
         target_acceptance_rate=0.95,
     )
@@ -138,7 +136,16 @@ def main():
         warnings.warn(msg)
     else:
         logging.info("No post-warmup divergent transitions!")
-        print("No post-warmup divergent transitions!")
+    print("True parameter values vs posterior:")
+    for (path, leaf_true), leaf_model in zip(
+        jax.tree.leaves_with_path(free_params), jax.tree.leaves(states.position)
+    ):
+        model_low = jnp.quantile(leaf_model, 0.01, axis=0)
+        model_high = jnp.quantile(leaf_model, 0.99, axis=0)
+        print(f" {'|'.join(k.key for k in path)}:")
+        print(f"  true value: {leaf_true}")
+        print(f"  posterior 1%: {model_low}")
+        print(f"  posterior 99%: {model_high}")
 
 
 if __name__ == "__main__":

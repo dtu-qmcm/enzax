@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import libsbml
 import re
 import equinox as eqx
@@ -16,16 +18,11 @@ from enzax.statistical_modelling import enzax_prior_logdensity
 jax.config.update("jax_enable_x64", True)
 
 
-def load_smallbone(path):
+def load_smallbone():
     """
     Function for parsing the Smallbone model.
     Incures all parameters have specific names.
     Checks for initial concentrations set at 0 and changes them to 1e-5.
-
-    Parameters
-    ----------
-    path: str
-        The path to SBML-files
 
     Returns
     --------
@@ -37,7 +34,7 @@ def load_smallbone(path):
         The initial concentration defined in the SBML-file
     """
 
-    file_path = path
+    file_path = Path(__file__).parent / "smallbone2013_model18_modified.xml"
 
     model_libsbml01 = load_libsbml_model_from_file(file_path)
 
