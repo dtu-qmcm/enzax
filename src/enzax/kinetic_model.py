@@ -147,30 +147,22 @@ class KineticModelSbml(KineticModel):
         conc_balanced: Float[Array, " n_balanced"],
         parameters,
     ) -> Float[Array, " n"]:
-        if isinstance(self.sym_module, list):
-            assign_species = {}
-            for a in self.sym_module[1].keys():
-                assign_species.update(
-                    {
-                        a: sympy2jax.SymbolicModule(self.sym_module[1][a])(
-                            **assign_species,
-                            **parameters,
-                            **dict(zip(self.balanced_species, conc_balanced)),
-                        )
-                    }
-                )
-            flux = jnp.array(
-                self.sym_module[0](
-                    **assign_species,
-                    **parameters,
-                    **dict(zip(self.balanced_species, conc_balanced)),
-                )
+        assign_species = {}
+        for a in self.sym_module[1].keys():
+            assign_species.update(
+                {
+                    a: sympy2jax.SymbolicModule(self.sym_module[1][a])(
+                        **assign_species,
+                        **parameters,
+                        **dict(zip(self.balanced_species, conc_balanced)),
+                    )
+                }
             )
-        else:
-            flux = jnp.array(
-                self.sym_module(
-                    **parameters,
-                    **dict(zip(self.balanced_species, conc_balanced)),
-                )
+        flux = jnp.array(
+            self.sym_module[0](
+                **assign_species,
+                **parameters,
+                **dict(zip(self.balanced_species, conc_balanced)),
             )
+        )
         return flux
