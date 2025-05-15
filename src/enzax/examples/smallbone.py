@@ -27,7 +27,7 @@ def load_smallbone():
     Returns
     --------
     model: KineticModelSbml
-        A tuple of a kinetic model 
+        A tuple of a kinetic model
     parameters: PyTree
         Parameters defined in the SBML-file
     init_conc: a JAX array of floats

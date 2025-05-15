@@ -73,9 +73,7 @@ def get_assignments(model):
     assignments_sympy = {
         a.variable: SBMLMathMLParser().parse_str(
             libsbml.writeMathMLToString(
-                libsbml.parseL3Formula(
-                    libsbml.formulaToL3String(a.getMath())
-                )
+                libsbml.parseL3Formula(libsbml.formulaToL3String(a.getMath()))
             )
         )
         for a in assignments_sbml
@@ -84,8 +82,8 @@ def get_assignments(model):
 
 
 def sympy_to_enzax(
-        reactions_sympy: list,
-        assignments_sympy: dict,
+    reactions_sympy: list,
+    assignments_sympy: dict,
 ):
     sym_module = [
         sympy2jax.SymbolicModule(reactions_sympy),
