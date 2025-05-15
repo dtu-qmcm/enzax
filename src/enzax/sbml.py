@@ -68,8 +68,27 @@ def sbml_to_sympy(model):
     return reactions_sympy
 
 
-def sympy_to_enzax(reactions_sympy):
-    sym_module = sympy2jax.SymbolicModule(reactions_sympy)
+def get_assignments(model):
+    assignments_sbml = model.getListOfRules()
+    assignments_sympy = {
+        a.variable: SBMLMathMLParser().parse_str(
+            libsbml.writeMathMLToString(
+                libsbml.parseL3Formula(libsbml.formulaToL3String(a.getMath()))
+            )
+        )
+        for a in assignments_sbml
+    }
+    return assignments_sympy
+
+
+def sympy_to_enzax(
+    reactions_sympy: list,
+    assignments_sympy: dict,
+):
+    sym_module = [
+        sympy2jax.SymbolicModule(reactions_sympy),
+        assignments_sympy,
+    ]
     return sym_module
 
 
@@ -85,7 +104,7 @@ def get_sbml_parameters(model: libsbml.Model) -> dict:
     unbalanced_species = {
         u.getId(): u.getInitialConcentration()
         for u in model.getListOfSpecies()
-        if u.boundary_condition
+        if u.boundary_condition and u.constant
     }
     global_parameters = {
         p.getId(): p.getValue()
@@ -147,7 +166,8 @@ def get_kinetic_model_from_sbml(
 
 def get_sbml_sym_module(model: libsbml.Model):
     reactions_sympy = sbml_to_sympy(model)
-    return sympy_to_enzax(reactions_sympy)
+    assignments_sympy = get_assignments(model)
+    return sympy_to_enzax(reactions_sympy, assignments_sympy)
 
 
 def sbml_to_enzax(
