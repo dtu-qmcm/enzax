@@ -1,7 +1,7 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
 from abc import ABC, abstractmethod
-from equinox import Module
+from equinox import Module, AbstractVar
 import numpy as np
 from numpy.typing import NDArray
 
@@ -16,6 +16,8 @@ class RateEquation(Module, ABC):
 
     A rate equation is an equinox [Module](https://docs.kidger.site/equinox/api/module/module/) with a `__call__` method that takes in a 1 dimensional array of concentrations and an arbitrary PyTree of other inputs, returning a scalar value representing a single flux.
     """  # Noqa: E501
+
+    enzyme_id: AbstractVar[str | None]
 
     @abstractmethod
     def get_input(
