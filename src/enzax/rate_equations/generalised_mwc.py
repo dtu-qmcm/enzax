@@ -31,14 +31,17 @@ class AllostericReversibleMichaelisMentenInput(ReversibleMichaelisMentenInput):
 def get_allosteric_irreversible_michaelis_menten_input(
     parameters: PyTree,
     reaction_id: str,
+    enzyme_id: str | None,
     reaction_stoichiometry: NDArray[np.float64],
     species_to_dgf_ix: NDArray[np.int16],
     ci_ix: NDArray[np.int16],
 ) -> AllostericIrreversibleMichaelisMentenInput:
     ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
+    if enzyme_id is None:
+        enzyme_id = reaction_id
     return AllostericIrreversibleMichaelisMentenInput(
         kcat=jnp.exp(parameters["log_kcat"][reaction_id]),
-        enzyme=jnp.exp(parameters["log_enzyme"][reaction_id]),
+        enzyme=jnp.exp(parameters["log_enzyme"][enzyme_id]),
         ix_substrate=ix_substrate,
         substrate_kms=jnp.exp(parameters["log_substrate_km"][reaction_id]),
         substrate_stoichiometry=reaction_stoichiometry[ix_substrate],
@@ -53,6 +56,7 @@ def get_allosteric_irreversible_michaelis_menten_input(
 def get_allosteric_reversible_michaelis_menten_input(
     parameters: PyTree,
     reaction_id: str,
+    enzyme_id: str | None,
     reaction_stoichiometry: NDArray[np.float64],
     species_to_dgf_ix: NDArray[np.int16],
     ci_ix: NDArray[np.int16],
@@ -61,9 +65,11 @@ def get_allosteric_reversible_michaelis_menten_input(
     ix_reactant = np.argwhere(reaction_stoichiometry != 0.0).flatten()
     ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
     ix_product = np.argwhere(reaction_stoichiometry > 0.0).flatten()
+    if enzyme_id is None:
+        enzyme_id = reaction_id
     return AllostericReversibleMichaelisMentenInput(
         kcat=jnp.exp(parameters["log_kcat"][reaction_id]),
-        enzyme=jnp.exp(parameters["log_enzyme"][reaction_id]),
+        enzyme=jnp.exp(parameters["log_enzyme"][enzyme_id]),
         substrate_kms=jnp.exp(parameters["log_substrate_km"][reaction_id]),
         product_kms=jnp.exp(parameters["log_product_km"][reaction_id]),
         ki=jnp.exp(parameters["log_ki"][reaction_id]),
@@ -113,6 +119,7 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
         default_factory=lambda: np.array([], dtype=np.int16)
     )
     subunits: int = 1
+    enzyme_id: str | None = eqx.field(default_factory=lambda: None)
 
     def get_input(
         self,
@@ -124,6 +131,7 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
         return get_allosteric_irreversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
+            enzyme_id=self.enzyme_id,
             reaction_stoichiometry=reaction_stoichiometry,
             species_to_dgf_ix=species_to_dgf_ix,
             ci_ix=self.ix_ki_species,
@@ -165,6 +173,7 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
         default_factory=lambda: np.array([], dtype=np.int16)
     )
     subunits: int = 1
+    enzyme_id: str | None = eqx.field(default_factory=lambda: None)
 
     def get_input(
         self,
@@ -176,6 +185,7 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
         return get_allosteric_reversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
+            enzyme_id=self.enzyme_id,
             reaction_stoichiometry=reaction_stoichiometry,
             species_to_dgf_ix=species_to_dgf_ix,
             ci_ix=self.ix_ki_species,

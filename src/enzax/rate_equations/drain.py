@@ -15,6 +15,7 @@ class Drain(RateEquation):
     """A drain reaction."""
 
     sign: float
+    enzyme_id: str | None = eqx.field(default_factory=lambda: None)
 
     def get_input(
         self,

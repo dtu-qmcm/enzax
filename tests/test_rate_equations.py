@@ -19,7 +19,7 @@ EXAMPLE_PARAMETERS = dict(
     dgf=jnp.array([-3.0, 1.0]),
     log_ki={"r1": jnp.array([1.0])},
     temperature=jnp.array(310.0),
-    log_enzyme={"r1": jnp.log(jnp.array(0.3))},
+    log_enzyme={"r1": jnp.log(jnp.array(0.3)), "e1": jnp.log(jnp.array(0.2))},
     log_conc_unbalanced=jnp.array([]),
     log_tc={"r1": jnp.array(-0.2)},
     log_dc_activator={"r1": jnp.array([-0.1])},
@@ -57,6 +57,23 @@ def test_reversible_michaelis_menten():
     assert jnp.isclose(rate, expected_rate)
 
 
+def test_reversible_michaelis_menten_with_enzyme_id():
+    expected_rate = 0.02895259
+    f = ReversibleMichaelisMenten(
+        ix_ki_species=np.array([], dtype=np.int16),
+        water_stoichiometry=0.0,
+        enzyme_id="e1",
+    )
+    f_input = f.get_input(
+        parameters=EXAMPLE_PARAMETERS,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
+        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
+    )
+    rate = f(EXAMPLE_CONC, f_input)
+    assert jnp.isclose(rate, expected_rate)
+
+
 def test_allosteric_irreversible_michaelis_menten():
     expected_rate = 0.05608589
     f = AllostericIrreversibleMichaelisMenten(
@@ -74,12 +91,48 @@ def test_allosteric_irreversible_michaelis_menten():
     assert jnp.isclose(rate, expected_rate)
 
 
+def test_allosteric_irreversible_michaelis_menten_with_enzyme_id():
+    expected_rate = 0.03739059
+    f = AllostericIrreversibleMichaelisMenten(
+        ix_ki_species=np.array([], dtype=np.int16),
+        ix_allosteric_activators=np.array([2], dtype=np.int16),
+        subunits=1,
+        enzyme_id="e1",
+    )
+    f_input = f.get_input(
+        parameters=EXAMPLE_PARAMETERS,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
+        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
+    )
+    rate = f(EXAMPLE_CONC, f_input)
+    assert jnp.isclose(rate, expected_rate)
+
+
 def test_allosteric_reversible_michaelis_menten():
     expected_rate = 0.03027414
     f = AllostericReversibleMichaelisMenten(
         ix_ki_species=np.array([], dtype=np.int16),
         ix_allosteric_activators=np.array([2], dtype=np.int16),
         subunits=1,
+    )
+    f_input = f.get_input(
+        parameters=EXAMPLE_PARAMETERS,
+        reaction_id="r1",
+        reaction_stoichiometry=EXAMPLE_S[:, 0],
+        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
+    )
+    rate = f(EXAMPLE_CONC, f_input)
+    assert jnp.isclose(rate, expected_rate)
+
+
+def test_allosteric_reversible_michaelis_menten_with_enzyme_id():
+    expected_rate = 0.02018276
+    f = AllostericReversibleMichaelisMenten(
+        ix_ki_species=np.array([], dtype=np.int16),
+        ix_allosteric_activators=np.array([2], dtype=np.int16),
+        subunits=1,
+        enzyme_id="e1",
     )
     f_input = f.get_input(
         parameters=EXAMPLE_PARAMETERS,
