@@ -112,15 +112,26 @@ def get_reversibility(
 
     Hard coded water dgf is taken from <http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001>.
 
+    The equation is
+
+      1 - exp(((dgr + (RT * quotient)) / RT))
+
+    but it's implemented a bit differently so as to be more numerically stable.
     """
     RT = temperature * 0.008314
+    conc_clipped = jnp.clip(reactant_conc, min=1e-9)
     dgf_water = -150.9
-    dgr = (
+    dgr_std = (
         reactant_stoichiometry.T @ dgf + water_stoichiometry * dgf_water
     ).flatten()
-    quotient = (reactant_stoichiometry.T @ jnp.log(reactant_conc)).flatten()
-    out = 1.0 - jnp.exp((dgr + RT * quotient) / RT)[0]
-    return out
+    quotient = jnp.clip(
+        reactant_stoichiometry.T @ jnp.log(conc_clipped),
+        min=-2e1,
+        max=2e1,
+    ).flatten()
+    expand = jnp.clip((dgr_std / RT) + quotient, min=-2.0, max=2.0)
+    out = -jnp.expm1(expand)[0]
+    return eqx.error_if(out, jnp.isnan(out), "Reversibility is nan!")
 
 
 def free_enzyme_ratio_imm(
