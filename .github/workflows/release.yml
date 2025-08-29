@@ -18,7 +18,7 @@ jobs:
         with:
           # Install a specific version of uv.
           version: "0.5.5"
-          python-version: 3.12
+          python-version: 3.13
 
       - name: build release distributions
         run: uv build
