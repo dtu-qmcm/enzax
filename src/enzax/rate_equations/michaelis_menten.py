@@ -124,12 +124,8 @@ def get_reversibility(
     dgr_std = (
         reactant_stoichiometry.T @ dgf + water_stoichiometry * dgf_water
     ).flatten()
-    quotient = jnp.clip(
-        reactant_stoichiometry.T @ jnp.log(conc_clipped),
-        min=-2e1,
-        max=2e1,
-    ).flatten()
-    expand = jnp.clip((dgr_std / RT) + quotient, min=-2.0, max=2.0)
+    quotient = (reactant_stoichiometry.T @ jnp.log(conc_clipped)).flatten()
+    expand = jnp.clip((dgr_std / RT) + quotient, min=-1e2, max=1e2)
     out = -jnp.expm1(expand)[0]
     return eqx.error_if(out, jnp.isnan(out), "Reversibility is nan!")
 
