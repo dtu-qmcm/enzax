@@ -5,6 +5,7 @@ from jaxtyping import Array, Float, Int, PyTree, Scalar
 from numpy.typing import NDArray
 
 from enzax.rate_equation import RateEquation
+from enzax.rate_equations.thermodynamics import get_reversibility
 
 
 class IrreversibleMichaelisMentenInput(eqx.Module):
@@ -99,39 +100,6 @@ def numerator_mm(
     This quantity is the numerator in a Michaelis Menten reaction's rate equation
     """  # Noqa: E501
     return jnp.prod((substrate_conc / substrate_kms))
-
-
-def get_reversibility(
-    reactant_conc: Float[Array, " n_reactant"],
-    dgf: Float[Array, " n_reactant"],
-    temperature: Scalar,
-    reactant_stoichiometry: NDArray[np.float64],
-    water_stoichiometry: float,
-) -> Scalar:
-    """Get the reversibility of a reaction.
-
-    Hard coded water dgf is taken from <http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001>.
-
-    The equation is
-
-      1 - exp(((dgr + (RT * quotient)) / RT))
-
-    but it's implemented a bit differently so as to be more numerically stable.
-    """
-    RT = temperature * 0.008314
-    conc_clipped = jnp.clip(reactant_conc, min=1e-9)
-    dgf_water = -150.9
-    dgr_std = (
-        reactant_stoichiometry.T @ dgf + water_stoichiometry * dgf_water
-    ).flatten()
-    quotient = jnp.clip(
-        reactant_stoichiometry.T @ jnp.log(conc_clipped),
-        min=-2e1,
-        max=2e1,
-    ).flatten()
-    expand = jnp.clip((dgr_std / RT) + quotient, min=-2.0, max=2.0)
-    out = -jnp.expm1(expand)[0]
-    return eqx.error_if(out, jnp.isnan(out), "Reversibility is nan!")
 
 
 def free_enzyme_ratio_imm(
