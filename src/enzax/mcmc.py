@@ -1,6 +1,5 @@
 """Code for MCMC-based Bayesian inference on kinetic models."""
 
-import functools
 from typing import Callable, TypedDict, Unpack
 
 import blackjax
@@ -18,7 +17,6 @@ class AdaptationKwargs(TypedDict):
     target_acceptance_rate: float
 
 
-@functools.partial(jax.jit, static_argnames=["kernel", "num_samples"])
 def _inference_loop(rng_key, kernel, initial_state, num_samples):
     """Run MCMC with blackjax."""
 

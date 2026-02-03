@@ -5,13 +5,11 @@ Given a structural kinetic model, a set of parameters and an initial guess, the 
 """  # noqa: E501
 
 import diffrax
-import equinox as eqx
 import lineax as lx
 from jaxtyping import Array, Float, PyTree
 from jax import numpy as jnp
 
 
-@eqx.filter_jit()
 def get_steady_state(
     rhs,
     guess: Float[Array, " n_balanced"],
