@@ -74,7 +74,6 @@ def load_smallbone():
     return model, parameters, init_conc
 
 
-@eqx.filter_jit()
 def get_conc_assingment_species(balanced, parameters, model):
     """
     Function for combining concentrations with unbalanced species defined as
@@ -107,7 +106,6 @@ def get_conc_assingment_species(balanced, parameters, model):
     return conc
 
 
-@jax.jit
 def enzax_log_likelihood(conc, flux) -> Scalar:
     conc_hat, conc_obs, conc_err = conc
     flux_hat, flux_obs, flux_err = flux
@@ -118,7 +116,6 @@ def enzax_log_likelihood(conc, flux) -> Scalar:
     return llik_conc + llik_flux
 
 
-@jax.jit
 def enzax_log_density_sbml(
     free_parameters_log: PyTree,
     model: KineticModelSbml,

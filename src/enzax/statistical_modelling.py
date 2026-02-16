@@ -151,7 +151,6 @@ def enzax_prior_logdensity(parameters: PyTree, prior: PyTree) -> Scalar:
     return jax.tree.reduce(operator.add, prior_logdensities)
 
 
-@jax.jit
 def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     conc_hat, conc_obs, conc_err = conc
     enz_hat, enz_obs, enz_err = enzyme
@@ -164,12 +163,11 @@ def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     return llik_conc + llik_enz + llik_flux
 
 
-@jax.jit
 def enzax_log_density(
     free_parameters: PyTree,
     model: RateEquationModel,
-    measurements: PyTree,
     prior: PyTree,
+    measurements: PyTree | None = None,
     fixed_parameters: PyTree | None = None,
     guess: Float[Array, " _"] | None = None,
 ) -> Scalar:

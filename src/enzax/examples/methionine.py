@@ -5,6 +5,8 @@ https://doi.org/10.1021/acssynbio.3c00662
 
 """
 
+import warnings
+
 import numpy as np
 from jax import numpy as jnp
 
@@ -201,46 +203,52 @@ parameters = dict(
     },
 )
 
-model = RateEquationModel(
-    stoichiometry=stoichiometry,
-    species=species,
-    reactions=reactions,
-    balanced_species=balanced_species,
-    rate_equations=[
-        Drain(sign=1.0),  # met-L source
-        IrreversibleMichaelisMenten(  # MAT1
-            ix_ki_species=np.array([4], dtype=np.int16),
-        ),
-        AllostericIrreversibleMichaelisMenten(  # MAT3
-            subunits=2,
-            ix_allosteric_activators=np.array([0, 4], dtype=np.int16),
-        ),
-        IrreversibleMichaelisMenten(  # METH
-            ix_ki_species=np.array([5], dtype=np.int16)
-        ),
-        AllostericIrreversibleMichaelisMenten(  # GNMT1
-            subunits=4,
-            ix_allosteric_inhibitors=np.array([12], dtype=np.int16),
-            ix_allosteric_activators=np.array([4], dtype=np.int16),
-            ix_ki_species=np.array([5], dtype=np.int16),
-        ),
-        ReversibleMichaelisMenten(  # AHC
-            water_stoichiometry=-1.0,
-        ),
-        IrreversibleMichaelisMenten(),  # MS
-        IrreversibleMichaelisMenten(),  # BHMT
-        AllostericIrreversibleMichaelisMenten(  # CBS1
-            subunits=2,
-            ix_allosteric_inhibitors=np.array([4], dtype=np.int16),
-        ),
-        AllostericIrreversibleMichaelisMenten(  # MTHFR
-            subunits=2,
-            ix_allosteric_inhibitors=np.array([4], dtype=np.int16),
-            ix_allosteric_activators=np.array([5], dtype=np.int16),
-        ),
-        IrreversibleMichaelisMenten(),  # PROT
-    ],
-)
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message="Using `field\\(init=False\\)` on `equinox.Module`",
+        category=UserWarning,
+    )
+    model = RateEquationModel(
+        stoichiometry=stoichiometry,
+        species=species,
+        reactions=reactions,
+        balanced_species=balanced_species,
+        rate_equations=[
+            Drain(sign=1.0),  # met-L source
+            IrreversibleMichaelisMenten(  # MAT1
+                ix_ki_species=np.array([4], dtype=np.int16),
+            ),
+            AllostericIrreversibleMichaelisMenten(  # MAT3
+                subunits=2,
+                ix_allosteric_activators=np.array([0, 4], dtype=np.int16),
+            ),
+            IrreversibleMichaelisMenten(  # METH
+                ix_ki_species=np.array([5], dtype=np.int16)
+            ),
+            AllostericIrreversibleMichaelisMenten(  # GNMT1
+                subunits=4,
+                ix_allosteric_inhibitors=np.array([12], dtype=np.int16),
+                ix_allosteric_activators=np.array([4], dtype=np.int16),
+                ix_ki_species=np.array([5], dtype=np.int16),
+            ),
+            ReversibleMichaelisMenten(  # AHC
+                water_stoichiometry=-1.0,
+            ),
+            IrreversibleMichaelisMenten(),  # MS
+            IrreversibleMichaelisMenten(),  # BHMT
+            AllostericIrreversibleMichaelisMenten(  # CBS1
+                subunits=2,
+                ix_allosteric_inhibitors=np.array([4], dtype=np.int16),
+            ),
+            AllostericIrreversibleMichaelisMenten(  # MTHFR
+                subunits=2,
+                ix_allosteric_inhibitors=np.array([4], dtype=np.int16),
+                ix_allosteric_activators=np.array([5], dtype=np.int16),
+            ),
+            IrreversibleMichaelisMenten(),  # PROT
+        ],
+    )
 steady_state = jnp.array(
     [
         4.233000e-05,  # met-L
