@@ -97,7 +97,7 @@ class KineticModel(eqx.Module):
 
         :return: a one dimensional array of floats representing the rate of change of balanced species concentrations. Has same size as self.structure.ix_balanced.
         """  # Noqa: E501
-        v = self.flux(conc, parameters)
+        v = self.flux(jnp.clip(conc, min=1e-12), parameters)
         sv = self.S @ v
         return jnp.array(sv[self.balanced_species_ix])
 
