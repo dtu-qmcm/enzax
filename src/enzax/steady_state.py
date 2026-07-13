@@ -32,8 +32,8 @@ def get_steady_state(
     """
     term = diffrax.ODETerm(rhs)
     solver = diffrax.Kvaerno5()
-    t0 = jnp.array(0)
-    t1 = jnp.array(1000)
+    t0 = jnp.array(0.0)
+    t1 = jnp.inf
     dt0 = jnp.array(0.000001)
     max_steps = None
     controller = diffrax.PIDController(
