@@ -1,5 +1,7 @@
 """Module containing enzax's definition of a kinetic model."""
 
+import sympy
+
 from abc import abstractmethod
 from typing import Any
 
@@ -11,6 +13,11 @@ from jaxtyping import Array, Float, PyTree
 from numpy.typing import NDArray
 
 from enzax.rate_equation import RateEquation
+
+IndConcArr = Float[Array, "n_ind_conc"]
+DepConcArr = Float[Array, "n_dep_conc"]
+BalancedConcArr = Float[Array, "n_balanced"]
+Flux = Float[Array, " n"]
 
 
 def get_ix_from_list(s: str, list_of_strings: list[str]):
@@ -24,6 +31,8 @@ class KineticModel(eqx.Module):
     species: list[str] = eqx.field(static=True)
     reactions: list[str] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
+    dependent_species: list[str] = eqx.field(static=True, default=[])
+    independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_dgf_ix: NDArray[np.int16] = eqx.field(
         static=True, default=slice(None)
@@ -32,7 +41,13 @@ class KineticModel(eqx.Module):
     unbalanced_species_ix: NDArray[np.int16] = eqx.field(
         static=True, init=False
     )
+    independent_species_ix: NDArray[np.int16] = eqx.field(
+        static=True,
+        init=False,
+    )
+    dependent_species_ix: NDArray[np.int16] = eqx.field(static=True, init=False)
     S: NDArray[np.float64] = eqx.field(static=True, init=False)
+    L0: NDArray[np.int32] = eqx.field(static=True, init=False)
 
     def __post_init__(self, species_to_dgf_ix=None):
         self.unbalanced_species = [
@@ -49,12 +64,27 @@ class KineticModel(eqx.Module):
             ],
             dtype=np.int16,
         )
+        self.independent_species = [
+            s for s in self.balanced_species if s not in self.dependent_species
+        ]
+        self.independent_species_ix = np.array(
+            [
+                get_ix_from_list(s, self.species)
+                for s in self.independent_species
+            ],
+            dtype=np.int16,
+        )
+        self.dependent_species_ix = np.array(
+            [get_ix_from_list(s, self.species) for s in self.dependent_species],
+            dtype=np.int16,
+        )
         S = np.zeros(shape=(len(self.species), len(self.reactions)))
         for ix_reaction, reaction in enumerate(self.reactions):
             for species_i, coeff in self.stoichiometry[reaction].items():
                 ix_species = get_ix_from_list(species_i, self.species)
                 S[ix_species, ix_reaction] = coeff
         self.S = S.astype(np.float64)
+        self.L0 = sympy.Matrix.rref(sympy.Matrix(self.S))
 
     def tree_flatten(self):
         children = (
@@ -79,27 +109,35 @@ class KineticModel(eqx.Module):
 
     @abstractmethod
     def flux(
-        self,
-        conc_balanced: Float[Array, " n_balanced"],
-        parameters: PyTree,
-    ) -> Float[Array, " n"]: ...
+        self, conc_balanced: BalancedConcArr, parameters: PyTree
+    ) -> Flux: ...
 
-    def dcdt(
+    def get_balanced_conc(
         self,
-        conc: Float[Array, " n_balanced"],
-        parameters: PyTree,
-    ) -> Float[Array, " n_balanced"]:
+        conc_ind: IndConcArr,
+        moiety_totals: DepConcArr,
+    ) -> BalancedConcArr:
+        conc_dep = moiety_totals + self.L0 @ conc_ind
+        out = jnp.zeros(self.L0.shape[1] + self.L0.shape[0])
+        out = out.at[self.independent_species_ix].set(conc_ind)
+        return out.at[self.dependent_species_ix].set(conc_dep)
+
+    def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndConcArr:
         """Get the rate of change of balanced species concentrations.
 
-        :param conc: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+        :param conc: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
 
         :param parameters: A PyTree of parameters.
 
         :return: a one dimensional array of floats representing the rate of change of balanced species concentrations. Has same size as self.structure.ix_balanced.
         """  # Noqa: E501
-        v = self.flux(jnp.clip(conc, min=1e-12), parameters)
+        conc_balanced = self.get_balanced_conc(
+            conc_ind,
+            parameters["conserved_pools"],
+        )
+        v = self.flux(conc_balanced, parameters)
         sv = self.S @ v
-        return jnp.array(sv[self.balanced_species_ix])
+        return jnp.array(sv[self.independent_species_ix])
 
     def __call__(self, t, y, parameters):
         return self.dcdt(y, parameters)
@@ -112,11 +150,7 @@ class RateEquationModel(KineticModel):
         static=True, default_factory=list
     )
 
-    def flux(
-        self,
-        conc_balanced: Float[Array, " n_balanced"],
-        parameters: PyTree,
-    ) -> Float[Array, " n"]:
+    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
         """Get fluxes from balanced species concentrations.
 
         :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
@@ -142,11 +176,7 @@ class RateEquationModel(KineticModel):
 class KineticModelSbml(KineticModel):
     sym_module: Any = eqx.field(static=True, default=None)
 
-    def flux(
-        self,
-        conc_balanced: Float[Array, " n_balanced"],
-        parameters,
-    ) -> Float[Array, " n"]:
+    def flux(self, conc_balanced: BalancedConcArr, parameters) -> Flux:
         assign_species = {}
         for a in self.sym_module[1].keys():
             assign_species.update(
