@@ -33,36 +33,92 @@ def get_link_matrix(
 
     L0 is the matrix satisfying `S_dep = L0 @ S_ind`, where `S_dep` and
     `S_ind` are the rows of the stoichiometric matrix belonging to,
-    respectively, the dependent and the independent species. It exists
-    provided every dependent species takes part in a conservation relation
-    with the independent species.
+    respectively, the dependent and the independent species.
 
     Since `d/dt conc_dep = L0 @ d/dt conc_ind`, the quantity
     `conc_dep - L0 @ conc_ind` is conserved: these are the moiety totals.
+
+    L0 only exists if the dependent and independent species satisfy the
+    conditions checked by `validate_kinetic_model`, so validate a model
+    before calling this function.
     """
     n_ind = len(independent_species_ix)
-    n_dep = len(dependent_species_ix)
-    if n_dep == 0:
+    if len(dependent_species_ix) == 0:
         return np.zeros(shape=(0, n_ind), dtype=np.float64)
-    S_ind = S[independent_species_ix, :]
-    S_dep = S[dependent_species_ix, :]
-    if np.linalg.matrix_rank(S_ind) < n_ind:
-        msg = "The independent species' stoichiometries are not independent."
-        raise ValueError(msg)
+    S_ind = sympy.Matrix(S[independent_species_ix, :])
+    S_dep = sympy.Matrix(S[dependent_species_ix, :])
     # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
-    L0_T = sympy.Matrix(S_ind).T.solve_least_squares(sympy.Matrix(S_dep).T)
-    L0 = np.array(L0_T.T, dtype=np.float64)
-    if not np.allclose(L0 @ S_ind, S_dep):
+    L0_T = S_ind.T.solve_least_squares(S_dep.T)
+    return np.array(L0_T.T, dtype=np.float64)
+
+
+def validate_kinetic_model(model: "KineticModel") -> None:
+    """Raise a ValueError if a kinetic model is not well formed.
+
+    The checks are:
+
+    - every dependent species is a balanced species;
+    - the independent species' stoichiometries are linearly independent;
+    - every dependent species' stoichiometry is a linear combination of the
+      independent species' stoichiometries, i.e. every dependent species
+      takes part in a conservation relation with the independent species.
+
+    The last two conditions are what makes the model's link matrix exist. A
+    model with no dependent species does not need them, so they are only
+    checked when there is at least one dependent species.
+
+    :param model: a KineticModel whose fields have all been set except L0.
+
+    """
+    not_balanced = [
+        s for s in model.dependent_species if s not in model.balanced_species
+    ]
+    if not_balanced:
         msg = (
-            "Dependent species are not linear combinations of the "
-            "independent species, so there is no link matrix."
+            "Dependent species must be balanced species, but these are "
+            f"not: {not_balanced}."
         )
         raise ValueError(msg)
-    return L0
+    if not model.dependent_species:
+        return
+    if not model.independent_species:
+        msg = (
+            "A model with dependent species must have at least one "
+            "independent species, but this one has none."
+        )
+        raise ValueError(msg)
+    S_ind = model.S[model.independent_species_ix, :]
+    S_dep = model.S[model.dependent_species_ix, :]
+    rank_ind = np.linalg.matrix_rank(S_ind)
+    if rank_ind < len(model.independent_species):
+        msg = (
+            "The independent species' stoichiometries must be linearly "
+            "independent, but they are not."
+        )
+        raise ValueError(msg)
+    if np.linalg.matrix_rank(np.vstack((S_ind, S_dep))) > rank_ind:
+        msg = (
+            "Every dependent species must take part in a conservation "
+            "relation with the independent species, but at least one does "
+            "not."
+        )
+        raise ValueError(msg)
 
 
 class KineticModel(eqx.Module):
-    """Structural information about a kinetic model."""
+    """Structural information about a kinetic model.
+
+    A model's balanced species are the ones whose concentrations are state
+    variables. They are split into dependent and independent species: a
+    dependent species' concentration is determined by the independent species'
+    concentrations together with a conserved moiety total, so only the
+    independent species need to be solved for.
+
+    `dependent_species` is therefore a subset of `balanced_species`, and
+    `independent_species` is the rest of `balanced_species`. Instantiating a
+    model checks this, along with the other conditions listed in
+    `validate_kinetic_model`.
+    """
 
     stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
     species: list[str] = eqx.field(static=True)
@@ -83,12 +139,6 @@ class KineticModel(eqx.Module):
         init=False,
     )
     dependent_species_ix: NDArray[np.int16] = eqx.field(static=True, init=False)
-    independent_species_ix_balanced: NDArray[np.int16] = eqx.field(
-        static=True, init=False
-    )
-    dependent_species_ix_balanced: NDArray[np.int16] = eqx.field(
-        static=True, init=False
-    )
     S: NDArray[np.float64] = eqx.field(static=True, init=False)
     L0: NDArray[np.float64] = eqx.field(static=True, init=False)
 
@@ -121,26 +171,13 @@ class KineticModel(eqx.Module):
             [get_ix_from_list(s, self.species) for s in self.dependent_species],
             dtype=np.int16,
         )
-        self.independent_species_ix_balanced = np.array(
-            [
-                get_ix_from_list(s, self.balanced_species)
-                for s in self.independent_species
-            ],
-            dtype=np.int16,
-        )
-        self.dependent_species_ix_balanced = np.array(
-            [
-                get_ix_from_list(s, self.balanced_species)
-                for s in self.dependent_species
-            ],
-            dtype=np.int16,
-        )
         S = np.zeros(shape=(len(self.species), len(self.reactions)))
         for ix_reaction, reaction in enumerate(self.reactions):
             for species_i, coeff in self.stoichiometry[reaction].items():
                 ix_species = get_ix_from_list(species_i, self.species)
                 S[ix_species, ix_reaction] = coeff
         self.S = S.astype(np.float64)
+        validate_kinetic_model(self)
         self.L0 = get_link_matrix(
             self.S, self.independent_species_ix, self.dependent_species_ix
         )
@@ -187,9 +224,10 @@ class KineticModel(eqx.Module):
         moiety_totals: DepConcArr,
     ) -> BalancedConcArr:
         conc_dep = moiety_totals + self.L0 @ conc_ind
-        out = jnp.zeros(len(self.balanced_species))
-        out = out.at[self.independent_species_ix_balanced].set(conc_ind)
-        return out.at[self.dependent_species_ix_balanced].set(conc_dep)
+        conc = jnp.zeros(len(self.species))
+        conc = conc.at[self.independent_species_ix].set(conc_ind)
+        conc = conc.at[self.dependent_species_ix].set(conc_dep)
+        return conc[self.balanced_species_ix]
 
     def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndConcArr:
         """Get the rate of change of balanced species concentrations.
@@ -200,11 +238,9 @@ class KineticModel(eqx.Module):
 
         :return: a one dimensional array of floats representing the rate of change of balanced species concentrations. Has same size as self.structure.ix_balanced.
         """  # Noqa: E501
-        conc_balanced = self.get_balanced_conc(
-            conc_ind,
-            self.get_moiety_totals(parameters),
-        )
-        v = self.flux(conc_balanced, parameters)
+        moiety_totals = self.get_moiety_totals(parameters)
+        conc_balanced = self.get_balanced_conc(conc_ind, moiety_totals)
+        v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
         sv = self.S @ v
         return jnp.array(sv[self.independent_species_ix])
 
