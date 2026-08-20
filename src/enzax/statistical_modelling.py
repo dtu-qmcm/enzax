@@ -174,17 +174,20 @@ def enzax_log_density(
     guess: Float[Array, " _"] | None = None,
 ) -> Scalar:
     if guess is None:
-        guess = jnp.full((len(model.balanced_species_ix)), 0.01)
+        guess = jnp.full((len(model.independent_species_ix)), 0.01)
     if fixed_parameters is not None:
         parameters = eqx.combine(free_parameters, fixed_parameters)
     else:
         parameters = free_parameters
 
     steady = get_steady_state(model, guess, parameters)
-    conc_hat = model.get_conc(steady, parameters["log_conc_unbalanced"])
+    conc_balanced = model.get_balanced_conc(
+        steady, model.get_moiety_totals(parameters)
+    )
+    conc_hat = model.get_conc(conc_balanced, parameters["log_conc_unbalanced"])
     flat_log_enzyme, _ = ravel_pytree(parameters["log_enzyme"])
     enz_hat = jnp.exp(jnp.array(flat_log_enzyme))
-    flux_hat = model.flux(steady, parameters)
+    flux_hat = model.flux(conc_balanced, parameters)
     conc_msts, enz_msts, flux_msts = measurements
     log_prior = enzax_prior_logdensity(free_parameters, prior)
     log_likelihood = enzax_log_likelihood(

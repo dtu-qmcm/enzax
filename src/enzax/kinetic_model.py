@@ -24,6 +24,43 @@ def get_ix_from_list(s: str, list_of_strings: list[str]):
     return next(i for i, si in enumerate(list_of_strings) if si == s)
 
 
+def get_link_matrix(
+    S: NDArray[np.float64],
+    independent_species_ix: NDArray[np.int16],
+    dependent_species_ix: NDArray[np.int16],
+) -> NDArray[np.float64]:
+    """Get the link matrix L0 relating dependent to independent species.
+
+    L0 is the matrix satisfying `S_dep = L0 @ S_ind`, where `S_dep` and
+    `S_ind` are the rows of the stoichiometric matrix belonging to,
+    respectively, the dependent and the independent species. It exists
+    provided every dependent species takes part in a conservation relation
+    with the independent species.
+
+    Since `d/dt conc_dep = L0 @ d/dt conc_ind`, the quantity
+    `conc_dep - L0 @ conc_ind` is conserved: these are the moiety totals.
+    """
+    n_ind = len(independent_species_ix)
+    n_dep = len(dependent_species_ix)
+    if n_dep == 0:
+        return np.zeros(shape=(0, n_ind), dtype=np.float64)
+    S_ind = S[independent_species_ix, :]
+    S_dep = S[dependent_species_ix, :]
+    if np.linalg.matrix_rank(S_ind) < n_ind:
+        msg = "The independent species' stoichiometries are not independent."
+        raise ValueError(msg)
+    # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
+    L0_T = sympy.Matrix(S_ind).T.solve_least_squares(sympy.Matrix(S_dep).T)
+    L0 = np.array(L0_T.T, dtype=np.float64)
+    if not np.allclose(L0 @ S_ind, S_dep):
+        msg = (
+            "Dependent species are not linear combinations of the "
+            "independent species, so there is no link matrix."
+        )
+        raise ValueError(msg)
+    return L0
+
+
 class KineticModel(eqx.Module):
     """Structural information about a kinetic model."""
 
@@ -31,7 +68,7 @@ class KineticModel(eqx.Module):
     species: list[str] = eqx.field(static=True)
     reactions: list[str] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
-    dependent_species: list[str] = eqx.field(static=True, default=[])
+    dependent_species: list[str] = eqx.field(static=True, default_factory=list)
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_dgf_ix: NDArray[np.int16] = eqx.field(
@@ -46,8 +83,14 @@ class KineticModel(eqx.Module):
         init=False,
     )
     dependent_species_ix: NDArray[np.int16] = eqx.field(static=True, init=False)
+    independent_species_ix_balanced: NDArray[np.int16] = eqx.field(
+        static=True, init=False
+    )
+    dependent_species_ix_balanced: NDArray[np.int16] = eqx.field(
+        static=True, init=False
+    )
     S: NDArray[np.float64] = eqx.field(static=True, init=False)
-    L0: NDArray[np.int32] = eqx.field(static=True, init=False)
+    L0: NDArray[np.float64] = eqx.field(static=True, init=False)
 
     def __post_init__(self, species_to_dgf_ix=None):
         self.unbalanced_species = [
@@ -78,13 +121,29 @@ class KineticModel(eqx.Module):
             [get_ix_from_list(s, self.species) for s in self.dependent_species],
             dtype=np.int16,
         )
+        self.independent_species_ix_balanced = np.array(
+            [
+                get_ix_from_list(s, self.balanced_species)
+                for s in self.independent_species
+            ],
+            dtype=np.int16,
+        )
+        self.dependent_species_ix_balanced = np.array(
+            [
+                get_ix_from_list(s, self.balanced_species)
+                for s in self.dependent_species
+            ],
+            dtype=np.int16,
+        )
         S = np.zeros(shape=(len(self.species), len(self.reactions)))
         for ix_reaction, reaction in enumerate(self.reactions):
             for species_i, coeff in self.stoichiometry[reaction].items():
                 ix_species = get_ix_from_list(species_i, self.species)
                 S[ix_species, ix_reaction] = coeff
         self.S = S.astype(np.float64)
-        self.L0 = sympy.Matrix.rref(sympy.Matrix(self.S))
+        self.L0 = get_link_matrix(
+            self.S, self.independent_species_ix, self.dependent_species_ix
+        )
 
     def tree_flatten(self):
         children = (
@@ -112,15 +171,25 @@ class KineticModel(eqx.Module):
         self, conc_balanced: BalancedConcArr, parameters: PyTree
     ) -> Flux: ...
 
+    def get_moiety_totals(self, parameters: PyTree) -> DepConcArr:
+        """Get the conserved moiety totals from a PyTree of parameters.
+
+        Models with no dependent species have no moiety totals, so in that
+        case the parameters do not need a "conserved_pools" entry.
+        """
+        if not self.dependent_species:
+            return jnp.zeros(0)
+        return parameters["conserved_pools"]
+
     def get_balanced_conc(
         self,
         conc_ind: IndConcArr,
         moiety_totals: DepConcArr,
     ) -> BalancedConcArr:
         conc_dep = moiety_totals + self.L0 @ conc_ind
-        out = jnp.zeros(self.L0.shape[1] + self.L0.shape[0])
-        out = out.at[self.independent_species_ix].set(conc_ind)
-        return out.at[self.dependent_species_ix].set(conc_dep)
+        out = jnp.zeros(len(self.balanced_species))
+        out = out.at[self.independent_species_ix_balanced].set(conc_ind)
+        return out.at[self.dependent_species_ix_balanced].set(conc_dep)
 
     def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndConcArr:
         """Get the rate of change of balanced species concentrations.
@@ -133,7 +202,7 @@ class KineticModel(eqx.Module):
         """  # Noqa: E501
         conc_balanced = self.get_balanced_conc(
             conc_ind,
-            parameters["conserved_pools"],
+            self.get_moiety_totals(parameters),
         )
         v = self.flux(conc_balanced, parameters)
         sv = self.S @ v
