@@ -9,15 +9,11 @@ import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
 import sympy2jax
-from jaxtyping import Array, Float, PyTree
+from jaxtyping import PyTree
 from numpy.typing import NDArray
 
 from enzax.rate_equation import RateEquation
-
-IndConcArr = Float[Array, "n_ind_conc"]
-DepConcArr = Float[Array, "n_dep_conc"]
-BalancedConcArr = Float[Array, "n_balanced"]
-Flux = Float[Array, " n"]
+from enzax.array_types import BalancedConcArr, IndConcArr, DepConcArr, Flux
 
 
 def get_ix_from_list(s: str, list_of_strings: list[str]):
