@@ -10,10 +10,21 @@ import jax.numpy as jnp
 import numpy as np
 import sympy2jax
 from jaxtyping import PyTree
-from numpy.typing import NDArray
 
 from enzax.rate_equation import RateEquation
-from enzax.array_types import BalancedConcArr, IndConcArr, DepConcArr, Flux
+from enzax.array_types import (
+    BalancedConcArr,
+    Flux,
+    IndConcArr,
+    MoietyTotalsArr,
+    StoichiometricMatrix,
+    IndSpeciesIx,
+    DepSpeciesIx,
+    LinkMatrix,
+    SpeciesIx,
+    BalancedSpeciesIx,
+    UnbalancedSpeciesIx,
+)
 
 
 def get_ix_from_list(s: str, list_of_strings: list[str]):
@@ -21,10 +32,10 @@ def get_ix_from_list(s: str, list_of_strings: list[str]):
 
 
 def get_link_matrix(
-    S: NDArray[np.float64],
-    independent_species_ix: NDArray[np.int16],
-    dependent_species_ix: NDArray[np.int16],
-) -> NDArray[np.float64]:
+    S: StoichiometricMatrix,
+    independent_species_ix: IndSpeciesIx,
+    dependent_species_ix: DepSpeciesIx,
+) -> LinkMatrix:
     """Get the link matrix L0 relating dependent to independent species.
 
     L0 is the matrix satisfying `S_dep = L0 @ S_ind`, where `S_dep` and
@@ -123,22 +134,25 @@ class KineticModel(eqx.Module):
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
-    species_to_dgf_ix: NDArray[np.int16] = eqx.field(
-        static=True, default=slice(None)
-    )
-    balanced_species_ix: NDArray[np.int16] = eqx.field(static=True, init=False)
-    unbalanced_species_ix: NDArray[np.int16] = eqx.field(
+    species_to_dgf_ix: SpeciesIx | None = eqx.field(static=True, default=None)
+    balanced_species_ix: BalancedSpeciesIx = eqx.field(static=True, init=False)
+    unbalanced_species_ix: UnbalancedSpeciesIx = eqx.field(
         static=True, init=False
     )
-    independent_species_ix: NDArray[np.int16] = eqx.field(
+    independent_species_ix: IndSpeciesIx = eqx.field(
         static=True,
         init=False,
     )
-    dependent_species_ix: NDArray[np.int16] = eqx.field(static=True, init=False)
-    S: NDArray[np.float64] = eqx.field(static=True, init=False)
-    L0: NDArray[np.float64] = eqx.field(static=True, init=False)
+    dependent_species_ix: DepSpeciesIx = eqx.field(static=True, init=False)
+    S: StoichiometricMatrix = eqx.field(static=True, init=False)
+    L0: LinkMatrix = eqx.field(static=True, init=False)
 
     def __post_init__(self, species_to_dgf_ix=None):
+        if self.species_to_dgf_ix is None:
+            # by default every species has its own formation energy
+            self.species_to_dgf_ix = np.arange(
+                len(self.species), dtype=np.int16
+            )
         self.unbalanced_species = [
             s for s in self.species if s not in self.balanced_species
         ]
@@ -178,21 +192,6 @@ class KineticModel(eqx.Module):
             self.S, self.independent_species_ix, self.dependent_species_ix
         )
 
-    def tree_flatten(self):
-        children = (
-            self.stoichiometry,
-            self.species,
-            self.reactions,
-            self.balanced_species,
-            self.species_to_dgf_ix,
-        )
-        aux_data = None
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        return cls(*children)
-
     def get_conc(self, balanced, log_unbalanced):
         conc = jnp.zeros(self.S.shape[0])
         conc = conc.at[self.balanced_species_ix].set(balanced)
@@ -204,7 +203,7 @@ class KineticModel(eqx.Module):
         self, conc_balanced: BalancedConcArr, parameters: PyTree
     ) -> Flux: ...
 
-    def get_moiety_totals(self, parameters: PyTree) -> DepConcArr:
+    def get_moiety_totals(self, parameters: PyTree) -> MoietyTotalsArr:
         """Get the conserved moiety totals from a PyTree of parameters.
 
         Models with no dependent species have no moiety totals, so in that
@@ -217,7 +216,7 @@ class KineticModel(eqx.Module):
     def get_balanced_conc(
         self,
         conc_ind: IndConcArr,
-        moiety_totals: DepConcArr,
+        moiety_totals: MoietyTotalsArr,
     ) -> BalancedConcArr:
         conc_dep = moiety_totals + self.L0 @ conc_ind
         conc = jnp.zeros(len(self.species))

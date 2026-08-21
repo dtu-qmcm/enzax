@@ -1,12 +1,14 @@
 """Code for MCMC-based Bayesian inference on kinetic models."""
 
+from enzax.array_types import FloatArray1d
+
 import functools
 from typing import Callable, TypedDict, Unpack
 
 import blackjax
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Float, PyTree, ScalarLike
+from jaxtyping import Array, PyTree, ScalarLike
 
 
 class AdaptationKwargs(TypedDict):
@@ -63,7 +65,7 @@ def run_nuts(
     return states, info
 
 
-def ind_prior_from_truth(truth: Float[Array, " _"], sd: ScalarLike):
+def ind_prior_from_truth(truth: FloatArray1d, sd: ScalarLike):
     """Get a set of independent priors centered at the true parameter values.
 
     Note that the standard deviation currently has to be the same for

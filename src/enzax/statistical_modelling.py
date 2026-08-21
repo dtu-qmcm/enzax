@@ -1,5 +1,4 @@
 import operator
-from typing import Union
 
 from enzax.kinetic_model import RateEquationModel
 from enzax.steady_state import get_steady_state
@@ -7,11 +6,10 @@ import jax
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 from jax.scipy.stats import multivariate_normal, norm
-from jaxtyping import Array, Float, PyTree, Scalar
+from jaxtyping import PyTree, Scalar
 import equinox as eqx
 
-FloatArray = Float[Array, " _"]
-ParamDict = dict[str, Union[FloatArray, "ParamDict"]]
+from enzax.array_types import ParamDict, IndConcArr
 
 
 def prior_from_truth(
@@ -171,7 +169,7 @@ def enzax_log_density(
     measurements: PyTree,
     prior: PyTree,
     fixed_parameters: PyTree | None = None,
-    guess: Float[Array, " _"] | None = None,
+    guess: IndConcArr | None = None,
 ) -> Scalar:
     if guess is None:
         guess = jnp.full((len(model.independent_species_ix)), 0.01)

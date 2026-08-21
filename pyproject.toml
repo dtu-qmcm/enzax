@@ -15,7 +15,7 @@ dependencies = [
     "sympy2jax>=0.0.5",
     "sbmlmath>=0.2.0",
     "jax>=0.9.0",
-    "typeguard>=2.13.3",
+    "beartype>=0.22.9",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
