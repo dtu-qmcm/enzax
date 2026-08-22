@@ -201,7 +201,7 @@ class IrreversibleMichaelisMenten(RateEquation):
         reaction_id: str,
         reaction_stoichiometry: StaticSpeciesArr,
         species_to_dgf_ix: SpeciesIx,
-    ):
+    ) -> IrreversibleMichaelisMentenInput:
         return get_irreversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
@@ -246,7 +246,7 @@ class ReversibleMichaelisMenten(RateEquation):
         reaction_id: str,
         reaction_stoichiometry: StaticSpeciesArr,
         species_to_dgf_ix: SpeciesIx,
-    ):
+    ) -> ReversibleMichaelisMentenInput:
         return get_reversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,

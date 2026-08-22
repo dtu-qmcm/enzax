@@ -138,7 +138,7 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
         reaction_id: str,
         reaction_stoichiometry: StaticSpeciesArr,
         species_to_dgf_ix: SpeciesIx,
-    ):
+    ) -> AllostericIrreversibleMichaelisMentenInput:
         return get_allosteric_irreversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
@@ -192,7 +192,7 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
         reaction_id: str,
         reaction_stoichiometry: StaticSpeciesArr,
         species_to_dgf_ix: SpeciesIx,
-    ):
+    ) -> AllostericReversibleMichaelisMentenInput:
         return get_allosteric_reversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,

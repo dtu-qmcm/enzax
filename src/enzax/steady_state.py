@@ -13,7 +13,7 @@ from enzax.array_types import IndConcArr
 
 
 @eqx.filter_jit()
-def get_steady_state(rhs, guess: IndConcArr, parameters: PyTree) -> PyTree:
+def get_steady_state(rhs, guess: IndConcArr, parameters: PyTree) -> IndConcArr:
     """Get the steady state of a kinetic model, using diffrax.
 
     The better the guess (generally) the faster and more reliable the solving.

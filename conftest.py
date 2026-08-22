@@ -6,6 +6,12 @@ before test collection, which is early enough.
 
 Set `ENZAX_TYPECHECK=0` to run without the checks, which is useful for telling
 a genuine failure apart from a checker artefact.
+
+beartype is load-bearing here, not just one checker among several. The recursive
+`ParamDict` alias in `enzax.array_types` refers to itself by name, and jaxtyping
+resolves annotations against a synthetic namespace that does not contain it.
+beartype copes; typeguard raises `NameError: name 'ParamDict' is not defined`.
+Flatten `ParamDict` before swapping the checker out.
 """
 
 import os

@@ -9,14 +9,17 @@ import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
 import sympy2jax
-from jaxtyping import PyTree
+from jaxtyping import PyTree, ScalarLike
 
 from enzax.rate_equation import RateEquation
 from enzax.array_types import (
     BalancedConcArr,
+    ConcArray,
     Flux,
     IndConcArr,
+    IndRateArr,
     MoietyTotalsArr,
+    UnbalancedConcArr,
     StoichiometricMatrix,
     IndSpeciesIx,
     DepSpeciesIx,
@@ -147,7 +150,7 @@ class KineticModel(eqx.Module):
     S: StoichiometricMatrix = eqx.field(static=True, init=False)
     L0: LinkMatrix = eqx.field(static=True, init=False)
 
-    def __post_init__(self, species_to_dgf_ix=None):
+    def __post_init__(self):
         if self.species_to_dgf_ix is None:
             # by default every species has its own formation energy
             self.species_to_dgf_ix = np.arange(
@@ -192,7 +195,11 @@ class KineticModel(eqx.Module):
             self.S, self.independent_species_ix, self.dependent_species_ix
         )
 
-    def get_conc(self, balanced, log_unbalanced):
+    def get_conc(
+        self,
+        balanced: BalancedConcArr,
+        log_unbalanced: UnbalancedConcArr,
+    ) -> ConcArray:
         conc = jnp.zeros(self.S.shape[0])
         conc = conc.at[self.balanced_species_ix].set(balanced)
         conc = conc.at[self.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
@@ -224,7 +231,7 @@ class KineticModel(eqx.Module):
         conc = conc.at[self.dependent_species_ix].set(conc_dep)
         return conc[self.balanced_species_ix]
 
-    def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndConcArr:
+    def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndRateArr:
         """Get the rate of change of balanced species concentrations.
 
         :param conc: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
@@ -239,7 +246,9 @@ class KineticModel(eqx.Module):
         sv = self.S @ v
         return jnp.array(sv[self.independent_species_ix])
 
-    def __call__(self, t, y, parameters):
+    def __call__(
+        self, t: ScalarLike, y: IndConcArr, parameters: PyTree
+    ) -> IndRateArr:
         return self.dcdt(y, parameters)
 
 
@@ -276,7 +285,7 @@ class RateEquationModel(KineticModel):
 class KineticModelSbml(KineticModel):
     sym_module: Any = eqx.field(static=True, default=None)
 
-    def flux(self, conc_balanced: BalancedConcArr, parameters) -> Flux:
+    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
         assign_species = {}
         for a in self.sym_module[1].keys():
             assign_species.update(

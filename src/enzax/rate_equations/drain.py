@@ -22,9 +22,9 @@ class Drain(RateEquation):
         reaction_id: str,
         reaction_stoichiometry: StaticSpeciesArr,
         species_to_dgf_ix: SpeciesIx,
-    ):
+    ) -> DrainInput:
         return DrainInput(abs_v=jnp.exp(parameters["log_drain"][reaction_id]))
 
-    def __call__(self, conc: ConcArray, drain_input: PyTree) -> Scalar:
+    def __call__(self, conc: ConcArray, drain_input: DrainInput) -> Scalar:
         """Get the flux of a drain reaction."""
         return self.sign * drain_input.abs_v
