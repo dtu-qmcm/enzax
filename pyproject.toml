@@ -6,7 +6,7 @@ authors = [
     {name = "Teddy Groves", email = "tedgro@dtu.dk"},
 ]
 dependencies = [
-    "blackjax>=1.2.1",
+    "blackjax[progress]>=1.6.2",
     "diffrax>=0.7.0",
     "jaxtyping>=0.2.38",
     "arviz>=0.19.0",

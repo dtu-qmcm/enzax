@@ -45,15 +45,15 @@ def run_nuts(
     warmup = blackjax.window_adaptation(
         blackjax.nuts,
         logdensity_fn,
-        progress_bar=True,
         **adapt_kwargs,
     )
     rng_key, warmup_key = jax.random.split(rng_key)
-    (initial_state, tuned_parameters), (_, info, _) = warmup.run(
-        warmup_key,
-        init_parameters,
-        num_steps=num_warmup,  #  type: ignore
-    )
+    with blackjax.progress_bar("enzax warmup"):
+        (initial_state, tuned_parameters), (_, info, _) = warmup.run(
+            warmup_key,
+            init_parameters,
+            num_steps=num_warmup,  #  type: ignore
+        )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
     states, info = _inference_loop(
