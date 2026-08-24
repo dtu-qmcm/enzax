@@ -10,7 +10,7 @@ from jax import numpy as jnp
 from jax.scipy.stats import norm
 from jaxtyping import PyTree, Scalar
 
-from enzax.array_types import BalancedConcArr
+from enzax.array_types import IndConcArr
 from enzax.kinetic_model import KineticModelSbml
 from enzax.sbml import load_libsbml_model_from_file, sbml_to_enzax
 from enzax.steady_state import get_steady_state
@@ -126,20 +126,23 @@ def enzax_log_density_sbml(
     measurements: PyTree,
     prior_log: PyTree,
     fixed_parameters: PyTree | None = None,
-    guess: BalancedConcArr | None = None,
+    guess: IndConcArr | None = None,
 ) -> Scalar:
     free_parameters = jax.tree.map(lambda x: jnp.exp(x), free_parameters_log)
 
     if guess is None:
-        guess = jnp.full((len(model.balanced_species_ix)), 0.01)
+        guess = jnp.full((len(model.independent_species_ix)), 0.01)
     if fixed_parameters is not None:
         parameters = eqx.combine(free_parameters, fixed_parameters)
     else:
         parameters = free_parameters
 
     steady = get_steady_state(model, guess, parameters)
-    conc_hat = get_conc_assingment_species(steady, parameters, model)
-    flux_hat = model.flux(steady, parameters)
+    conc_balanced = model.get_balanced_conc(
+        steady, model.get_moiety_totals(parameters)
+    )
+    conc_hat = get_conc_assingment_species(conc_balanced, parameters, model)
+    flux_hat = model.flux(conc_balanced, parameters)
     conc_msts, flux_msts = measurements
     log_prior = enzax_prior_logdensity(free_parameters_log, prior_log)
     log_likelihood = enzax_log_likelihood(

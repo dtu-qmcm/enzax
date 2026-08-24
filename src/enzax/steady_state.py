@@ -6,17 +6,14 @@ Given a structural kinetic model, a set of parameters and an initial guess, the 
 
 import diffrax
 import equinox as eqx
-import lineax as lx
 from jaxtyping import PyTree
 from jax import numpy as jnp
 
-from enzax.array_types import BalancedConcArr
+from enzax.array_types import IndConcArr
 
 
 @eqx.filter_jit()
-def get_steady_state(
-    rhs, guess: BalancedConcArr, parameters: PyTree
-) -> BalancedConcArr:
+def get_steady_state(rhs, guess: IndConcArr, parameters: PyTree) -> IndConcArr:
     """Get the steady state of a kinetic model, using diffrax.
 
     The better the guess (generally) the faster and more reliable the solving.
@@ -44,9 +41,7 @@ def get_steady_state(
     )
     cond_fn = diffrax.steady_state_event()
     event = diffrax.Event(cond_fn)
-    adjoint = diffrax.ImplicitAdjoint(
-        linear_solver=lx.AutoLinearSolver(well_posed=False)
-    )
+    adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
         terms=term,
         solver=solver,
