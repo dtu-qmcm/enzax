@@ -17,15 +17,15 @@ EXAMPLE_PARAMETERS = dict(
     log_product_km={"r1": jnp.array([-0.2])},
     log_kcat={"r1": jnp.array(-0.1)},
     dgf=jnp.array([-3.0, 1.0]),
-    log_ki={"r1": jnp.array([1.0])},
+    log_ki={"r1": jnp.array([])},
     temperature=jnp.array(310.0),
     log_enzyme={"r1": jnp.log(jnp.array(0.3)), "e1": jnp.log(jnp.array(0.2))},
     log_conc_unbalanced=jnp.array([]),
     log_tc={"r1": jnp.array(-0.2)},
     log_dc_activator={"r1": jnp.array([-0.1])},
-    log_dc_inhibitor={"r1": jnp.array([0.2])},
+    log_dc_inhibitor={"r1": jnp.array([])},
 )
-EXAMPLE_SPECIES_TO_DGF_IX = np.array([0, 0, 1, 1])
+EXAMPLE_SPECIES_TO_DGF_IX = np.array([0, 0, 1])
 
 
 def test_irreversible_michaelis_menten():
