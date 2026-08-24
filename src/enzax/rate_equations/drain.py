@@ -1,10 +1,9 @@
 import equinox as eqx
 from jax import numpy as jnp
-import numpy as np
-from numpy.typing import NDArray
 from jaxtyping import PyTree, Scalar
 
-from enzax.rate_equation import ConcArray, RateEquation
+from enzax.rate_equation import RateEquation
+from enzax.array_types import ConcArray, SpeciesIx, StaticSpeciesArr
 
 
 class DrainInput(eqx.Module):
@@ -21,11 +20,11 @@ class Drain(RateEquation):
         self,
         parameters: PyTree,
         reaction_id: str,
-        reaction_stoichiometry: NDArray[np.float64],
-        species_to_dgf_ix: NDArray[np.int16],
-    ):
+        reaction_stoichiometry: StaticSpeciesArr,
+        species_to_dgf_ix: SpeciesIx,
+    ) -> DrainInput:
         return DrainInput(abs_v=jnp.exp(parameters["log_drain"][reaction_id]))
 
-    def __call__(self, conc: ConcArray, drain_input: PyTree) -> Scalar:
+    def __call__(self, conc: ConcArray, drain_input: DrainInput) -> Scalar:
         """Get the flux of a drain reaction."""
         return self.sign * drain_input.abs_v

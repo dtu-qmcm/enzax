@@ -2,13 +2,14 @@
 
 from abc import ABC, abstractmethod
 from equinox import Module, AbstractVar
-import numpy as np
-from numpy.typing import NDArray
 
-from jaxtyping import Array, Float, PyTree, Scalar
+from jaxtyping import PyTree, Scalar
 
-
-ConcArray = Float[Array, " n"]
+from enzax.array_types import (
+    ConcArray,
+    SpeciesIx,
+    StaticSpeciesArr,
+)
 
 
 class RateEquation(Module, ABC):
@@ -24,8 +25,8 @@ class RateEquation(Module, ABC):
         self,
         parameters: PyTree,
         reaction_id: str,
-        reaction_stoichiometry: NDArray[np.float64],
-        species_to_dgf_ix: NDArray[np.int16],
+        reaction_stoichiometry: StaticSpeciesArr,
+        species_to_dgf_ix: SpeciesIx,
     ) -> PyTree: ...
 
     @abstractmethod

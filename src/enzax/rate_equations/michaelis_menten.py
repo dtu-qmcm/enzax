@@ -1,29 +1,44 @@
 import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Float, Int, PyTree, Scalar
-from numpy.typing import NDArray
+from jaxtyping import PyTree, Scalar
 
+from enzax.array_types import (
+    ConcArray,
+    KiArr,
+    SubstrateArr,
+    ReactantArr,
+    ProductArr,
+    SpeciesIx,
+    CompetitiveInhibitorIx,
+    SubstrateIx,
+    StaticSubstrateArr,
+    ReactantIx,
+    StaticProductArr,
+    ProductIx,
+    StaticReactantArr,
+    StaticSpeciesArr,
+)
 from enzax.rate_equation import RateEquation
 
 
 class IrreversibleMichaelisMentenInput(eqx.Module):
     kcat: Scalar
     enzyme: Scalar
-    ix_ki_species: NDArray[np.int16]
-    ki: Float[Array, " n_ki"]
-    ix_substrate: NDArray[np.int16]
-    substrate_kms: Float[Array, " n_substrate"]
-    substrate_stoichiometry: NDArray[np.float64]
+    ix_ki_species: CompetitiveInhibitorIx
+    ki: KiArr
+    ix_substrate: SubstrateIx
+    substrate_kms: SubstrateArr
+    substrate_stoichiometry: StaticSubstrateArr
 
 
 def get_irreversible_michaelis_menten_input(
     parameters: PyTree,
     reaction_id: str,
     enzyme_id: str | None,
-    reaction_stoichiometry: NDArray[np.float64],
-    species_to_dgf_ix: NDArray[np.int16],
-    ci_ix: NDArray[np.int16],
+    reaction_stoichiometry: StaticSpeciesArr,
+    species_to_dgf_ix: SpeciesIx,
+    ci_ix: CompetitiveInhibitorIx,
 ) -> IrreversibleMichaelisMentenInput:
     if enzyme_id is None:
         enzyme_id = reaction_id
@@ -42,18 +57,18 @@ def get_irreversible_michaelis_menten_input(
 class ReversibleMichaelisMentenInput(eqx.Module):
     kcat: Scalar
     enzyme: Scalar
-    ki: Float[Array, " n_ki"]
-    substrate_kms: Float[Array, " n_substrate"]
-    product_kms: Float[Array, " n_product"]
-    dgf: Float[Array, " n_reactant"]
+    ki: KiArr
+    substrate_kms: SubstrateArr
+    product_kms: ProductArr
+    dgf: ReactantArr
     temperature: Scalar
-    ix_ki_species: NDArray[np.int16]
-    ix_reactant: NDArray[np.int16]
-    ix_substrate: NDArray[np.int16]
-    ix_product: NDArray[np.int16]
-    reactant_stoichiometry: NDArray[np.float64]
-    substrate_stoichiometry: NDArray[np.float64]
-    product_stoichiometry: NDArray[np.float64]
+    ix_ki_species: CompetitiveInhibitorIx
+    ix_reactant: ReactantIx
+    ix_substrate: SubstrateIx
+    ix_product: ProductIx
+    reactant_stoichiometry: StaticReactantArr
+    substrate_stoichiometry: StaticSubstrateArr
+    product_stoichiometry: StaticProductArr
     water_stoichiometry: float
 
 
@@ -61,9 +76,9 @@ def get_reversible_michaelis_menten_input(
     parameters: PyTree,
     reaction_id: str,
     enzyme_id: str | None,
-    reaction_stoichiometry: NDArray[np.float64],
-    species_to_dgf_ix: NDArray[np.int16],
-    ci_ix: NDArray[np.int16],
+    reaction_stoichiometry: StaticSpeciesArr,
+    species_to_dgf_ix: SpeciesIx,
+    ci_ix: CompetitiveInhibitorIx,
     water_stoichiometry: float,
 ) -> ReversibleMichaelisMentenInput:
     if enzyme_id is None:
@@ -91,8 +106,8 @@ def get_reversible_michaelis_menten_input(
 
 
 def numerator_mm(
-    substrate_conc: Float[Array, " n_substrate"],
-    substrate_kms: Int[Array, " n_substrate"],
+    substrate_conc: SubstrateArr,
+    substrate_kms: SubstrateArr,
 ) -> Scalar:
     """Get the product of each substrate's concentration over its km.
 
@@ -102,10 +117,10 @@ def numerator_mm(
 
 
 def get_reversibility(
-    reactant_conc: Float[Array, " n_reactant"],
-    dgf: Float[Array, " n_reactant"],
+    reactant_conc: ReactantArr,
+    dgf: ReactantArr,
     temperature: Scalar,
-    reactant_stoichiometry: NDArray[np.float64],
+    reactant_stoichiometry: StaticReactantArr,
     water_stoichiometry: float,
 ) -> Scalar:
     """Get the reversibility of a reaction.
@@ -131,11 +146,11 @@ def get_reversibility(
 
 
 def free_enzyme_ratio_imm(
-    substrate_conc: Float[Array, " n_substrate"],
-    substrate_km: Float[Array, " n_substrate"],
-    ki: Float[Array, " n_ki"],
-    inhibitor_conc: Float[Array, " n_ki"],
-    substrate_stoichiometry: NDArray[np.float64],
+    substrate_conc: SubstrateArr,
+    substrate_km: SubstrateArr,
+    ki: KiArr,
+    inhibitor_conc: KiArr,
+    substrate_stoichiometry: StaticSubstrateArr,
 ) -> Scalar:
     """Free enzyme ratio for irreversible Michaelis Menten reactions."""
     return 1.0 / (
@@ -148,14 +163,14 @@ def free_enzyme_ratio_imm(
 
 
 def free_enzyme_ratio_rmm(
-    substrate_conc: Float[Array, " n_substrate"],
-    product_conc: Float[Array, " n_product"],
-    substrate_kms: Float[Array, " n_substrate"],
-    product_kms: Float[Array, " n_product"],
-    ix_ki_species: Float[Array, " n_ki"],
-    ki: Float[Array, " n_ki"],
-    substrate_stoichiometry: NDArray[np.float64],
-    product_stoichiometry: NDArray[np.float64],
+    substrate_conc: SubstrateArr,
+    product_conc: ProductArr,
+    substrate_kms: SubstrateArr,
+    product_kms: ProductArr,
+    inhibitor_conc: KiArr,
+    ki: KiArr,
+    substrate_stoichiometry: StaticSubstrateArr,
+    product_stoichiometry: StaticProductArr,
 ) -> Scalar:
     """The free enzyme ratio for a reversible Michaelis Menten reaction."""
     return 1.0 / (
@@ -168,14 +183,14 @@ def free_enzyme_ratio_rmm(
             ((product_conc / product_kms) + 1.0)
             ** jnp.abs(product_stoichiometry)
         )
-        + jnp.sum(ix_ki_species / ki)
+        + jnp.sum(inhibitor_conc / ki)
     )
 
 
 class IrreversibleMichaelisMenten(RateEquation):
     """A reaction with irreversible Michaelis Menten kinetics."""
 
-    ix_ki_species: NDArray[np.int16] = eqx.field(
+    ix_ki_species: CompetitiveInhibitorIx = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int64)
     )
     enzyme_id: str | None = eqx.field(default_factory=lambda: None)
@@ -184,9 +199,9 @@ class IrreversibleMichaelisMenten(RateEquation):
         self,
         parameters: PyTree,
         reaction_id: str,
-        reaction_stoichiometry: NDArray[np.float64],
-        species_to_dgf_ix: NDArray[np.int16],
-    ):
+        reaction_stoichiometry: StaticSpeciesArr,
+        species_to_dgf_ix: SpeciesIx,
+    ) -> IrreversibleMichaelisMentenInput:
         return get_irreversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
@@ -198,7 +213,7 @@ class IrreversibleMichaelisMenten(RateEquation):
 
     def __call__(
         self,
-        conc: Float[Array, " n"],
+        conc: ConcArray,
         imm_input: IrreversibleMichaelisMentenInput,
     ) -> Scalar:
         """Get flux of a reaction with irreversible Michaelis Menten kinetics."""  # noqa: E501
@@ -219,7 +234,7 @@ class IrreversibleMichaelisMenten(RateEquation):
 class ReversibleMichaelisMenten(RateEquation):
     """A reaction with reversible Michaelis Menten kinetics."""
 
-    ix_ki_species: NDArray[np.int16] = eqx.field(
+    ix_ki_species: CompetitiveInhibitorIx = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
     water_stoichiometry: float = eqx.field(default_factory=lambda: 0.0)
@@ -229,9 +244,9 @@ class ReversibleMichaelisMenten(RateEquation):
         self,
         parameters: PyTree,
         reaction_id: str,
-        reaction_stoichiometry: NDArray[np.float64],
-        species_to_dgf_ix: NDArray[np.int16],
-    ):
+        reaction_stoichiometry: StaticSpeciesArr,
+        species_to_dgf_ix: SpeciesIx,
+    ) -> ReversibleMichaelisMentenInput:
         return get_reversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
@@ -244,7 +259,7 @@ class ReversibleMichaelisMenten(RateEquation):
 
     def __call__(
         self,
-        conc: Float[Array, " n"],
+        conc: ConcArray,
         rmm_input: ReversibleMichaelisMentenInput,
     ) -> Scalar:
         """Get flux of a reaction with reversible Michaelis Menten kinetics.
@@ -266,7 +281,7 @@ class ReversibleMichaelisMenten(RateEquation):
         fer = free_enzyme_ratio_rmm(
             substrate_conc=conc[rmm_input.ix_substrate],
             product_conc=conc[rmm_input.ix_product],
-            ix_ki_species=conc[rmm_input.ix_ki_species],
+            inhibitor_conc=conc[rmm_input.ix_ki_species],
             substrate_kms=rmm_input.substrate_kms,
             product_kms=rmm_input.product_kms,
             substrate_stoichiometry=rmm_input.substrate_stoichiometry,
