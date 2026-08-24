@@ -50,6 +50,6 @@ known-first-party = ["enzax"]
 dev = [
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",
-    "pytest==8.3.5",
+    "pytest>=9.0.3",
     "requests>=2.32.5",
 ]
