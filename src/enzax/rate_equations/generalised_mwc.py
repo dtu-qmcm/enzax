@@ -1,8 +1,7 @@
 import equinox as eqx
 from jax import numpy as jnp
-from jaxtyping import Array, Float, PyTree, Scalar
+from jaxtyping import PyTree, Scalar
 import numpy as np
-from numpy.typing import NDArray
 
 from enzax.rate_equations.michaelis_menten import (
     free_enzyme_ratio_imm,
@@ -12,19 +11,31 @@ from enzax.rate_equations.michaelis_menten import (
     ReversibleMichaelisMenten,
     ReversibleMichaelisMentenInput,
 )
+from enzax.array_types import (
+    ActivatorArr,
+    InhibitorArr,
+    InhibitionArr,
+    ActivationArr,
+    ConcArray,
+    SpeciesIx,
+    CompetitiveInhibitorIx,
+    AllostericInhibitorIx,
+    AllostericActivatorIx,
+    StaticSpeciesArr,
+)
 
 
 class AllostericIrreversibleMichaelisMentenInput(
     IrreversibleMichaelisMentenInput
 ):
-    dc_inhibitor: Float[Array, " n_inhibitor"]
-    dc_activator: Float[Array, " n_activator"]
+    dc_inhibitor: InhibitorArr
+    dc_activator: ActivatorArr
     tc: Scalar
 
 
 class AllostericReversibleMichaelisMentenInput(ReversibleMichaelisMentenInput):
-    dc_inhibitor: Float[Array, " n_inhibitor"]
-    dc_activator: Float[Array, " n_activator"]
+    dc_inhibitor: InhibitorArr
+    dc_activator: ActivatorArr
     tc: Scalar
 
 
@@ -32,9 +43,9 @@ def get_allosteric_irreversible_michaelis_menten_input(
     parameters: PyTree,
     reaction_id: str,
     enzyme_id: str | None,
-    reaction_stoichiometry: NDArray[np.float64],
-    species_to_dgf_ix: NDArray[np.int16],
-    ci_ix: NDArray[np.int16],
+    reaction_stoichiometry: StaticSpeciesArr,
+    species_to_dgf_ix: SpeciesIx,
+    ci_ix: CompetitiveInhibitorIx,
 ) -> AllostericIrreversibleMichaelisMentenInput:
     ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
     if enzyme_id is None:
@@ -57,9 +68,9 @@ def get_allosteric_reversible_michaelis_menten_input(
     parameters: PyTree,
     reaction_id: str,
     enzyme_id: str | None,
-    reaction_stoichiometry: NDArray[np.float64],
-    species_to_dgf_ix: NDArray[np.int16],
-    ci_ix: NDArray[np.int16],
+    reaction_stoichiometry: StaticSpeciesArr,
+    species_to_dgf_ix: SpeciesIx,
+    ci_ix: CompetitiveInhibitorIx,
     water_stoichiometry: float,
 ) -> AllostericReversibleMichaelisMentenInput:
     ix_reactant = np.argwhere(reaction_stoichiometry != 0.0).flatten()
@@ -90,10 +101,10 @@ def get_allosteric_reversible_michaelis_menten_input(
 
 
 def generalised_mwc_effect(
-    conc_inhibitor: Float[Array, " n_inhibition"],
-    dc_inhibitor: Float[Array, " n_inhibition"],
-    conc_activator: Float[Array, " n_activation"],
-    dc_activator: Float[Array, " n_activation"],
+    conc_inhibitor: InhibitionArr,
+    dc_inhibitor: InhibitionArr,
+    conc_activator: ActivationArr,
+    dc_activator: ActivationArr,
     free_enzyme_ratio: Scalar,
     tc: Scalar,
     subunits: int,
@@ -112,10 +123,10 @@ def generalised_mwc_effect(
 class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
     """A reaction with irreversible Michaelis Menten kinetics and allostery."""
 
-    ix_allosteric_inhibitors: NDArray[np.int16] = eqx.field(
+    ix_allosteric_inhibitors: AllostericInhibitorIx = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
-    ix_allosteric_activators: NDArray[np.int16] = eqx.field(
+    ix_allosteric_activators: AllostericActivatorIx = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
     subunits: int = 1
@@ -125,9 +136,9 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
         self,
         parameters: PyTree,
         reaction_id: str,
-        reaction_stoichiometry: NDArray[np.float64],
-        species_to_dgf_ix: NDArray[np.int16],
-    ):
+        reaction_stoichiometry: StaticSpeciesArr,
+        species_to_dgf_ix: SpeciesIx,
+    ) -> AllostericIrreversibleMichaelisMentenInput:
         return get_allosteric_irreversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
@@ -139,7 +150,7 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
 
     def __call__(
         self,
-        conc: Float[Array, " n"],
+        conc: ConcArray,
         aimm_input: AllostericIrreversibleMichaelisMentenInput,
     ) -> Scalar:
         """The flux of an irreversible allosteric Michaelis Menten reaction."""
@@ -166,10 +177,10 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
 class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
     """A reaction with reversible Michaelis Menten kinetics and allostery."""
 
-    ix_allosteric_inhibitors: NDArray[np.int16] = eqx.field(
+    ix_allosteric_inhibitors: AllostericInhibitorIx = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
-    ix_allosteric_activators: NDArray[np.int16] = eqx.field(
+    ix_allosteric_activators: AllostericActivatorIx = eqx.field(
         default_factory=lambda: np.array([], dtype=np.int16)
     )
     subunits: int = 1
@@ -179,9 +190,9 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
         self,
         parameters: PyTree,
         reaction_id: str,
-        reaction_stoichiometry: NDArray[np.float64],
-        species_to_dgf_ix: NDArray[np.int16],
-    ):
+        reaction_stoichiometry: StaticSpeciesArr,
+        species_to_dgf_ix: SpeciesIx,
+    ) -> AllostericReversibleMichaelisMentenInput:
         return get_allosteric_reversible_michaelis_menten_input(
             parameters=parameters,
             reaction_id=reaction_id,
@@ -194,7 +205,7 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
 
     def __call__(
         self,
-        conc: Float[Array, " n"],
+        conc: ConcArray,
         armm_input: AllostericReversibleMichaelisMentenInput,
     ) -> Scalar:
         """The flux of an irreversible allosteric Michaelis Menten reaction."""
@@ -203,7 +214,7 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
             product_conc=conc[armm_input.ix_product],
             substrate_kms=armm_input.substrate_kms,
             product_kms=armm_input.product_kms,
-            ix_ki_species=conc[self.ix_ki_species],
+            inhibitor_conc=conc[self.ix_ki_species],
             ki=armm_input.ki,
             substrate_stoichiometry=armm_input.substrate_stoichiometry,
             product_stoichiometry=armm_input.product_stoichiometry,

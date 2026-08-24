@@ -8,8 +8,9 @@ import sympy2jax
 import jax
 from jax import numpy as jnp
 from jax.scipy.stats import norm
-from jaxtyping import Array, Float, PyTree, Scalar
+from jaxtyping import PyTree, Scalar
 
+from enzax.array_types import BalancedConcArr
 from enzax.kinetic_model import KineticModelSbml
 from enzax.sbml import load_libsbml_model_from_file, sbml_to_enzax
 from enzax.steady_state import get_steady_state
@@ -125,7 +126,7 @@ def enzax_log_density_sbml(
     measurements: PyTree,
     prior_log: PyTree,
     fixed_parameters: PyTree | None = None,
-    guess: Float[Array, " _"] | None = None,
+    guess: BalancedConcArr | None = None,
 ) -> Scalar:
     free_parameters = jax.tree.map(lambda x: jnp.exp(x), free_parameters_log)
 

@@ -18,17 +18,17 @@ from enzax.rate_equations import (
 
 
 stoichiometry = {
-    "the_drain": {"met-L": 1},
-    "MAT1": {"met-L": -1, "atp": -1, "pi": 1, "ppi": 1, "amet": 1},
-    "MAT3": {"met-L": -1, "atp": -1, "pi": 1, "ppi": 1, "amet": 1},
-    "METH-Gen": {"amet": -1, "ahcys": 1},
-    "GNMT1": {"amet": -1, "ahcys": 1, "gly": -1, "sarcs": 1},
-    "AHC1": {"ahcys": -1, "hcys-L": 1, "adn": 1},
-    "MS1": {"hcys-L": -1, "thf": 1, "met-L": 1, "5mthf": -1},
-    "BHMT1": {"hcys-L": -1, "glyb": -1, "met-L": 1, "dmgly": 1},
-    "CBS1": {"hcys-L": -1, "ser-L": -1, "cyst-L": 1},
-    "MTHFR1": {"5mthf": 1, "mlthf": -1, "nadp": 1, "nadph": -1},
-    "PROT1": {"met-L": -1},
+    "the_drain": {"met-L": 1.0},
+    "MAT1": {"met-L": -1.0, "atp": -1.0, "pi": 1.0, "ppi": 1.0, "amet": 1.0},
+    "MAT3": {"met-L": -1.0, "atp": -1.0, "pi": 1.0, "ppi": 1.0, "amet": 1.0},
+    "METH-Gen": {"amet": -1.0, "ahcys": 1.0},
+    "GNMT1": {"amet": -1.0, "ahcys": 1.0, "gly": -1.0, "sarcs": 1.0},
+    "AHC1": {"ahcys": -1.0, "hcys-L": 1.0, "adn": 1.0},
+    "MS1": {"hcys-L": -1.0, "thf": 1.0, "met-L": 1.0, "5mthf": -1.0},
+    "BHMT1": {"hcys-L": -1.0, "glyb": -1.0, "met-L": 1.0, "dmgly": 1.0},
+    "CBS1": {"hcys-L": -1.0, "ser-L": -1.0, "cyst-L": 1.0},
+    "MTHFR1": {"5mthf": 1.0, "mlthf": -1.0, "nadp": 1.0, "nadph": -1.0},
+    "PROT1": {"met-L": -1.0},
 }
 species = [
     "met-L",

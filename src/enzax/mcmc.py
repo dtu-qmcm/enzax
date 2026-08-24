@@ -1,12 +1,14 @@
 """Code for MCMC-based Bayesian inference on kinetic models."""
 
+from enzax.array_types import FloatArray1d
+
 import functools
 from typing import Callable, TypedDict, Unpack
 
 import blackjax
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array, Float, PyTree, ScalarLike
+from jaxtyping import Array, PyTree, ScalarLike
 
 
 class AdaptationKwargs(TypedDict):
@@ -43,15 +45,15 @@ def run_nuts(
     warmup = blackjax.window_adaptation(
         blackjax.nuts,
         logdensity_fn,
-        progress_bar=True,
         **adapt_kwargs,
     )
     rng_key, warmup_key = jax.random.split(rng_key)
-    (initial_state, tuned_parameters), (_, info, _) = warmup.run(
-        warmup_key,
-        init_parameters,
-        num_steps=num_warmup,  #  type: ignore
-    )
+    with blackjax.progress_bar("enzax warmup"):
+        (initial_state, tuned_parameters), (_, info, _) = warmup.run(
+            warmup_key,
+            init_parameters,
+            num_steps=num_warmup,  #  type: ignore
+        )
     rng_key, sample_key = jax.random.split(rng_key)
     nuts_kernel = blackjax.nuts(logdensity_fn, **tuned_parameters).step
     states, info = _inference_loop(
@@ -63,7 +65,7 @@ def run_nuts(
     return states, info
 
 
-def ind_prior_from_truth(truth: Float[Array, " _"], sd: ScalarLike):
+def ind_prior_from_truth(truth: FloatArray1d, sd: ScalarLike):
     """Get a set of independent priors centered at the true parameter values.
 
     Note that the standard deviation currently has to be the same for
