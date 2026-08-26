@@ -1,3 +1,5 @@
+from enzax.array_types import ParamLeaf
+from enzax.steady_state import get_steady_state
 from jax import numpy as jnp
 import pytest
 
@@ -22,3 +24,25 @@ def test_dcdt(model, steady_state, parameters):
     dcdt = model.dcdt(steady_state, parameters)
     zero = jnp.full((len(steady_state),), 0.0)
     assert jnp.isclose(dcdt, zero).all()
+
+
+def test_conserved_moiety_is_conserved():
+    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]  # type: ignore
+    log_unbalanced: ParamLeaf = conserved_moiety.parameters[
+        "log_conc_unbalanced"
+    ]  # type: ignore
+
+    def get_conc(ind):
+        balanced = conserved_moiety.model.get_balanced_conc(ind, pool)
+        return conserved_moiety.model.get_conc(balanced, log_unbalanced)
+
+    guess = jnp.full(conserved_moiety.steady_state.shape, 1e-3)
+    steady = get_steady_state(
+        conserved_moiety.model,
+        guess,
+        conserved_moiety.parameters,
+    )
+    ix_conserved = jnp.array([6, 7])
+    conc_steady = get_conc(steady)
+    conserved_sum_steady = conc_steady[ix_conserved].sum()
+    assert jnp.isclose(conserved_sum_steady, pool[0]).all()
