@@ -71,10 +71,7 @@ def main():
     y0 = initial_conc
     print(f"Flux at {str(y0)}: " + str(model.flux(y0, parameters)))
 
-    print(
-        f"dcdt at {str(y0)}, t=1: "
-        + str(model.dcdt(conc=y0, parameters=parameters))
-    )
+    print(f"dcdt at {str(y0)}, t=1: " + str(model.dcdt(y0, parameters)))
 
     guess = initial_conc
     steady_state = get_steady_state(model, guess, parameters)
