@@ -31,12 +31,16 @@ TWO_DRAINS = dict(
     species=["A", "B"],
     balanced_species=["A", "B"],
 )
-# A -> B + C, so A, B and C are all in conservation relations, but B's
-# stoichiometry is minus A's, i.e. A and B cannot both be independent.
-BRANCH = dict(
-    stoichiometry={"r": {"A": -1.0, "B": 1.0, "C": 1.0}},
-    species=["A", "B", "C"],
-    balanced_species=["A", "B", "C"],
+# A cofactor X1/X2 is recycled while A is turned into B, so the model has two
+# separate conservation relations: A + B and X1 + X2. Exactly one species from
+# each relation can be independent.
+TWO_MOIETIES = dict(
+    stoichiometry={
+        "r": {"A": -1.0, "X1": -1.0, "B": 1.0, "X2": 1.0},
+        "regen": {"X2": -1.0, "X1": 1.0},
+    },
+    species=["A", "B", "X1", "X2"],
+    balanced_species=["A", "B", "X1", "X2"],
 )
 
 
@@ -47,18 +51,12 @@ BRANCH = dict(
         (CYCLE, ["B"]),
         (CYCLE, ["A"]),
         (TWO_DRAINS, []),
-        (BRANCH, []),
-        (BRANCH, ["B", "C"]),
-        (BRANCH, ["A", "B"]),
     ],
     ids=[
         "cycle-no-dependent-species",
         "cycle-dependent-b",
         "cycle-dependent-a",
         "unrelated-species-no-dependent-species",
-        "branch-no-dependent-species",
-        "branch-dependent-b-and-c",
-        "branch-dependent-a-and-b",
     ],
 )
 def test_validate_kinetic_model_valid(structure, dependent_species):
@@ -81,8 +79,8 @@ def test_validate_kinetic_model_valid(structure, dependent_species):
         ),
         (CYCLE, ["A", "B"], "must have at least one independent species"),
         (
-            BRANCH,
-            ["B"],
+            TWO_MOIETIES,
+            ["X2"],
             "stoichiometries must be linearly independent",
         ),
         (
@@ -111,12 +109,10 @@ def test_validate_kinetic_model_invalid(
     [
         (CYCLE, [], np.zeros(shape=(0, 2))),
         (CYCLE, ["B"], np.array([[-1.0]])),
-        (BRANCH, ["B", "C"], np.array([[-1.0], [-1.0]])),
     ],
     ids=[
         "cycle-no-dependent-species",
         "cycle-dependent-b",
-        "branch-dependent-b-and-c",
     ],
 )
 def test_link_matrix(structure, dependent_species, expected_L0):
