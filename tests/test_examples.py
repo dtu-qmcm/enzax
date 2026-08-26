@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 import pytest
 
-from enzax.examples import linear, methionine
+from enzax.examples import conserved_moiety, linear, methionine
 
 
 @pytest.mark.parametrize(
@@ -9,6 +9,11 @@ from enzax.examples import linear, methionine
     [
         (methionine.model, methionine.steady_state, methionine.parameters),
         (linear.model, linear.steady_state, linear.parameters),
+        (
+            conserved_moiety.model,
+            conserved_moiety.steady_state,
+            conserved_moiety.parameters,
+        ),
     ],
 )
 def test_dcdt(model, steady_state, parameters):
