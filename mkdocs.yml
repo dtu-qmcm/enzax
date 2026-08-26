@@ -41,6 +41,7 @@ nav:
   - Accessibility: 'accessibility.md'
   - API:
     - 'api/kinetic_model.md'
+    - 'api/parameters.md'
     - 'api/rate_equations.md'
     - 'api/steady_state.md'
     - 'api/mcmc.md'

@@ -1,15 +1,17 @@
 import equinox as eqx
-import numpy as np
 from jax import numpy as jnp
 from jaxtyping import PyTree, Scalar
 
 from enzax.array_types import (
     ConcArray,
     KiArr,
+    KiIx,
     SubstrateArr,
+    SubstrateKIx,
     ReactantArr,
+    ReactantDgfIx,
     ProductArr,
-    SpeciesIx,
+    ProductKIx,
     CompetitiveInhibitorIx,
     SubstrateIx,
     StaticSubstrateArr,
@@ -17,9 +19,32 @@ from enzax.array_types import (
     StaticProductArr,
     ProductIx,
     StaticReactantArr,
-    StaticSpeciesArr,
+)
+from enzax.parameters import (
+    ParameterLayout,
+    ReactionScope,
+    k_names,
+    scalar_name,
+    species_names,
 )
 from enzax.rate_equation import RateEquation
+
+
+class IrreversibleMichaelisMentenIx(eqx.Module):
+    """Where an irreversible Michaelis Menten reaction reads its parameters.
+
+    Built once, when the model is constructed. `ix_kcat` and `ix_enzyme` index
+    their own arrays; every `ix_*_k` and `ix_ki` indexes the single `log_k`
+    array, which is what lets two reactions share a constant.
+    """
+
+    ix_kcat: int
+    ix_enzyme: int
+    ix_substrate_k: SubstrateKIx
+    ix_ki: KiIx
+    ix_substrate: SubstrateIx
+    ix_ki_species: CompetitiveInhibitorIx
+    substrate_stoichiometry: StaticSubstrateArr
 
 
 class IrreversibleMichaelisMentenInput(eqx.Module):
@@ -32,26 +57,23 @@ class IrreversibleMichaelisMentenInput(eqx.Module):
     substrate_stoichiometry: StaticSubstrateArr
 
 
-def get_irreversible_michaelis_menten_input(
-    parameters: PyTree,
-    reaction_id: str,
-    enzyme_id: str | None,
-    reaction_stoichiometry: StaticSpeciesArr,
-    species_to_dgf_ix: SpeciesIx,
-    ci_ix: CompetitiveInhibitorIx,
-) -> IrreversibleMichaelisMentenInput:
-    if enzyme_id is None:
-        enzyme_id = reaction_id
-    ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
-    return IrreversibleMichaelisMentenInput(
-        kcat=jnp.exp(parameters["log_kcat"][reaction_id]),
-        enzyme=jnp.exp(parameters["log_enzyme"][enzyme_id]),
-        ix_substrate=ix_substrate,
-        substrate_kms=jnp.exp(parameters["log_substrate_km"][reaction_id]),
-        substrate_stoichiometry=reaction_stoichiometry[ix_substrate],
-        ix_ki_species=ci_ix,
-        ki=jnp.exp(parameters["log_ki"][reaction_id]),
-    )
+class ReversibleMichaelisMentenIx(eqx.Module):
+    """Where a reversible Michaelis Menten reaction reads its parameters."""
+
+    ix_kcat: int
+    ix_enzyme: int
+    ix_substrate_k: SubstrateKIx
+    ix_product_k: ProductKIx
+    ix_ki: KiIx
+    ix_dgf: ReactantDgfIx
+    ix_reactant: ReactantIx
+    ix_substrate: SubstrateIx
+    ix_product: ProductIx
+    ix_ki_species: CompetitiveInhibitorIx
+    reactant_stoichiometry: StaticReactantArr
+    substrate_stoichiometry: StaticSubstrateArr
+    product_stoichiometry: StaticProductArr
+    water_stoichiometry: float
 
 
 class ReversibleMichaelisMentenInput(eqx.Module):
@@ -72,36 +94,120 @@ class ReversibleMichaelisMentenInput(eqx.Module):
     water_stoichiometry: float
 
 
-def get_reversible_michaelis_menten_input(
-    parameters: PyTree,
-    reaction_id: str,
-    enzyme_id: str | None,
-    reaction_stoichiometry: StaticSpeciesArr,
-    species_to_dgf_ix: SpeciesIx,
-    ci_ix: CompetitiveInhibitorIx,
+def michaelis_menten_names(
+    scope: ReactionScope,
+    kcat: str | None,
+    enzyme: str | None,
+    k: dict[str, str] | None,
+    ki: list[str] | dict[str, str] | None,
+    reversible: bool,
+) -> dict[str, tuple[str, ...]]:
+    """Get the parameter names a Michaelis Menten reaction refers to.
+
+    An irreversible reaction has a Michaelis constant for each substrate; a
+    reversible one has one for each reactant. Which of a reversible reaction's
+    constants count as substrate constants and which as product constants is
+    decided here, by the sign of the stoichiometry, so that flipping a
+    reaction's direction leaves its declaration unchanged.
+    """
+    substrates = scope.substrates()
+    products = scope.products() if reversible else ()
+    named_species = scope.reactants() if reversible else substrates
+    what = "reactants" if reversible else "substrates"
+    k_map = k_names(named_species, k, scope.reaction_id, what)
+    ki_map = species_names(ki, "ki", scope.reaction_id, "ki")
+    names = {
+        "kcat": (scalar_name(kcat, scope.reaction_id),),
+        "enzyme": (scalar_name(enzyme, scope.reaction_id),),
+        "substrate_k": tuple(k_map[s] for s in substrates),
+    }
+    if reversible:
+        names["product_k"] = tuple(k_map[s] for s in products)
+    names["ki"] = tuple(ki_map.values())
+    return names
+
+
+def get_irreversible_michaelis_menten_ix(
+    scope: ReactionScope,
+    layout: ParameterLayout,
+    names: dict[str, tuple[str, ...]],
+    ki_species: tuple[str, ...],
+) -> IrreversibleMichaelisMentenIx:
+    ix_substrate = scope.ix_of_many(scope.substrates())
+    return IrreversibleMichaelisMentenIx(
+        ix_kcat=layout.index("log_kcat", names["kcat"][0]),
+        ix_enzyme=layout.index("log_enzyme", names["enzyme"][0]),
+        ix_substrate_k=layout.indices("log_k", names["substrate_k"]),
+        ix_ki=layout.indices("log_k", names["ki"]),
+        ix_substrate=ix_substrate,
+        ix_ki_species=scope.ix_of_many(ki_species),
+        substrate_stoichiometry=scope.stoichiometry[ix_substrate],
+    )
+
+
+def get_reversible_michaelis_menten_ix(
+    scope: ReactionScope,
+    layout: ParameterLayout,
+    names: dict[str, tuple[str, ...]],
+    ki_species: tuple[str, ...],
     water_stoichiometry: float,
-) -> ReversibleMichaelisMentenInput:
-    if enzyme_id is None:
-        enzyme_id = reaction_id
-    ix_reactant = np.argwhere(reaction_stoichiometry != 0.0).flatten()
-    ix_substrate = np.argwhere(reaction_stoichiometry < 0.0).flatten()
-    ix_product = np.argwhere(reaction_stoichiometry > 0.0).flatten()
-    return ReversibleMichaelisMentenInput(
-        kcat=jnp.exp(parameters["log_kcat"][reaction_id]),
-        enzyme=jnp.exp(parameters["log_enzyme"][enzyme_id]),
-        substrate_kms=jnp.exp(parameters["log_substrate_km"][reaction_id]),
-        product_kms=jnp.exp(parameters["log_product_km"][reaction_id]),
-        ki=jnp.exp(parameters["log_ki"][reaction_id]),
-        dgf=parameters["dgf"][species_to_dgf_ix][ix_reactant],
-        temperature=parameters["temperature"],
-        ix_ki_species=ci_ix,
+) -> ReversibleMichaelisMentenIx:
+    ix_reactant = scope.ix_of_many(scope.reactants())
+    ix_substrate = scope.ix_of_many(scope.substrates())
+    ix_product = scope.ix_of_many(scope.products())
+    return ReversibleMichaelisMentenIx(
+        ix_kcat=layout.index("log_kcat", names["kcat"][0]),
+        ix_enzyme=layout.index("log_enzyme", names["enzyme"][0]),
+        ix_substrate_k=layout.indices("log_k", names["substrate_k"]),
+        ix_product_k=layout.indices("log_k", names["product_k"]),
+        ix_ki=layout.indices("log_k", names["ki"]),
+        ix_dgf=scope.species_to_dgf_ix[ix_reactant],
         ix_reactant=ix_reactant,
         ix_substrate=ix_substrate,
         ix_product=ix_product,
-        reactant_stoichiometry=reaction_stoichiometry[ix_reactant],
-        substrate_stoichiometry=reaction_stoichiometry[ix_substrate],
-        product_stoichiometry=reaction_stoichiometry[ix_product],
+        ix_ki_species=scope.ix_of_many(ki_species),
+        reactant_stoichiometry=scope.stoichiometry[ix_reactant],
+        substrate_stoichiometry=scope.stoichiometry[ix_substrate],
+        product_stoichiometry=scope.stoichiometry[ix_product],
         water_stoichiometry=water_stoichiometry,
+    )
+
+
+def get_irreversible_michaelis_menten_input(
+    parameters: PyTree,
+    ix: IrreversibleMichaelisMentenIx,
+) -> IrreversibleMichaelisMentenInput:
+    return IrreversibleMichaelisMentenInput(
+        kcat=jnp.exp(parameters["log_kcat"][ix.ix_kcat]),
+        enzyme=jnp.exp(parameters["log_enzyme"][ix.ix_enzyme]),
+        ix_substrate=ix.ix_substrate,
+        substrate_kms=jnp.exp(parameters["log_k"][ix.ix_substrate_k]),
+        substrate_stoichiometry=ix.substrate_stoichiometry,
+        ix_ki_species=ix.ix_ki_species,
+        ki=jnp.exp(parameters["log_k"][ix.ix_ki]),
+    )
+
+
+def get_reversible_michaelis_menten_input(
+    parameters: PyTree,
+    ix: ReversibleMichaelisMentenIx,
+) -> ReversibleMichaelisMentenInput:
+    return ReversibleMichaelisMentenInput(
+        kcat=jnp.exp(parameters["log_kcat"][ix.ix_kcat]),
+        enzyme=jnp.exp(parameters["log_enzyme"][ix.ix_enzyme]),
+        substrate_kms=jnp.exp(parameters["log_k"][ix.ix_substrate_k]),
+        product_kms=jnp.exp(parameters["log_k"][ix.ix_product_k]),
+        ki=jnp.exp(parameters["log_k"][ix.ix_ki]),
+        dgf=parameters["dgf"][ix.ix_dgf],
+        temperature=parameters["temperature"],
+        ix_ki_species=ix.ix_ki_species,
+        ix_reactant=ix.ix_reactant,
+        ix_substrate=ix.ix_substrate,
+        ix_product=ix.ix_product,
+        reactant_stoichiometry=ix.reactant_stoichiometry,
+        substrate_stoichiometry=ix.substrate_stoichiometry,
+        product_stoichiometry=ix.product_stoichiometry,
+        water_stoichiometry=ix.water_stoichiometry,
     )
 
 
@@ -188,28 +294,56 @@ def free_enzyme_ratio_rmm(
 
 
 class IrreversibleMichaelisMenten(RateEquation):
-    """A reaction with irreversible Michaelis Menten kinetics."""
+    """A reaction with irreversible Michaelis Menten kinetics.
 
-    ix_ki_species: CompetitiveInhibitorIx = eqx.field(
-        default_factory=lambda: np.array([], dtype=np.int64)
-    )
-    enzyme_id: str | None = eqx.field(default_factory=lambda: None)
+    Fields, all optional:
+
+    * `kcat`: name of the turnover number. Defaults to the reaction id.
+    * `enzyme`: name of the enzyme concentration. Defaults to the reaction id,
+      so two reactions catalysed by the same enzyme share it by naming it.
+    * `k`: names for the substrates' Michaelis constants, as
+      `{species: name}`. Partial: a substrate that is not mentioned gets the
+      default name `km|{reaction}|{species}`.
+    * `ki`: the reaction's competitive inhibitors, either as a list of species
+      ids (default names `ki|{reaction}|{species}`) or as `{species: name}`.
+    """
+
+    kcat: str | None = None
+    enzyme: str | None = None
+    k: dict[str, str] | None = None
+    ki: list[str] | dict[str, str] | None = None
+
+    def ki_species(self, scope: ReactionScope) -> tuple[str, ...]:
+        return tuple(species_names(self.ki, "ki", scope.reaction_id, "ki"))
+
+    def parameter_names(
+        self, scope: ReactionScope
+    ) -> dict[str, tuple[str, ...]]:
+        return michaelis_menten_names(
+            scope=scope,
+            kcat=self.kcat,
+            enzyme=self.enzyme,
+            k=self.k,
+            ki=self.ki,
+            reversible=False,
+        )
+
+    def resolve(
+        self, scope: ReactionScope, layout: ParameterLayout
+    ) -> IrreversibleMichaelisMentenIx:
+        return get_irreversible_michaelis_menten_ix(
+            scope=scope,
+            layout=layout,
+            names=self.parameter_names(scope),
+            ki_species=self.ki_species(scope),
+        )
 
     def get_input(
         self,
         parameters: PyTree,
-        reaction_id: str,
-        reaction_stoichiometry: StaticSpeciesArr,
-        species_to_dgf_ix: SpeciesIx,
+        ix: IrreversibleMichaelisMentenIx,
     ) -> IrreversibleMichaelisMentenInput:
-        return get_irreversible_michaelis_menten_input(
-            parameters=parameters,
-            reaction_id=reaction_id,
-            enzyme_id=self.enzyme_id,
-            reaction_stoichiometry=reaction_stoichiometry,
-            species_to_dgf_ix=species_to_dgf_ix,
-            ci_ix=self.ix_ki_species,
-        )
+        return get_irreversible_michaelis_menten_input(parameters, ix)
 
     def __call__(
         self,
@@ -232,30 +366,60 @@ class IrreversibleMichaelisMenten(RateEquation):
 
 
 class ReversibleMichaelisMenten(RateEquation):
-    """A reaction with reversible Michaelis Menten kinetics."""
+    """A reaction with reversible Michaelis Menten kinetics.
 
-    ix_ki_species: CompetitiveInhibitorIx = eqx.field(
-        default_factory=lambda: np.array([], dtype=np.int16)
-    )
-    water_stoichiometry: float = eqx.field(default_factory=lambda: 0.0)
-    enzyme_id: str | None = eqx.field(default_factory=lambda: None)
+    Fields, all optional:
+
+    * `kcat`: name of the turnover number. Defaults to the reaction id.
+    * `enzyme`: name of the enzyme concentration. Defaults to the reaction id,
+      so two reactions catalysed by the same enzyme share it by naming it.
+    * `k`: names for the reactants' Michaelis constants, as
+      `{species: name}`. Partial: a reactant that is not mentioned gets the
+      default name `km|{reaction}|{species}`. There is no separate field for
+      substrates and products, because which is which depends on the direction
+      the reaction happens to be written in.
+    * `ki`: the reaction's competitive inhibitors, either as a list of species
+      ids (default names `ki|{reaction}|{species}`) or as `{species: name}`.
+    """
+
+    kcat: str | None = None
+    enzyme: str | None = None
+    k: dict[str, str] | None = None
+    ki: list[str] | dict[str, str] | None = None
+    water_stoichiometry: float = 0.0
+
+    def ki_species(self, scope: ReactionScope) -> tuple[str, ...]:
+        return tuple(species_names(self.ki, "ki", scope.reaction_id, "ki"))
+
+    def parameter_names(
+        self, scope: ReactionScope
+    ) -> dict[str, tuple[str, ...]]:
+        return michaelis_menten_names(
+            scope=scope,
+            kcat=self.kcat,
+            enzyme=self.enzyme,
+            k=self.k,
+            ki=self.ki,
+            reversible=True,
+        )
+
+    def resolve(
+        self, scope: ReactionScope, layout: ParameterLayout
+    ) -> ReversibleMichaelisMentenIx:
+        return get_reversible_michaelis_menten_ix(
+            scope=scope,
+            layout=layout,
+            names=self.parameter_names(scope),
+            ki_species=self.ki_species(scope),
+            water_stoichiometry=self.water_stoichiometry,
+        )
 
     def get_input(
         self,
         parameters: PyTree,
-        reaction_id: str,
-        reaction_stoichiometry: StaticSpeciesArr,
-        species_to_dgf_ix: SpeciesIx,
+        ix: ReversibleMichaelisMentenIx,
     ) -> ReversibleMichaelisMentenInput:
-        return get_reversible_michaelis_menten_input(
-            parameters=parameters,
-            reaction_id=reaction_id,
-            enzyme_id=self.enzyme_id,
-            reaction_stoichiometry=reaction_stoichiometry,
-            species_to_dgf_ix=species_to_dgf_ix,
-            ci_ix=self.ix_ki_species,
-            water_stoichiometry=self.water_stoichiometry,
-        )
+        return get_reversible_michaelis_menten_input(parameters, ix)
 
     def __call__(
         self,

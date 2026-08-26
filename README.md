@@ -24,7 +24,7 @@ from enzax.examples import methionine
 from enzax.steady_state import get_kinetic_model_steady_state
 from jax import numpy as jnp
 
-guess = jnp.full((5,) 0.01)
+guess = jnp.full((5,), 0.01)
 
 steady_state = get_steady_state(methionine.model, guess, methionine.parameters)
 ```
@@ -40,11 +40,14 @@ from jax import numpy as jnp
 guess = jnp.full((5,), 0.01)
 
 jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
-jacobian["log_kcat"]["GNMT1"]
+# Each parameter kind is one flat array, so ask the model's layout which
+# column belongs to GNMT1's turnover number.
+ix = model.parameter_layout.index("log_kcat", "GNMT1")
+jacobian["log_kcat"][:, ix]
 ```
 ```
-Array([-3.83561770e-07, -9.66801636e-06,  3.38183140e-10,  3.15564928e-09,
-        5.28588273e-08], dtype=float64, weak_type=True)
+Array([-3.83561719e-07, -9.66801513e-06,  3.38183091e-10,  3.15564888e-09,
+        5.28588199e-08], dtype=float64)
 ```
 
 ### Load a kinetic model from an sbml file

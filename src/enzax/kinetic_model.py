@@ -12,6 +12,12 @@ import sympy2jax
 from jaxtyping import PyTree, ScalarLike
 
 from enzax.rate_equation import RateEquation
+from enzax.parameters import (
+    LayoutBuilder,
+    ParameterLayout,
+    ReactionScope,
+    check_id,
+)
 from enzax.array_types import (
     BalancedConcArr,
     ConcArray,
@@ -149,6 +155,7 @@ class KineticModel(eqx.Module):
     dependent_species_ix: DepSpeciesIx = eqx.field(static=True, init=False)
     S: StoichiometricMatrix = eqx.field(static=True, init=False)
     L0: LinkMatrix = eqx.field(static=True, init=False)
+    parameter_layout: ParameterLayout = eqx.field(static=True, init=False)
 
     def __post_init__(self):
         if self.species_to_dgf_ix is None:
@@ -194,6 +201,48 @@ class KineticModel(eqx.Module):
         self.L0 = get_link_matrix(
             self.S, self.independent_species_ix, self.dependent_species_ix
         )
+        for species_i in self.species:
+            check_id(species_i, "Species")
+        for reaction in self.reactions:
+            check_id(reaction, "Reaction")
+        self.parameter_layout = self._build_parameter_layout()
+
+    def _build_parameter_layout(self) -> ParameterLayout:
+        """Get the model's parameter layout.
+
+        The base implementation has no parameters to name. Subclasses that
+        know where their parameters come from override it.
+        """
+        return ParameterLayout(names={})
+
+    def _scopes(self) -> list[ReactionScope]:
+        """Get one static description per reaction, in reaction order."""
+        return [
+            ReactionScope(
+                reaction_id=reaction,
+                species=tuple(self.species),
+                stoichiometry=self.S[:, ix_reaction],
+                species_to_dgf_ix=self.species_to_dgf_ix,
+            )
+            for ix_reaction, reaction in enumerate(self.reactions)
+        ]
+
+    def _dgf_names(self) -> list[str]:
+        """Name each formation energy after the first species that uses it.
+
+        Several species may share a formation energy, via
+        `species_to_dgf_ix`; the group takes the name of the first of them.
+        """
+        names: dict[int, str] = {}
+        for species_i, ix_dgf in zip(self.species, self.species_to_dgf_ix):
+            names.setdefault(int(ix_dgf), species_i)
+        if sorted(names) != list(range(len(names))):
+            msg = (
+                "species_to_dgf_ix must use every formation energy from 0 "
+                f"up to its highest index, but {sorted(names)} were used."
+            )
+            raise ValueError(msg)
+        return [names[ix] for ix in range(len(names))]
 
     def get_conc(
         self,
@@ -209,6 +258,17 @@ class KineticModel(eqx.Module):
     def flux(
         self, conc_balanced: BalancedConcArr, parameters: PyTree
     ) -> Flux: ...
+
+    def get_log_conc_unbalanced(self, parameters: PyTree) -> UnbalancedConcArr:
+        """Get the log unbalanced concentrations from a PyTree of parameters.
+
+        Models where every species is balanced have no unbalanced
+        concentrations, so in that case the parameters do not need a
+        "log_conc_unbalanced" entry.
+        """
+        if not self.unbalanced_species:
+            return jnp.zeros(0)
+        return parameters["log_conc_unbalanced"]
 
     def get_moiety_totals(self, parameters: PyTree) -> MoietyTotalsArr:
         """Get the conserved moiety totals from a PyTree of parameters.
@@ -253,11 +313,41 @@ class KineticModel(eqx.Module):
 
 
 class RateEquationModel(KineticModel):
-    """A kinetic model that specifies its fluxes using RateEquation objects."""
+    """A kinetic model that specifies its fluxes using RateEquation objects.
+
+    The model owns a `ParameterLayout` built from its rate equations' parameter
+    names, plus the names implied by its own structure. Each rate equation's
+    names are resolved to positions in the flat parameter arrays once, here,
+    and stored in `rate_equation_ix`.
+    """
 
     rate_equations: list[RateEquation] = eqx.field(
         static=True, default_factory=list
     )
+    rate_equation_ix: list[PyTree] = eqx.field(static=True, init=False)
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.rate_equation_ix = [
+            rate_equation.resolve(scope, self.parameter_layout)
+            for rate_equation, scope in zip(self.rate_equations, self._scopes())
+        ]
+
+    def _build_parameter_layout(self) -> ParameterLayout:
+        """Collect parameter names from the rate equations and the structure.
+
+        Names are added in first-seen order: reaction by reaction, and within
+        a reaction role by role. A name that no rate equation refers to cannot
+        end up in the layout, so there are no orphan parameters.
+        """
+        builder = LayoutBuilder()
+        for rate_equation, scope in zip(self.rate_equations, self._scopes()):
+            builder.add_roles(rate_equation.parameter_names(scope))
+        builder.add_many("dgf", self._dgf_names())
+        builder.add_many("log_conc_unbalanced", self.unbalanced_species)
+        builder.add_many("conserved_pools", self.dependent_species)
+        builder.add("temperature", "temperature")
+        return builder.build()
 
     def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
         """Get fluxes from balanced species concentrations.
@@ -267,17 +357,14 @@ class RateEquationModel(KineticModel):
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
         """  # Noqa: E501
-        conc = self.get_conc(conc_balanced, parameters["log_conc_unbalanced"])
+        conc = self.get_conc(
+            conc_balanced, self.get_log_conc_unbalanced(parameters)
+        )
         flux_list = []
-        for reaction_ix, (reaction_id, rate_equation) in enumerate(
-            zip(self.reactions, self.rate_equations)
+        for rate_equation, ix in zip(
+            self.rate_equations, self.rate_equation_ix
         ):
-            ipt = rate_equation.get_input(
-                parameters=parameters,
-                reaction_id=reaction_id,
-                reaction_stoichiometry=self.S[:, reaction_ix],
-                species_to_dgf_ix=self.species_to_dgf_ix,
-            )
+            ipt = rate_equation.get_input(parameters, ix)
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)
 

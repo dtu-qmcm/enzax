@@ -2,10 +2,8 @@ from pathlib import Path
 import json
 import jax
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
 
 from enzax.examples import methionine
-from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
 
 import functools
@@ -56,18 +54,21 @@ obs_flux = jnp.array(
     ],
     dtype=jnp.float64,
 )
+# In `model.parameter_layout.names["log_enzyme"]` order, i.e. the order the
+# model's rate equations first name their enzymes in. Note that this is not
+# the same as the order of `obs_flux`, which includes the drain reaction.
 obs_enzyme = jnp.array(
     [
-        0.00097884,
-        0.00100336,
-        0.00105027,
-        0.00099059,
-        0.00096148,
-        0.00107917,
-        0.00104588,
-        0.00138744,
-        0.00107483,
-        0.0009662,
+        0.00097884,  # MAT1
+        0.00100336,  # MAT3
+        0.00105027,  # METH-Gen
+        0.00099059,  # GNMT1
+        0.00096148,  # AHC1
+        0.00107917,  # MS1
+        0.00104588,  # BHMT1
+        0.00138744,  # CBS1
+        0.00107483,  # MTHFR1
+        0.0009662,  # PROT1
     ],
     dtype=jnp.float64,
 )
@@ -99,21 +100,11 @@ def deserialize_jax_dict(file_path):
         return json.load(f, object_hook=object_hook)
 
 
-def test_lp_grad():
+def get_methionine_gradient():
+    """Get the gradient of methionine's log posterior density."""
     true_parameters = methionine.parameters
     true_model = methionine.model
     default_state_guess = jnp.full((5,), 0.01)
-    true_states = get_steady_state(
-        true_model,
-        default_state_guess,
-        true_parameters,
-    )
-    # get true concentration
-    true_conc = jnp.zeros(true_model.S.shape[0])
-    true_conc = true_conc.at[true_model.balanced_species_ix].set(true_states)
-    true_conc = true_conc.at[true_model.unbalanced_species_ix].set(
-        jnp.exp(true_parameters["log_conc_unbalanced"])  # pyright: ignore[reportArgumentType]
-    )
     error_conc = jnp.full_like(obs_conc, 0.03)
     error_flux = jnp.full_like(obs_flux, 0.05)
     error_enzyme = jnp.full_like(obs_enzyme, 0.03)
@@ -121,35 +112,30 @@ def test_lp_grad():
     measurement_errors = error_conc, error_enzyme, error_flux
     measurements = tuple(zip(measurement_values, measurement_errors))
     prior = prior_from_truth(true_parameters, sd=0.1)  # pyright: ignore[reportArgumentType]
-
     posterior_log_density = jax.jit(
         functools.partial(
             enzax_log_density,
             model=true_model,
-            fixed_parameters=None,
+            split=None,
             measurements=measurements,
             prior=prior,
             guess=default_state_guess,
         )
     )
-    gradient = jax.jacrev(posterior_log_density)(methionine.parameters)
+    return jax.jacrev(posterior_log_density)(true_parameters)
+
+
+def test_lp_grad():
+    gradient = get_methionine_gradient()
     expected_gradient = deserialize_jax_dict(methionine_pldf_grad_file)
-    for k, obs in gradient.items():
-        exp = expected_gradient[k]
-        if isinstance(obs, Scalar):
-            assert jnp.isclose(obs, exp)
-        elif isinstance(obs, Array):
-            assert jnp.isclose(obs, exp).all()
-        elif isinstance(obs, dict):
-            for kk in obs.keys():
-                if isinstance(obs[kk], list):
-                    for o, e in zip(obs[kk], exp[kk]):
-                        assert jnp.isclose(o, e).all()
-                elif isinstance(obs[kk], Scalar):
-                    assert jnp.isclose(obs[kk], exp[kk])
-                elif len(obs[kk]) > 0:
-                    assert jnp.isclose(obs[kk], exp[kk]).all()
+    assert set(gradient.keys()) == set(expected_gradient.keys())
+    for key, actual in gradient.items():
+        assert jnp.isclose(actual, expected_gradient[key]).all(), key
 
 
 if __name__ == "__main__":
-    test_lp_grad()
+    # Regenerate the expected gradient, e.g. after changing the model or the
+    # parameter layout. Inspect the diff before committing it.
+    with open(methionine_pldf_grad_file, "w") as f:
+        f.write(serialize_jax_dict(get_methionine_gradient()))
+    print(f"wrote {methionine_pldf_grad_file}")

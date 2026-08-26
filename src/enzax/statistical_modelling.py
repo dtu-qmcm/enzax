@@ -1,13 +1,12 @@
 import operator
 
 from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import ParameterSplit
 from enzax.steady_state import get_steady_state
 import jax
 from jax import numpy as jnp
-from jax.flatten_util import ravel_pytree
 from jax.scipy.stats import multivariate_normal, norm
 from jaxtyping import PyTree, Scalar
-import equinox as eqx
 
 from enzax.array_types import ParamDict, IndConcArr
 
@@ -168,13 +167,29 @@ def enzax_log_density(
     model: RateEquationModel,
     measurements: PyTree,
     prior: PyTree,
-    fixed_parameters: PyTree | None = None,
+    split: ParameterSplit | None = None,
     guess: IndConcArr | None = None,
 ) -> Scalar:
+    """Get the log posterior density of a kinetic model's parameters.
+
+    :param free_parameters: the parameters being inferred. With a `split`,
+        this is the short form that `ParameterSplit.free` returns; without
+        one, it is a complete parameter set.
+
+    :param split: which parameters are free, and the values of the rest. Leave
+        it out to infer every parameter.
+
+    :param measurements: a 3-tuple of `(observations, errors)` pairs, for
+        concentrations, enzymes and fluxes in that order. Concentrations are
+        in the model's `species` order, fluxes in its `reactions` order, and
+        enzymes in `model.parameter_layout.names["log_enzyme"]` order, which
+        is the order the enzymes are first named in by the model's rate
+        equations.
+    """
     if guess is None:
         guess = jnp.full((len(model.independent_species_ix)), 0.01)
-    if fixed_parameters is not None:
-        parameters = eqx.combine(free_parameters, fixed_parameters)
+    if split is not None:
+        parameters = split.combine(free_parameters)
     else:
         parameters = free_parameters
 
@@ -182,9 +197,10 @@ def enzax_log_density(
     conc_balanced = model.get_balanced_conc(
         steady, model.get_moiety_totals(parameters)
     )
-    conc_hat = model.get_conc(conc_balanced, parameters["log_conc_unbalanced"])
-    flat_log_enzyme, _ = ravel_pytree(parameters["log_enzyme"])
-    enz_hat = jnp.exp(jnp.array(flat_log_enzyme))
+    conc_hat = model.get_conc(
+        conc_balanced, model.get_log_conc_unbalanced(parameters)
+    )
+    enz_hat = jnp.exp(parameters["log_enzyme"])
     flux_hat = model.flux(conc_balanced, parameters)
     conc_msts, enz_msts, flux_msts = measurements
     log_prior = enzax_prior_logdensity(free_parameters, prior)

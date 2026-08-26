@@ -12,43 +12,71 @@ Users are highly encouraged to post more examples to enzax's wiki: <https://gith
 
 Quite often when statistical modelling with kinetic models, you are only interested in uncertainty related to certain parameters and want to treat  all other parameters as if they were known exactly.
 
-The simplest way to do this is to not include the known parameters in the kinetic model in the first place. However, it can get tedious to rewrite the model every time you want to change which parameters are fixed. More conveniently, it is possible to mask an existing set of parameters. Here's how to do it.
+The simplest way to do this is to not include the known parameters in the kinetic model in the first place. However, it can get tedious to rewrite the model every time you want to change which parameters are fixed. More conveniently, enzax can split an existing set of parameters into free and fixed ones. Here's how to do it.
 
 In this example, we fix some parameters of the `methionine` model provided by enzax, a medium-to-small sized model that describes the mammalian methionine cycle. We can load this model and its parameters as follows:
 
 ```python
-from enzax.examples.methionine import parameters as true_parameters
+from enzax.examples.methionine import model, parameters as true_parameters
 true_parameters
 ```
 
-The parameters are a pretty large dictionary. Suppose we want to make a statistical model where all parameters are fixed except for the $k_{cat}$ parameter of enzyme MAT1 and the temperature parameter. The first step is to define a function taking in the whole set of parameters and returning a tuple of the parameters we want to leave free:
+The parameters are a dictionary with one flat array per kind of parameter. Which name sits at which position is recorded in the model's `ParameterLayout`:
 
 ```python
-def get_free_params(params):
-    return params["log_kcat"]["MAT1"], params["temperature"]
+model.parameter_layout.names["log_kcat"]
 ```
 
-Next, we use some functions from the library [equinox](https://github.com/patrick-kidger/equinox)---`tree_at` and `partition`---as well as `jax.tree.map`to create dictionaries of free and fixed parameters based on our function.
+```
+('MAT1', 'MAT3', 'METH-Gen', 'GNMT1', 'AHC1', 'MS1', 'BHMT1', 'CBS1',
+ 'MTHFR1', 'PROT1')
+```
+
+Suppose we want a statistical model where everything is fixed except MAT1's $k_{cat}$, the temperature and the formation energies. We say so by name:
+
+```python
+from enzax.parameters import ParameterSplit
+
+split = ParameterSplit.from_free(
+    model.parameter_layout,
+    true_parameters,
+    {"log_kcat": ["MAT1"], "temperature": None, "dgf": None},
+)
+split.n_free
+```
+
+```
+21
+```
+
+A key mapped to a list of names frees exactly those parameters; a key mapped to `None` frees the whole kind. Anything not mentioned is fixed, and its value is taken from the parameter set you passed in. There is a `ParameterSplit.from_fixed` for when it is more convenient to say which parameters are *not* free.
+
+`split.free` then pulls the free parameters out:
+
+```python
+free_parameters = split.free(true_parameters)
+{k: v.shape for k, v in free_parameters.items()}
+```
+
+```
+{'log_kcat': (1,), 'dgf': (19,), 'temperature': ()}
+```
+
+Note that `free_parameters["log_kcat"]` has one element, not ten. The free parameters are *gathered*, not masked, so a fixed parameter is genuinely absent rather than present-but-ignored. That matters for inference: a masked coordinate would still be part of the sampler's state space and would still be explored, and a prior built from the free parameters would be a prior on parameters that are not being inferred. `split.names` says which parameter each position holds:
+
+```python
+split.names("log_kcat")
+```
+
+```
+('MAT1',)
+```
+
+We can use `free_parameters` when we want to do uncertainty-related things, like for example applying some random perturbations:
 
 ```python
 import jax
-import equinox as eqx
 
-is_free = eqx.tree_at(
-    get_free_params,
-    jax.tree.map(lambda _: False, true_parameters),
-    replace_fn=lambda _: True,
-)
-free_parameters, fixed_parameters = eqx.partition(true_parameters, is_free)
-
-free_parameters
-```
-
-`free_parameters` is the same as `true_parameters`, but all arrays apart from the ones we want to be free have been replaced by `None`. Similarly, `fixed_parameters` is the same as `true_parameters`, but with `None`s in place of the free parameters.
-
-This is what we want! We can use `free_parameters` when we want to uncertainty-related things, like for example applying some random perturbations:
-
-```python
 key = jax.random.key(1234)
 leaves, treedef = jax.tree.flatten(free_parameters)
 keys = jax.tree.unflatten(treedef, jax.random.split(key, num=len(leaves)))
@@ -60,14 +88,39 @@ new_free_parameters = jax.tree.map(
 new_free_parameters
 ```
 
-When we want to add the fixed parameters back in, we can use equinox's `combine` function:
+When we want the fixed parameters back in, `combine` scatters the free values and the fixed ones into full-size arrays:
 
 ```python
-new_parameters = eqx.combine(new_free_parameters, fixed_parameters)
+new_parameters = split.combine(new_free_parameters)
 new_parameters
 ```
 
-Note that this method of splitting fixed and free parameters works for arbitrary pytrees, and can easily be adjusted so that the fixed parameters rather than the free ones are user-specified.
+This is what `enzax_log_density` does internally, so a Bayesian model over a subset of the parameters is as follows. The `measurements` argument is described in the next section:
+
+```python
+import functools
+from enzax.statistical_modelling import enzax_log_density, prior_from_truth
+
+posterior_log_density = functools.partial(
+    enzax_log_density,
+    model=model,
+    split=split,
+    measurements=measurements,
+    prior=prior_from_truth(free_parameters, sd=0.1),
+)
+```
+
+Leave out `split` to infer every parameter, in which case the first argument is a complete parameter set rather than a gathered one.
+
+## Measurement order
+
+`enzax_log_density` compares three kinds of measurement against the model's predictions, and each has an order you have to match:
+
+- concentrations are in the model's `species` order;
+- fluxes are in its `reactions` order;
+- enzyme concentrations are in `model.parameter_layout.names["log_enzyme"]` order, i.e. the order the model's rate equations first name their enzymes in.
+
+The last of these is not the same as the reaction order whenever a reaction has no enzyme, as with methionine's drain reaction, or whenever two reactions share one.
 
 ## Posterior sampling
 
