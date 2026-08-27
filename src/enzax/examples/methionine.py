@@ -8,6 +8,7 @@ https://doi.org/10.1021/acssynbio.3c00662
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
     AllostericIrreversibleMichaelisMenten,
     Drain,
@@ -110,7 +111,8 @@ model = RateEquationModel(
         IrreversibleMichaelisMenten(),  # PROT
     ],
 )
-parameters = model.parameter_layout.pack(
+parameters = pack_parameters(
+    model.parameter_labels,
     {
         # Every dissociation constant, whatever its role. The prefix says
         # which: km for a Michaelis constant, ki for a competitive inhibition
@@ -215,7 +217,7 @@ parameters = model.parameter_layout.pack(
             "cyst-L": jnp.log(2.24e-06),
         },
         "temperature": 298.15,
-    }
+    },
 )
 steady_state = jnp.array(
     [

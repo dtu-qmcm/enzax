@@ -1,7 +1,7 @@
 """Unit tests for rate equations.
 
 Each test builds a one-reaction model so that the rate equation's parameter
-names can be resolved against a layout, then evaluates the model's only flux.
+labels can be resolved to positions, then evaluates the model's only flux.
 The reaction turns species `a` into species `b`; species `c` takes no part in
 it, and is there to be an allosteric activator.
 """
@@ -11,6 +11,7 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
     AllostericIrreversibleMichaelisMenten,
     AllostericReversibleMichaelisMenten,
@@ -30,11 +31,11 @@ EXAMPLE_K = {
 EXAMPLE_ENZYME = {"r1": jnp.log(0.3), "e1": jnp.log(0.2)}
 
 
-def get_flux(rate_equation, enzyme_name="r1"):
+def get_flux(rate_equation, enzyme_label="r1"):
     """Build a one-reaction model and evaluate its flux.
 
     The parameter values come from `EXAMPLE_K` and friends, but which of them
-    are needed is decided by the rate equation, via the model's layout.
+    are needed is decided by the rate equation, via the model's labels.
     """
     model = RateEquationModel(
         stoichiometry=EXAMPLE_STOICHIOMETRY,
@@ -44,17 +45,17 @@ def get_flux(rate_equation, enzyme_name="r1"):
         species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
         rate_equations=[rate_equation],
     )
-    layout = model.parameter_layout
+    labels = model.parameter_labels
     values = {
-        "log_k": {name: EXAMPLE_K[name] for name in layout.names["log_k"]},
+        "log_k": {label: EXAMPLE_K[label] for label in labels["log_k"]},
         "log_kcat": {"r1": -0.1},
-        "log_enzyme": {enzyme_name: EXAMPLE_ENZYME[enzyme_name]},
+        "log_enzyme": {enzyme_label: EXAMPLE_ENZYME[enzyme_label]},
         "dgf": {"a": -3.0, "c": 1.0},
         "temperature": 310.0,
     }
-    if "log_tc" in layout.names:
+    if "log_tc" in labels:
         values["log_tc"] = {"r1": -0.2}
-    parameters = layout.pack(values)
+    parameters = pack_parameters(labels, values)
     return model.flux(EXAMPLE_CONC, parameters)[0]
 
 
@@ -74,7 +75,7 @@ def test_reversible_michaelis_menten_with_enzyme_name():
     expected_rate = 0.02895259
     rate = get_flux(
         ReversibleMichaelisMenten(water_stoichiometry=0.0, enzyme="e1"),
-        enzyme_name="e1",
+        enzyme_label="e1",
     )
     assert jnp.isclose(rate, expected_rate)
 
@@ -98,7 +99,7 @@ def test_allosteric_irreversible_michaelis_menten_with_enzyme_name():
             subunits=1,
             enzyme="e1",
         ),
-        enzyme_name="e1",
+        enzyme_label="e1",
     )
     assert jnp.isclose(rate, expected_rate)
 
@@ -122,7 +123,7 @@ def test_allosteric_reversible_michaelis_menten_with_enzyme_name():
             subunits=1,
             enzyme="e1",
         ),
-        enzyme_name="e1",
+        enzyme_label="e1",
     )
     assert jnp.isclose(rate, expected_rate)
 

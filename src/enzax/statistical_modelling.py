@@ -1,7 +1,7 @@
 import operator
 
 from enzax.kinetic_model import RateEquationModel
-from enzax.parameters import ParameterSplit
+from enzax.parameter_split import ParameterSplit, combine_parameters
 from enzax.steady_state import get_steady_state
 import jax
 from jax import numpy as jnp
@@ -51,30 +51,30 @@ def prior_from_truth(
 def pack_locs_and_scales(loc: PyTree, scale: PyTree) -> PyTree:
     """Get a Pytree whose leaves are tuples of loc and scale.
 
-     Note that loc and scale must have the same tree structure.
+    Note that loc and scale must have the same tree structure.
 
-     Params:
-     -------
-     loc: PyTree
-         A PyTree representing location parameters.
-     scale: PyTree
-         A PyTree representing scale parameters.
+    Params:
+    -------
+    loc: PyTree
+        A PyTree representing location parameters.
+    scale: PyTree
+        A PyTree representing scale parameters.
 
-     Returns:
-     --------
-     PyTree
-         A PyTree whose leaves are tuples of loc and scale.
+    Returns:
+    --------
+    PyTree
+        A PyTree whose leaves are tuples of loc and scale.
 
-     Examples:
-     ---------
-     >>> loc = {"a": jnp.array([1.0, -1.0]), "b": {"c": jnp.array(0.1)}}
-     >>> scale = {"a": jnp.array([[1.0, 2.0], [3.0, 4.0]]), "b": {"c": jnp.array(5.0)}}
-     >>> get_prior(loc, scale)
-     {'a': (Array([ 1., -1.], dtype=float64),
-     Array([[1., 2.],
-            [3., 4.]], dtype=float64)),
-    'b': {'c': (Array(0.1, dtype=float64, weak_type=True),
-      Array(5., dtype=float64, weak_type=True))}}
+    Examples:
+    ---------
+    >>> loc = {"dgf": jnp.array([1.0, -1.0]), "temperature": jnp.array(310.0)}
+    >>> scale = {"dgf": jnp.array([[1.0, 2.0], [3.0, 4.0]]), "temperature": jnp.array(5.0)}
+    >>> pack_locs_and_scales(loc, scale)
+    {'dgf': (Array([ 1., -1.], dtype=float64),
+    Array([[1., 2.],
+           [3., 4.]], dtype=float64)),
+    'temperature': (Array(310., dtype=float64),
+     Array(5., dtype=float64))}
 
     """  # noqa: E501
     if not jax.tree.structure(loc) == jax.tree.structure(scale):
@@ -173,7 +173,7 @@ def enzax_log_density(
     """Get the log posterior density of a kinetic model's parameters.
 
     :param free_parameters: the parameters being inferred. With a `split`,
-        this is the short form that `ParameterSplit.free` returns; without
+        this is the short form that `get_free_parameters` returns; without
         one, it is a complete parameter set.
 
     :param split: which parameters are free, and the values of the rest. Leave
@@ -182,14 +182,14 @@ def enzax_log_density(
     :param measurements: a 3-tuple of `(observations, errors)` pairs, for
         concentrations, enzymes and fluxes in that order. Concentrations are
         in the model's `species` order, fluxes in its `reactions` order, and
-        enzymes in `model.parameter_layout.names["log_enzyme"]` order, which
-        is the order the enzymes are first named in by the model's rate
+        enzymes in `model.parameter_labels["log_enzyme"]` order, which is
+        the order the enzymes are first labelled in by the model's rate
         equations.
     """
     if guess is None:
         guess = jnp.full((len(model.independent_species_ix)), 0.01)
     if split is not None:
-        parameters = split.combine(free_parameters)
+        parameters = combine_parameters(split, free_parameters)
     else:
         parameters = free_parameters
 

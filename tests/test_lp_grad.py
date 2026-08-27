@@ -54,9 +54,10 @@ obs_flux = jnp.array(
     ],
     dtype=jnp.float64,
 )
-# In `model.parameter_layout.names["log_enzyme"]` order, i.e. the order the
-# model's rate equations first name their enzymes in. Note that this is not
-# the same as the order of `obs_flux`, which includes the drain reaction.
+# In `model.parameter_labels["log_enzyme"]` order, i.e. the order the model's
+# rate equations first label their enzymes in. Note that
+# this is not the same as the order of `obs_flux`, which includes the drain
+# reaction.
 obs_enzyme = jnp.array(
     [
         0.00097884,  # MAT1
@@ -135,7 +136,7 @@ def test_lp_grad():
 
 if __name__ == "__main__":
     # Regenerate the expected gradient, e.g. after changing the model or the
-    # parameter layout. Inspect the diff before committing it.
+    # parameter labels. Inspect the diff before committing it.
     with open(methionine_pldf_grad_file, "w") as f:
         f.write(serialize_jax_dict(get_methionine_gradient()))
     print(f"wrote {methionine_pldf_grad_file}")

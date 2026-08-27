@@ -10,7 +10,12 @@ from jax import numpy as jnp
 
 from enzax.examples import methionine
 from enzax.mcmc import run_nuts
-from enzax.parameters import ParameterSplit
+from enzax.parameter_split import (
+    count_free_parameters,
+    get_free_labels,
+    get_free_parameters,
+    split_parameters_by_freeing,
+)
 from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
 
@@ -21,17 +26,16 @@ SEED = 1234
 jax.config.update("jax_enable_x64", True)
 
 
+# The parameters to infer: everything else is held at its true value.
+#
+# A parameter mapped to a list of labels frees just those values; a parameter
+# mapped to None frees the whole thing. So this infers MAT1's turnover number,
+# but not any other enzyme's.
 FREE_PARAMETERS = {
     "log_kcat": ["MAT1"],
     "temperature": None,
     "dgf": None,
 }
-"""The parameters to infer: everything else is held at its true value.
-
-A key mapped to a list of names frees just those parameters; a key mapped to
-None frees the whole kind. So this infers MAT1's turnover number, but not any
-other enzyme's.
-"""
 
 
 def simulate(key, truth, error):
@@ -59,12 +63,12 @@ def main():
     model = methionine.model
     default_guess = jnp.full((5,), 0.01)
     true_steady = get_steady_state(model, default_guess, true_parameters)
-    split = ParameterSplit.from_free(
-        model.parameter_layout,
+    split = split_parameters_by_freeing(
+        model.parameter_labels,
         true_parameters,
         FREE_PARAMETERS,
     )
-    free_params = split.free(true_parameters)
+    free_params = get_free_parameters(split, true_parameters)
     is_mv = eqx.tree_at(
         lambda params: params["dgf"],
         jax.tree.map(lambda _: False, free_params),
@@ -77,8 +81,8 @@ def main():
         model.get_log_conc_unbalanced(true_parameters),
     )
     true_flux = model.flux(true_steady, methionine.parameters)
-    # Already flat, and in `layout.names["log_enzyme"]` order, which is the
-    # order enzyme measurements have to be given in.
+    # Already flat, and in `model.parameter_labels["log_enzyme"]` order,
+    # which is the order enzyme measurements have to be given in.
     true_log_enz = true_parameters["log_enzyme"]
     # simulate observations
     conc_err = jnp.full_like(true_conc, 0.03)
@@ -118,25 +122,26 @@ def main():
         warnings.warn(msg)
     else:
         logging.info("No post-warmup divergent transitions!")
-    print(f"True parameter values vs posterior ({split.n_free} free):")
+    n_free = count_free_parameters(split)
+    print(f"True parameter values vs posterior ({n_free} free):")
     for (path, leaf_true), leaf_model in zip(
         jax.tree.leaves_with_path(free_params), jax.tree.leaves(states.position)
     ):
-        param_kind = path[0].key
+        parameter = path[0].key
         model_low = jnp.quantile(leaf_model, 0.01, axis=0)
         model_high = jnp.quantile(leaf_model, 0.99, axis=0)
-        names = split.names(param_kind)
-        print(f" {param_kind}:")
+        labels = get_free_labels(split, parameter)
+        print(f" {parameter}:")
         if jnp.ndim(leaf_true) == 0:
             print(f"  true value: {leaf_true}")
             print(f"  posterior 1%: {model_low}")
             print(f"  posterior 99%: {model_high}")
         else:
-            for name, true, low, high in zip(
-                names, leaf_true, model_low, model_high
+            for label, true, low, high in zip(
+                labels, leaf_true, model_low, model_high
             ):
                 print(
-                    f"  {name}: true {true:.4g}, "
+                    f"  {label}: true {true:.4g}, "
                     f"posterior 1% {low:.4g}, 99% {high:.4g}"
                 )
 

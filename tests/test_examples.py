@@ -27,10 +27,10 @@ def test_dcdt(model, steady_state, parameters):
 
 
 def test_conserved_moiety_is_conserved():
-    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]  # type: ignore
+    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]
     log_unbalanced: ParamLeaf = conserved_moiety.parameters[
         "log_conc_unbalanced"
-    ]  # type: ignore
+    ]
 
     def get_conc(ind):
         balanced = conserved_moiety.model.get_balanced_conc(ind, pool)

@@ -6,11 +6,11 @@ Model-level axes start with plain `n_*`: `n_species`, `n_reaction`,
 `n_balanced`, `n_unbalanced`, `n_ind_species`, `n_dep_species`. There is one
 value per `KineticModel`.
 
-The parameter axes are also model-level, because each parameter kind is stored
+The parameter axes are also model-level, because each parameter is stored
 as a single flat array for the whole model: `n_k` (every dissociation constant
 -- Michaelis, competitive inhibition and allosteric), `n_kcat`, `n_enzyme`,
-`n_tc`, `n_drain` and `n_dgf`. A `ParameterLayout` maps names to positions
-along these axes.
+`n_tc`, `n_drain` and `n_dgf`. A model's `parameter_labels` say which label
+sits at which index along these axes.
 
 Reaction-level axes start with `n_rxn_*`. There is one value per reaction, so
 they are ragged across a model's reactions and only mean anything inside a
@@ -27,7 +27,6 @@ Rules for the `n_rxn_*` tier:
   fields are shared by every reaction.
 """
 
-from typing import Union
 import numpy as np
 
 from jaxtyping import Array, Float, Int
@@ -47,9 +46,9 @@ Flux = Float[Array, " n_reaction"]
 # --------------------------------------------------------------------------
 # Model-level, traced: the flat parameter arrays
 #
-# One array per parameter kind, shared by every reaction. `KArr` holds every
-# dissociation constant, whatever its role: the role lives in the parameter's
-# name (`km|`, `ki|` or `dc|`), not in the array it sits in.
+# One array per parameter, shared by every reaction. `KArr` holds every
+# dissociation constant, whatever it does: what it does lives in its label
+# (`km|`, `ki|` or `dc|`), not in the array it sits in.
 # --------------------------------------------------------------------------
 KArr = Float[Array, " n_k"]
 KcatArr = Float[Array, " n_kcat"]
@@ -123,4 +122,4 @@ ReactantDgfIx = Int[np.ndarray, " n_rxn_reactant"]  # values index n_dgf
 # --------------------------------------------------------------------------
 FloatArray1d = Float[Array, " _"]
 ParamLeaf = Float[Array, "..."]
-ParamDict = dict[str, Union[ParamLeaf, "ParamDict"]]
+ParamDict = dict[str, ParamLeaf]

@@ -34,15 +34,16 @@ steady_state = get_steady_state(methionine.model, guess, methionine.parameters)
 ```python
 import jax
 from enzax.examples.methionine import model, parameters
+from enzax.parameters import get_parameter_position
 from enzax.steady_state import get_steady_state
 from jax import numpy as jnp
 
 guess = jnp.full((5,), 0.01)
 
 jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
-# Each parameter kind is one flat array, so ask the model's layout which
-# column belongs to GNMT1's turnover number.
-ix = model.parameter_layout.index("log_kcat", "GNMT1")
+# Each parameter is one flat array, so ask the model's labels which column
+# belongs to GNMT1's turnover number.
+ix = get_parameter_position(model.parameter_labels, "log_kcat", "GNMT1")
 jacobian["log_kcat"][:, ix]
 ```
 ```

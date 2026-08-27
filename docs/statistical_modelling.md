@@ -21,10 +21,10 @@ from enzax.examples.methionine import model, parameters as true_parameters
 true_parameters
 ```
 
-The parameters are a dictionary with one flat array per kind of parameter. Which name sits at which position is recorded in the model's `ParameterLayout`:
+The parameters are a dictionary with one flat array per parameter. Which label sits at which position is recorded in `model.parameter_labels`:
 
 ```python
-model.parameter_layout.names["log_kcat"]
+model.parameter_labels["log_kcat"]
 ```
 
 ```
@@ -32,29 +32,35 @@ model.parameter_layout.names["log_kcat"]
  'MTHFR1', 'PROT1')
 ```
 
-Suppose we want a statistical model where everything is fixed except MAT1's $k_{cat}$, the temperature and the formation energies. We say so by name:
+Suppose we want a statistical model where everything is fixed except MAT1's $k_{cat}$, the temperature and the formation energies. We say so by label:
 
 ```python
-from enzax.parameters import ParameterSplit
+from enzax.parameter_split import (
+    combine_parameters,
+    count_free_parameters,
+    get_free_labels,
+    get_free_parameters,
+    split_parameters_by_freeing,
+)
 
-split = ParameterSplit.from_free(
-    model.parameter_layout,
+split = split_parameters_by_freeing(
+    model.parameter_labels,
     true_parameters,
     {"log_kcat": ["MAT1"], "temperature": None, "dgf": None},
 )
-split.n_free
+count_free_parameters(split)
 ```
 
 ```
 21
 ```
 
-A key mapped to a list of names frees exactly those parameters; a key mapped to `None` frees the whole kind. Anything not mentioned is fixed, and its value is taken from the parameter set you passed in. There is a `ParameterSplit.from_fixed` for when it is more convenient to say which parameters are *not* free.
+A parameter mapped to a list of labels frees exactly those values; a parameter mapped to `None` frees the whole thing. `temperature` has no labels, so `None` is the only way to free it. Anything not mentioned is fixed, and its value is taken from the parameter set you passed in. There is a `split_parameters_by_fixing` for when it is more convenient to say which parameters are *not* free.
 
-`split.free` then pulls the free parameters out:
+`get_free_parameters` then pulls the free parameters out:
 
 ```python
-free_parameters = split.free(true_parameters)
+free_parameters = get_free_parameters(split, true_parameters)
 {k: v.shape for k, v in free_parameters.items()}
 ```
 
@@ -62,10 +68,10 @@ free_parameters = split.free(true_parameters)
 {'log_kcat': (1,), 'dgf': (19,), 'temperature': ()}
 ```
 
-Note that `free_parameters["log_kcat"]` has one element, not ten. The free parameters are *gathered*, not masked, so a fixed parameter is genuinely absent rather than present-but-ignored. That matters for inference: a masked coordinate would still be part of the sampler's state space and would still be explored, and a prior built from the free parameters would be a prior on parameters that are not being inferred. `split.names` says which parameter each position holds:
+Note that `free_parameters["log_kcat"]` has one element, not ten. The free parameters are *gathered*, not masked, so a fixed parameter is genuinely absent rather than present-but-ignored. That matters for inference: a masked coordinate would still be part of the sampler's state space and would still be explored, and a prior built from the free parameters would be a prior on parameters that are not being inferred. `get_free_labels` says which value each position holds:
 
 ```python
-split.names("log_kcat")
+get_free_labels(split, "log_kcat")
 ```
 
 ```
@@ -91,7 +97,7 @@ new_free_parameters
 When we want the fixed parameters back in, `combine` scatters the free values and the fixed ones into full-size arrays:
 
 ```python
-new_parameters = split.combine(new_free_parameters)
+new_parameters = combine_parameters(split, new_free_parameters)
 new_parameters
 ```
 
@@ -118,7 +124,7 @@ Leave out `split` to infer every parameter, in which case the first argument is 
 
 - concentrations are in the model's `species` order;
 - fluxes are in its `reactions` order;
-- enzyme concentrations are in `model.parameter_layout.names["log_enzyme"]` order, i.e. the order the model's rate equations first name their enzymes in.
+- enzyme concentrations are in `model.parameter_labels["log_enzyme"]` order, i.e. the order the model's rate equations first label their enzymes in.
 
 The last of these is not the same as the reaction order whenever a reaction has no enzyme, as with methionine's drain reaction, or whenever two reactions share one.
 

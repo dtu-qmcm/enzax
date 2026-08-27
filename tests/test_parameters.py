@@ -1,6 +1,6 @@
-"""Tests for parameter names and layouts.
+"""Tests for parameter labels, positions and packing.
 
-The model used here is the smallest one that shows why names exist: two
+The model used here is the smallest one that shows why labels exist: two
 reactions consume the same species `a`, and can either have their own
 Michaelis constants for it or share one.
 """
@@ -11,7 +11,12 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
-from enzax.parameters import ParameterSplit, species_names
+from enzax.parameters import (
+    get_parameter_position,
+    pack_parameters,
+    unpack_parameters,
+)
+from enzax.rate_equation import get_species_labels
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
@@ -42,21 +47,19 @@ def get_model(rate_equations, **kwargs):
 
 
 def get_parameters(model, **overrides):
-    """Pack parameters for a model, taking values from `VALUES` by name."""
-    layout = model.parameter_layout
+    """Pack parameters for a model, taking values from `VALUES` by label."""
+    labels = model.parameter_labels
     values = {
-        "log_k": {name: VALUES[name] for name in layout.names["log_k"]},
-        "log_kcat": {name: -0.1 for name in layout.names["log_kcat"]},
-        "log_enzyme": {
-            name: jnp.log(0.3) for name in layout.names["log_enzyme"]
-        },
+        "log_k": {label: VALUES[label] for label in labels["log_k"]},
+        "log_kcat": {label: -0.1 for label in labels["log_kcat"]},
+        "log_enzyme": {label: jnp.log(0.3) for label in labels["log_enzyme"]},
         "dgf": {"a": -3.0, "b": -1.0, "c": 1.0},
         "temperature": 310.0,
     }
-    if "log_tc" in layout.names:
-        values["log_tc"] = {name: -0.2 for name in layout.names["log_tc"]}
+    if "log_tc" in labels:
+        values["log_tc"] = {label: -0.2 for label in labels["log_tc"]}
     values.update(overrides)
-    return layout.pack(values)
+    return pack_parameters(labels, values)
 
 
 SEPARATE = get_model([ReversibleMichaelisMenten(), ReversibleMichaelisMenten()])
@@ -68,77 +71,78 @@ SHARED = get_model(
 )
 
 
-def test_layout_is_in_first_seen_order():
-    assert SEPARATE.parameter_layout.names["log_k"] == (
+def test_labels_are_in_first_seen_order():
+    labels = SEPARATE.parameter_labels
+    assert labels["log_k"] == (
         "km|r1|a",
         "km|r1|b",
         "km|r2|a",
         "km|r2|c",
     )
-    assert SEPARATE.parameter_layout.names["log_kcat"] == ("r1", "r2")
+    assert labels["log_kcat"] == ("r1", "r2")
 
 
-def test_layout_names_the_structural_parameters():
-    names = SEPARATE.parameter_layout.names
-    assert names["dgf"] == ("a", "b", "c")
-    assert names["log_conc_unbalanced"] == ()
-    assert names["temperature"] == ("temperature",)
+def test_structural_parameters_are_labelled():
+    labels = SEPARATE.parameter_labels
+    assert labels["dgf"] == ("a", "b", "c")
 
 
-def test_pack_omits_empty_keys():
-    """No reaction is a drain, so there is no `log_drain` parameter."""
+def test_temperature_is_unlabelled_but_still_packed():
+    """Its leaf is one parameter in one piece, so it has no labels at all."""
+    assert SEPARATE.parameter_labels["temperature"] == ()
+    parameters = get_parameters(SEPARATE)
+    assert jnp.array_equal(parameters["temperature"], jnp.array(310.0))
+
+
+def test_a_parameter_with_nothing_to_label_is_left_out():
+    """Every species is balanced and none is dependent, so neither exists."""
+    labels = SEPARATE.parameter_labels
+    assert "log_conc_unbalanced" not in labels
+    assert "conserved_pools" not in labels
     parameters = get_parameters(SEPARATE)
     assert "log_drain" not in parameters
     assert "conserved_pools" not in parameters
 
 
-def test_pack_unpack_round_trip():
-    layout = SEPARATE.parameter_layout
+def test_labels_and_packed_parameters_have_the_same_keys():
     parameters = get_parameters(SEPARATE)
-    round_tripped = layout.pack(layout.unpack(parameters))
+    assert set(parameters) == set(SEPARATE.parameter_labels)
+
+
+def test_pack_unpack_round_trip():
+    labels = SEPARATE.parameter_labels
+    parameters = get_parameters(SEPARATE)
+    round_tripped = pack_parameters(
+        labels, unpack_parameters(labels, parameters)
+    )
     assert set(round_tripped) == set(parameters)
     for key, value in parameters.items():
         assert jnp.array_equal(round_tripped[key], value)
 
 
-def test_pack_rejects_an_unknown_name():
-    layout = SEPARATE.parameter_layout
-    values = dict(layout.unpack(get_parameters(SEPARATE)))
+def test_pack_rejects_an_unknown_label():
+    labels = SEPARATE.parameter_labels
+    values = dict(unpack_parameters(labels, get_parameters(SEPARATE)))
     values["log_k"] = dict(values["log_k"], **{"km|r3|a": 0.0})
-    with pytest.raises(ValueError, match="no parameter named"):
-        layout.pack(values)
+    with pytest.raises(ValueError, match="no value labelled"):
+        pack_parameters(labels, values)
 
 
-def test_pack_rejects_a_missing_name():
-    layout = SEPARATE.parameter_layout
-    values = dict(layout.unpack(get_parameters(SEPARATE)))
+def test_pack_rejects_a_missing_label():
+    labels = SEPARATE.parameter_labels
+    values = dict(unpack_parameters(labels, get_parameters(SEPARATE)))
     values["log_k"] = {
         k: v for k, v in values["log_k"].items() if k != "km|r1|a"
     }
     with pytest.raises(ValueError, match="No value given"):
-        layout.pack(values)
-
-
-def test_group_finds_slots_by_prefix():
-    model = get_model(
-        [
-            AllostericReversibleMichaelisMenten(dc_activator=["c"]),
-            ReversibleMichaelisMenten(),
-        ]
-    )
-    layout = model.parameter_layout
-    assert layout.names["log_k"][layout.group("log_k", "dc")[0]] == "dc|r1|c"
-    assert len(layout.group("log_k", "km")) == 4
+        pack_parameters(labels, values)
 
 
 def test_sharing_makes_one_parameter():
-    """Two reactions naming one constant get one slot, not two."""
-    assert SHARED.parameter_layout.names["log_k"] == (
-        "km|shared|a",
-        "km|r1|b",
-        "km|r2|c",
-    )
-    assert SHARED.parameter_layout.size("log_k") == 3
+    """Two reactions labelling one constant get one position, not two."""
+    labels = SHARED.parameter_labels
+    assert labels["log_k"] == ("km|shared|a", "km|r1|b", "km|r2|c")
+    assert len(labels["log_k"]) == 3
 
 
 def test_sharing_does_not_change_the_flux():
@@ -149,7 +153,7 @@ def test_sharing_does_not_change_the_flux():
 
 
 def test_gradient_accumulates_over_a_shared_parameter():
-    """A shared slot's gradient is the sum of both reactions'."""
+    """A shared position's gradient is the sum of both reactions'."""
 
     def total_flux(model, parameters):
         return model.flux(CONC, parameters).sum()
@@ -160,16 +164,18 @@ def test_gradient_accumulates_over_a_shared_parameter():
     shared_grad = jax.grad(total_flux, argnums=1)(
         SHARED, get_parameters(SHARED)
     )["log_k"]
-    separate_names = SEPARATE.parameter_layout.names["log_k"]
+    separate_labels = SEPARATE.parameter_labels["log_k"]
     expected = (
-        separate_grad[separate_names.index("km|r1|a")]
-        + separate_grad[separate_names.index("km|r2|a")]
+        separate_grad[separate_labels.index("km|r1|a")]
+        + separate_grad[separate_labels.index("km|r2|a")]
     )
-    shared_ix = SHARED.parameter_layout.index("log_k", "km|shared|a")
+    shared_ix = get_parameter_position(
+        SHARED.parameter_labels, "log_k", "km|shared|a"
+    )
     assert jnp.isclose(shared_grad[shared_ix], expected)
 
 
-def test_an_allosteric_constant_can_name_a_michaelis_constant():
+def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
     """The G6PDH case: a reaction reuses its own catalytic Km allosterically."""
     model = get_model(
         [
@@ -179,16 +185,17 @@ def test_an_allosteric_constant_can_name_a_michaelis_constant():
             ReversibleMichaelisMenten(),
         ]
     )
-    layout = model.parameter_layout
-    assert layout.names["log_k"] == (
+    labels = model.parameter_labels
+    assert labels["log_k"] == (
         "km|r1|a",
         "km|r1|b",
         "km|r2|a",
         "km|r2|c",
     )
     ix = model.rate_equation_ix[0]
-    assert ix.ix_dc_activator[0] == layout.index("log_k", "km|r1|b")
-    assert ix.ix_product_k[0] == layout.index("log_k", "km|r1|b")
+    position = get_parameter_position(labels, "log_k", "km|r1|b")
+    assert ix.ix_dc_activator[0] == position
+    assert ix.ix_product_k[0] == position
 
 
 def test_separator_is_rejected_in_an_id():
@@ -202,7 +209,7 @@ def test_separator_is_rejected_in_an_id():
         )
 
 
-def test_log_k_names_must_have_a_known_prefix():
+def test_log_k_labels_must_have_a_known_prefix():
     with pytest.raises(ValueError, match="must start with one of"):
         get_model(
             [
@@ -223,118 +230,4 @@ def test_formation_energies_must_be_contiguous():
 def test_a_bare_string_is_not_a_species_declaration():
     """A string is a sequence of characters, so it needs rejecting by hand."""
     with pytest.raises(ValueError, match="Use a list of species ids"):
-        species_names("abc", "ki", "r1", "ki")
-
-
-# ---------------------------------------------------------------------------
-# ParameterSplit
-# ---------------------------------------------------------------------------
-
-PARAMETERS = get_parameters(SEPARATE)
-LAYOUT = SEPARATE.parameter_layout
-
-
-def test_split_round_trips():
-    split = ParameterSplit.from_free(
-        LAYOUT, PARAMETERS, {"log_kcat": ["r1"], "temperature": None}
-    )
-    combined = split.combine(split.free(PARAMETERS))
-    assert set(combined) == set(PARAMETERS)
-    for key, value in PARAMETERS.items():
-        assert jnp.array_equal(combined[key], value), key
-
-
-def test_free_arrays_are_shorter_than_full_ones():
-    """Scatter, not mask: a frozen slot is absent, not zeroed."""
-    split = ParameterSplit.from_free(LAYOUT, PARAMETERS, {"log_kcat": ["r1"]})
-    free = split.free(PARAMETERS)
-    assert free["log_kcat"].shape == (1,)
-    assert PARAMETERS["log_kcat"].shape == (2,)
-    assert set(free) == {"log_kcat"}
-    assert split.n_free == 1
-    assert split.names("log_kcat") == ("r1",)
-
-
-def test_a_single_slot_of_a_kind_can_be_fixed():
-    """The thing `eqx.partition` cannot do: freeze one element of one leaf."""
-    split = ParameterSplit.from_fixed(
-        LAYOUT, PARAMETERS, {"log_k": ["km|r1|a"]}
-    )
-    free = split.free(PARAMETERS)
-    assert split.names("log_k") == ("km|r1|b", "km|r2|a", "km|r2|c")
-    assert free["log_k"].shape == (3,)
-    assert jnp.array_equal(split.combine(free)["log_k"], PARAMETERS["log_k"])
-
-
-def test_a_whole_kind_can_be_fixed():
-    """A key with no free slots drops out of the free tree entirely."""
-    split = ParameterSplit.from_fixed(LAYOUT, PARAMETERS, {"log_k": None})
-    free = split.free(PARAMETERS)
-    assert "log_k" not in free
-    assert split.names("log_k") == ()
-    combined = split.combine(free)
-    assert jnp.array_equal(combined["log_k"], PARAMETERS["log_k"])
-
-
-def test_a_scalar_parameter_can_be_fixed_or_free():
-    fixed = ParameterSplit.from_fixed(LAYOUT, PARAMETERS, {"temperature": None})
-    assert "temperature" not in fixed.free(PARAMETERS)
-    assert jnp.array_equal(
-        fixed.combine(fixed.free(PARAMETERS))["temperature"],
-        PARAMETERS["temperature"],
-    )
-    free = ParameterSplit.from_free(LAYOUT, PARAMETERS, {"temperature": None})
-    assert free.free(PARAMETERS)["temperature"].shape == ()
-    assert free.n_free == 1
-
-
-def test_gradient_reaches_only_the_free_parameters():
-    """A free slot's gradient is the one it has in the full gradient."""
-
-    def total_flux(parameters):
-        return SEPARATE.flux(CONC, parameters).sum()
-
-    split = ParameterSplit.from_free(
-        LAYOUT, PARAMETERS, {"log_k": ["km|r1|a", "km|r2|c"]}
-    )
-    full_grad = jax.grad(total_flux)(PARAMETERS)["log_k"]
-    free_grad = jax.grad(lambda f: total_flux(split.combine(f)))(
-        split.free(PARAMETERS)
-    )
-    assert set(free_grad) == {"log_k"}
-    assert free_grad["log_k"].shape == (2,)
-    expected = jnp.array(
-        [
-            full_grad[LAYOUT.index("log_k", name)]
-            for name in split.names("log_k")
-        ]
-    )
-    assert jnp.allclose(free_grad["log_k"], expected)
-
-
-def test_split_works_as_a_jit_argument():
-    split = ParameterSplit.from_free(LAYOUT, PARAMETERS, {"log_kcat": ["r1"]})
-
-    @jax.jit
-    def total_flux(free, split):
-        return SEPARATE.flux(CONC, split.combine(free)).sum()
-
-    assert jnp.isclose(
-        total_flux(split.free(PARAMETERS), split),
-        SEPARATE.flux(CONC, PARAMETERS).sum(),
-    )
-
-
-def test_split_rejects_an_unknown_key():
-    with pytest.raises(ValueError, match="no parameter key"):
-        ParameterSplit.from_free(LAYOUT, PARAMETERS, {"log_nope": None})
-
-
-def test_split_rejects_an_unknown_name():
-    with pytest.raises(ValueError, match="no parameter named"):
-        ParameterSplit.from_fixed(LAYOUT, PARAMETERS, {"log_kcat": ["r9"]})
-
-
-def test_split_rejects_a_bare_string():
-    with pytest.raises(ValueError, match="Use a list of parameter names"):
-        ParameterSplit.from_free(LAYOUT, PARAMETERS, {"log_kcat": "r1"})
+        get_species_labels("abc", "ki", "r1", "ki")

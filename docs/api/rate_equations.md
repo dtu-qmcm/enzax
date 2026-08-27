@@ -4,7 +4,6 @@
       filters:
         - "!check"
       members:
-        - RateEquation
         - Drain
         - IrreversibleMichaelisMenten
         - ReversibleMichaelisMenten

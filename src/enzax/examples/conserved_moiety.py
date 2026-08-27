@@ -29,6 +29,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
@@ -75,7 +76,8 @@ model = RateEquationModel(
     species_to_dgf_ix=species_to_dgf_ix,
     rate_equations=rate_equations,
 )
-parameters = model.parameter_layout.pack(
+parameters = pack_parameters(
+    model.parameter_labels,
     {
         "log_k": {
             "km|transA|A_e": jnp.log(0.3),
@@ -140,7 +142,7 @@ parameters = model.parameter_layout.pack(
         },
         "conserved_pools": {"X2_c": 1.0},  # X1_c + X2_c
         "temperature": 298.15,
-    }
+    },
 )
 # Concentrations of the independent balanced species at steady state. X2_c's
 # concentration follows from X1_c's and the conserved pool total.

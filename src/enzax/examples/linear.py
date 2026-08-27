@@ -4,6 +4,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
@@ -31,7 +32,8 @@ model = RateEquationModel(
     species_to_dgf_ix=np.array([0, 0, 1, 1]),
     rate_equations=rate_equations,
 )
-parameters = model.parameter_layout.pack(
+parameters = pack_parameters(
+    model.parameter_labels,
     {
         "log_k": {
             "km|r1|m1e": 0.1,  # r1's substrate
@@ -56,6 +58,6 @@ parameters = model.parameter_layout.pack(
         "dgf": {"m1e": -3.0, "m2c": -1.0},
         "log_conc_unbalanced": {"m1e": jnp.log(0.5), "m2e": jnp.log(0.1)},
         "temperature": 310.0,
-    }
+    },
 )
 steady_state = jnp.array([0.43658744, 0.12695706])

@@ -28,6 +28,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import pack_parameters, unpack_parameters
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
     ReversibleMichaelisMenten,
@@ -72,12 +73,12 @@ model = RateEquationModel(
 
 ```
 
-### Parameters and the parameter layout
+### Parameters and their labels
 
-Parameters live in flat arrays, one per kind, and each parameter has a name. Building the model works out which names exist, from the rate equations and from the model's structure, and records them in a `ParameterLayout`:
+Each parameter is one flat array, and each value in an array has a label. Building the model works out which labels exist, from the rate equations and from the model's structure, and records them in `model.parameter_labels`:
 
 ```python
-model.parameter_layout.names["log_k"]
+model.parameter_labels["log_k"]
 ```
 
 ```
@@ -85,12 +86,13 @@ model.parameter_layout.names["log_k"]
  'ki|r2|m1c', 'dc|r2|m1c', 'km|r3|m2c', 'km|r3|m2e')
 ```
 
-`log_k` holds every dissociation constant, whatever its role. The prefix says which role a constant plays: `km` for a Michaelis constant, `ki` for a competitive inhibition constant and `dc` for an allosteric one. Keeping them in one array is what lets two reactions share a constant, or a reaction reuse one of its own Michaelis constants as an allosteric constant --- in both cases the two uses simply name the same slot.
+`log_k` holds every dissociation constant, whatever it does. The prefix says what a constant does: `km` for a Michaelis constant, `ki` for a competitive inhibition constant and `dc` for an allosteric one. Keeping them in one array is what lets two reactions share a constant, or a reaction reuse one of its own Michaelis constants as an allosteric constant --- in both cases the two uses simply give the same label.
 
-We build a parameter set by giving a value for every name, and let the layout pack them into arrays:
+We build a parameter set by giving a value for every label:
 
 ```python
-parameters = model.parameter_layout.pack(
+parameters = pack_parameters(
+    model.parameter_labels,
     {
         "log_k": {
             "km|r1|m1e": 0.1,
@@ -117,15 +119,18 @@ parameters = model.parameter_layout.pack(
 )
 ```
 
-`pack` complains about a name it does not recognise and about a name you leave out, so a typo or an omission is an error when you build the parameters rather than a wrong number later. It applies no transform: a `log_` key wants a value on the log scale, which is why the enzyme concentrations above are wrapped in `jnp.log`.
+`pack_parameters` complains about a label it does not recognise and about a label you leave out, so a typo or an omission is an error when you build the parameters rather than a wrong number later. It applies no transform: a `log_` key wants a value on the log scale, which is why the enzyme concentrations above are wrapped in `jnp.log`.
 
-Going the other way, `model.parameter_layout.unpack(parameters)` gives back a dictionary of named values, which is handy when a traceback shows you something like `parameters["log_k"][6]` and you want to know which constant that is.
+`temperature` is the exception: it has no labels at all, because its whole array is one parameter, so it takes a value directly rather than a mapping.
+
+Going the other way, `unpack_parameters(model.parameter_labels, parameters)`
+gives back a dictionary of labelled values, which is handy when a traceback shows you something like `parameters["log_k"][6]` and you want to know which constant that is.
 
 Note that the parameters use `jnp` whereas the structure uses `np`. This is because we want JAX to trace the parameters, whereas the structure should be static. Read more about this [here](https://jax.readthedocs.io/en/latest/notebooks/thinking_in_jax.html#static-vs-traced-operations).
 
 ### Sharing a parameter between reactions
 
-Two rate equations that use the same name use the same parameter --- one array slot, one leaf, one thing to infer. Say `r1` and `r3` were catalysed by the same enzyme and had the same Michaelis constant for their substrates:
+Two rate equations that use the same label use the same value --- one position in one array, one thing to infer. Say `r1` and `r3` were catalysed by the same enzyme and had the same Michaelis constant for their substrates:
 
 ```python
 shared_rate_equations = [
@@ -144,7 +149,7 @@ shared_rate_equations = [
 ]
 ```
 
-Now `log_enzyme` has one entry named `E1` instead of two, and `km|E1|substrate` is one slot that both reactions gather from. Gradients with respect to it accumulate contributions from both reactions, as they should.
+Now `log_enzyme` has one entry labelled `E1` instead of two, and `km|E1|substrate` is one position that both reactions gather from. Gradients with respect to it accumulate contributions from both reactions, as they should.
 
 To test out the model, we can see if it returns some fluxes and state variable rates when provided a set of balanced species concentrations:
 
@@ -196,6 +201,7 @@ Here is how to find this model's steady state (and its parameter gradients) usin
 
 ```python
 from enzax.examples.methionine import model, parameters
+from enzax.parameters import get_parameter_position
 from enzax.steady_state import get_steady_state
 from jax import numpy as jnp
 
@@ -211,9 +217,9 @@ jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
 jacobian
 ```
 
-Because each parameter kind is one flat array, each entry of the Jacobian is a dense matrix whose columns are that kind's parameters, in `model.parameter_layout.names` order. To pick out a single parameter's column, ask the layout where it lives:
+Because each parameter is one flat array, each entry of the Jacobian is a dense matrix whose columns are that parameter's values, in `model.parameter_labels` order. To pick out a single value's column, ask the labels where it lives:
 
 ```python
-layout = model.parameter_layout
-jacobian["log_kcat"][:, layout.index("log_kcat", "GNMT1")]
+labels = model.parameter_labels
+jacobian["log_kcat"][:, get_parameter_position(labels, "log_kcat", "GNMT1")]
 ```

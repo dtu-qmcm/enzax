@@ -1,5 +1,7 @@
+from dataclasses import asdict, dataclass
+
 from jax import numpy as jnp
-from jaxtyping import PyTree, Scalar
+from jaxtyping import Scalar
 
 from enzax.rate_equations.michaelis_menten import (
     free_enzyme_ratio_imm,
@@ -11,6 +13,7 @@ from enzax.rate_equations.michaelis_menten import (
     IrreversibleMichaelisMenten,
     IrreversibleMichaelisMentenInput,
     IrreversibleMichaelisMentenIx,
+    MichaelisMentenLabels,
     ReversibleMichaelisMenten,
     ReversibleMichaelisMentenInput,
     ReversibleMichaelisMentenIx,
@@ -23,14 +26,20 @@ from enzax.array_types import (
     InhibitionArr,
     ActivationArr,
     ConcArray,
+    ParamDict,
     AllostericInhibitorIx,
     AllostericActivatorIx,
 )
 from enzax.parameters import (
-    ParameterLayout,
+    ParameterLabels,
+    get_parameter_position,
+    get_parameter_positions,
+)
+from enzax.rate_equation import (
     ReactionScope,
-    scalar_name,
-    species_names,
+    get_reaction_label,
+    get_species_positions,
+    get_species_labels,
 )
 
 
@@ -68,22 +77,43 @@ class AllostericReversibleMichaelisMentenInput(ReversibleMichaelisMentenInput):
     ix_allosteric_activators: AllostericActivatorIx
 
 
-def allosteric_names(
+@dataclass(frozen=True)
+class AllostericLabels(MichaelisMentenLabels):
+    """The labels an allosteric Michaelis Menten reaction refers to.
+
+    Both `dc_` groups are gathered from `log_k`, alongside the catalytic
+    constants, which is what lets an allosteric constant be the same value as a
+    catalytic one.
+    """
+
+    tc: str
+    dc_inhibitor: tuple[str, ...]
+    dc_activator: tuple[str, ...]
+
+    def by_parameter(self) -> ParameterLabels:
+        base = super().by_parameter()
+        return base | {
+            "log_tc": (self.tc,),
+            "log_k": base["log_k"] + self.dc_inhibitor + self.dc_activator,
+        }
+
+
+def get_allosteric_labels(
     scope: ReactionScope,
-    base: dict[str, tuple[str, ...]],
+    base: MichaelisMentenLabels,
     tc: str | None,
     dc_inhibitor: list[str] | dict[str, str] | None,
     dc_activator: list[str] | dict[str, str] | None,
-) -> dict[str, tuple[str, ...]]:
-    """Add the allosteric names to a Michaelis Menten reaction's names.
+) -> AllostericLabels:
+    """Add the allosteric labels to a Michaelis Menten reaction's labels.
 
-    Inhibitors and activators are declared separately because they play
-    opposite roles in the MWC effect: an inhibitor raises the tense state's
+    Inhibitors and activators are declared separately because they act
+    oppositely in the MWC effect: an inhibitor raises the tense state's
     binding polynomial and an activator raises the relaxed state's. They share
-    the `dc|` name prefix, since both are allosteric dissociation constants.
+    the `dc|` label prefix, since both are allosteric dissociation constants.
     """
-    inhibitors = allosteric_species(scope, dc_inhibitor, "dc_inhibitor")
-    activators = allosteric_species(scope, dc_activator, "dc_activator")
+    inhibitors = get_allosteric_species(scope, dc_inhibitor, "dc_inhibitor")
+    activators = get_allosteric_species(scope, dc_activator, "dc_activator")
     both = [s for s in inhibitors if s in activators]
     if both:
         msg = (
@@ -91,19 +121,21 @@ def allosteric_names(
             f"allosteric activators of reaction {scope.reaction_id}."
         )
         raise ValueError(msg)
-    names = dict(base)
-    names["tc"] = (scalar_name(tc, scope.reaction_id),)
-    names["dc_inhibitor"] = tuple(inhibitors.values())
-    names["dc_activator"] = tuple(activators.values())
-    return names
+    return AllostericLabels(
+        **asdict(base),
+        tc=get_reaction_label(tc, scope.reaction_id),
+        dc_inhibitor=tuple(inhibitors.values()),
+        dc_activator=tuple(activators.values()),
+    )
 
 
-def allosteric_species(
+def get_allosteric_species(
     scope: ReactionScope,
     declaration: list[str] | dict[str, str] | None,
-    role: str,
+    what: str,
 ) -> dict[str, str]:
-    return species_names(declaration, "dc", scope.reaction_id, role)
+    """Normalise an allosteric declaration into a `{species: label}` dict."""
+    return get_species_labels(declaration, "dc", scope.reaction_id, what)
 
 
 def generalised_mwc_effect(
@@ -131,11 +163,11 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
 
     Extra fields, in addition to the ones its parent declares:
 
-    * `tc`: name of the transfer constant. Defaults to the reaction id.
+    * `tc`: label of the transfer constant. Defaults to the reaction id.
     * `dc_inhibitor`: the reaction's allosteric inhibitors, either as a list of
-      species ids (default names `dc|{reaction}|{species}`) or as
-      `{species: name}`. Naming a `km|...` slot makes the allosteric constant
-      the same parameter as a catalytic one.
+      species ids (default labels `dc|{reaction}|{species}`) or as
+      `{species: label}`. Using a `km|...` label makes the allosteric constant
+      the same value as a catalytic one.
     * `dc_activator`: the reaction's allosteric activators, declared the same
       way.
     * `subunits`: number of subunits in the enzyme.
@@ -146,26 +178,24 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
     dc_activator: list[str] | dict[str, str] | None = None
     subunits: int = 1
 
-    def parameter_names(
-        self, scope: ReactionScope
-    ) -> dict[str, tuple[str, ...]]:
-        return allosteric_names(
+    def get_labels(self, scope: ReactionScope) -> AllostericLabels:
+        return get_allosteric_labels(
             scope=scope,
-            base=super().parameter_names(scope),
+            base=super().get_labels(scope),
             tc=self.tc,
             dc_inhibitor=self.dc_inhibitor,
             dc_activator=self.dc_activator,
         )
 
     def resolve(
-        self, scope: ReactionScope, layout: ParameterLayout
+        self, scope: ReactionScope, labels: ParameterLabels
     ) -> AllostericIrreversibleMichaelisMentenIx:
-        names = self.parameter_names(scope)
+        lab = self.get_labels(scope)
         base = get_irreversible_michaelis_menten_ix(
             scope=scope,
-            layout=layout,
-            names=names,
-            ki_species=self.ki_species(scope),
+            labels=labels,
+            lab=lab,
+            ki_species=self.get_ki_species(scope),
         )
         return AllostericIrreversibleMichaelisMentenIx(
             ix_kcat=base.ix_kcat,
@@ -175,20 +205,30 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
             ix_substrate=base.ix_substrate,
             ix_ki_species=base.ix_ki_species,
             substrate_stoichiometry=base.substrate_stoichiometry,
-            ix_tc=layout.index("log_tc", names["tc"][0]),
-            ix_dc_inhibitor=layout.indices("log_k", names["dc_inhibitor"]),
-            ix_dc_activator=layout.indices("log_k", names["dc_activator"]),
-            ix_allosteric_inhibitors=scope.ix_of_many(
-                allosteric_species(scope, self.dc_inhibitor, "dc_inhibitor")
+            ix_tc=get_parameter_position(labels, "log_tc", lab.tc),
+            ix_dc_inhibitor=get_parameter_positions(
+                labels, "log_k", lab.dc_inhibitor
             ),
-            ix_allosteric_activators=scope.ix_of_many(
-                allosteric_species(scope, self.dc_activator, "dc_activator")
+            ix_dc_activator=get_parameter_positions(
+                labels, "log_k", lab.dc_activator
+            ),
+            ix_allosteric_inhibitors=get_species_positions(
+                scope,
+                get_allosteric_species(
+                    scope, self.dc_inhibitor, "dc_inhibitor"
+                ),
+            ),
+            ix_allosteric_activators=get_species_positions(
+                scope,
+                get_allosteric_species(
+                    scope, self.dc_activator, "dc_activator"
+                ),
             ),
         )
 
     def get_input(
         self,
-        parameters: PyTree,
+        parameters: ParamDict,
         ix: AllostericIrreversibleMichaelisMentenIx,
     ) -> AllostericIrreversibleMichaelisMentenInput:
         base = get_irreversible_michaelis_menten_input(parameters, ix)
@@ -238,11 +278,11 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
 
     Extra fields, in addition to the ones its parent declares:
 
-    * `tc`: name of the transfer constant. Defaults to the reaction id.
+    * `tc`: label of the transfer constant. Defaults to the reaction id.
     * `dc_inhibitor`: the reaction's allosteric inhibitors, either as a list of
-      species ids (default names `dc|{reaction}|{species}`) or as
-      `{species: name}`. Naming a `km|...` slot makes the allosteric constant
-      the same parameter as a catalytic one.
+      species ids (default labels `dc|{reaction}|{species}`) or as
+      `{species: label}`. Using a `km|...` label makes the allosteric constant
+      the same value as a catalytic one.
     * `dc_activator`: the reaction's allosteric activators, declared the same
       way.
     * `subunits`: number of subunits in the enzyme.
@@ -253,26 +293,24 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
     dc_activator: list[str] | dict[str, str] | None = None
     subunits: int = 1
 
-    def parameter_names(
-        self, scope: ReactionScope
-    ) -> dict[str, tuple[str, ...]]:
-        return allosteric_names(
+    def get_labels(self, scope: ReactionScope) -> AllostericLabels:
+        return get_allosteric_labels(
             scope=scope,
-            base=super().parameter_names(scope),
+            base=super().get_labels(scope),
             tc=self.tc,
             dc_inhibitor=self.dc_inhibitor,
             dc_activator=self.dc_activator,
         )
 
     def resolve(
-        self, scope: ReactionScope, layout: ParameterLayout
+        self, scope: ReactionScope, labels: ParameterLabels
     ) -> AllostericReversibleMichaelisMentenIx:
-        names = self.parameter_names(scope)
+        lab = self.get_labels(scope)
         base = get_reversible_michaelis_menten_ix(
             scope=scope,
-            layout=layout,
-            names=names,
-            ki_species=self.ki_species(scope),
+            labels=labels,
+            lab=lab,
+            ki_species=self.get_ki_species(scope),
             water_stoichiometry=self.water_stoichiometry,
         )
         return AllostericReversibleMichaelisMentenIx(
@@ -290,20 +328,30 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
             substrate_stoichiometry=base.substrate_stoichiometry,
             product_stoichiometry=base.product_stoichiometry,
             water_stoichiometry=base.water_stoichiometry,
-            ix_tc=layout.index("log_tc", names["tc"][0]),
-            ix_dc_inhibitor=layout.indices("log_k", names["dc_inhibitor"]),
-            ix_dc_activator=layout.indices("log_k", names["dc_activator"]),
-            ix_allosteric_inhibitors=scope.ix_of_many(
-                allosteric_species(scope, self.dc_inhibitor, "dc_inhibitor")
+            ix_tc=get_parameter_position(labels, "log_tc", lab.tc),
+            ix_dc_inhibitor=get_parameter_positions(
+                labels, "log_k", lab.dc_inhibitor
             ),
-            ix_allosteric_activators=scope.ix_of_many(
-                allosteric_species(scope, self.dc_activator, "dc_activator")
+            ix_dc_activator=get_parameter_positions(
+                labels, "log_k", lab.dc_activator
+            ),
+            ix_allosteric_inhibitors=get_species_positions(
+                scope,
+                get_allosteric_species(
+                    scope, self.dc_inhibitor, "dc_inhibitor"
+                ),
+            ),
+            ix_allosteric_activators=get_species_positions(
+                scope,
+                get_allosteric_species(
+                    scope, self.dc_activator, "dc_activator"
+                ),
             ),
         )
 
     def get_input(
         self,
-        parameters: PyTree,
+        parameters: ParamDict,
         ix: AllostericReversibleMichaelisMentenIx,
     ) -> AllostericReversibleMichaelisMentenInput:
         base = get_reversible_michaelis_menten_input(parameters, ix)
