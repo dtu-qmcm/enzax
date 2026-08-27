@@ -151,7 +151,7 @@ ParamEntry = ParamMap | ArrayLike
 
 # Values for a model's parameters, as a reader writes them. Possibly
 # incomplete.
-ParamSpec = dict[str, ParamEntry]
+ParamValueSpec = dict[str, ParamEntry]
 
 # --------------------------------------------------------------------------
 # Misc

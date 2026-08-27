@@ -8,7 +8,7 @@ two index arrays holding the same integer.
 A *parameter* is one key of the parameter PyTree, as in `log_k` or `dgf`. A
 *label* names one value inside a parameter's array, and a *position* is where
 that value sits along the array. The containers themselves -- `ParamLabelling`,
-`ParamSpec` and friends -- live in `enzax.array_types`.
+`ParamValueSpec` and friends -- live in `enzax.array_types`.
 
 A parameter whose labels are the empty tuple has no labelled positions: its
 leaf is one parameter in one piece. `temperature` is the only one today, being
@@ -42,8 +42,7 @@ from enzax.array_types import (
     ParamLabelling,
     ParamLabels,
     ParamLeaf,
-    ParamMap,
-    ParamSpec,
+    ParamValueSpec,
 )
 
 # Separator between the parts of a parameter label.
@@ -163,7 +162,7 @@ def get_parameter_positions(
 
 
 def check_spec_covers_labelling(
-    labelling: ParamLabelling, spec: ParamSpec
+    labelling: ParamLabelling, spec: ParamValueSpec
 ) -> None:
     """Raise unless a spec gives values for exactly a model's parameters."""
     check_parameters_are_known(spec)
@@ -177,21 +176,16 @@ def check_spec_covers_labelling(
         raise ValueError(msg)
 
 
-def as_param_map(parameter: str, entry: ParamEntry) -> ParamMap:
-    """Read a labelled parameter's spec entry as a map of label to value."""
-    if not isinstance(entry, Mapping):
+def check_entry_covers_labels(
+    parameter: str, labels: ParamLabels, given: ParamEntry
+) -> None:
+    """Raise unless an entry maps exactly the parameter's labels to values."""
+    if not isinstance(given, dict):
         msg = (
             f"{parameter!r} has labelled positions, so its values must be a "
-            f"mapping of label to value, not {type(entry).__name__}."
+            f"mapping of label to value, not {type(given).__name__}."
         )
         raise ValueError(msg)
-    return dict(entry)
-
-
-def check_map_covers_labels(
-    parameter: str, labels: ParamLabels, given: ParamMap
-) -> None:
-    """Raise unless a map labels exactly the parameter's positions."""
     unknown = [label for label in given if label not in labels]
     if unknown:
         msg = f"{parameter!r} has no value labelled {unknown}."
@@ -212,12 +206,13 @@ def pack_one_parameter(
     """
     if not labels:
         return jnp.array(entry)
-    given = as_param_map(parameter, entry)
-    check_map_covers_labels(parameter, labels, given)
-    return jnp.array([given[label] for label in labels])
+    check_entry_covers_labels(parameter, labels, entry)
+    return jnp.array([entry[label] for label in labels])
 
 
-def pack_parameters(labelling: ParamLabelling, spec: ParamSpec) -> ParamDict:
+def pack_parameters(
+    labelling: ParamLabelling, spec: ParamValueSpec
+) -> ParamDict:
     """Build a parameter PyTree from `{parameter: {label: value}}`.
 
     No transform is applied: pass whatever scale the parameter implies, as in
@@ -247,7 +242,7 @@ def unpack_one_parameter(labels: ParamLabels, leaf: ParamLeaf) -> ParamEntry:
 
 def unpack_parameters(
     labelling: ParamLabelling, parameters: ParamDict
-) -> ParamSpec:
+) -> ParamValueSpec:
     """Turn a parameter PyTree back into `{parameter: {label: value}}`.
 
     The inverse of `pack_parameters`, for reading a parameter set at the REPL
