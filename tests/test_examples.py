@@ -1,9 +1,9 @@
-from enzax.array_types import ParamLeaf
-from enzax.steady_state import get_steady_state
-from jax import numpy as jnp
 import pytest
+from jax import numpy as jnp
 
+from enzax.array_types import ParamLeaf
 from enzax.examples import conserved_moiety, linear, methionine
+from enzax.steady_state import get_steady_state
 
 
 @pytest.mark.parametrize(

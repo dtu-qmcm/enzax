@@ -10,7 +10,6 @@ from enzax.rate_equations import (
     ReversibleMichaelisMenten,
 )
 
-
 stoichiometry = {
     "r1": {"m1e": -1.0, "m1c": 1.0},
     "r2": {"m1c": -1.0, "m2c": 1.0},

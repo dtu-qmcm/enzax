@@ -1,5 +1,5 @@
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
 import equinox as eqx
 from jax import numpy as jnp
@@ -37,9 +37,9 @@ from enzax.rate_equation import (
     get_products,
     get_reactants,
     get_reaction_label,
-    get_species_positions,
     get_species_label,
     get_species_labels,
+    get_species_positions,
     get_substrates,
 )
 

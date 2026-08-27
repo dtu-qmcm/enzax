@@ -28,7 +28,6 @@ Rules for the `n_rxn_*` tier:
 """
 
 import numpy as np
-
 from jaxtyping import Array, Float, Int
 
 # --------------------------------------------------------------------------

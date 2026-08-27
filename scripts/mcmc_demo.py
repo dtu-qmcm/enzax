@@ -4,7 +4,7 @@ import functools
 import logging
 import warnings
 
-
+import equinox as eqx
 import jax
 from jax import numpy as jnp
 
@@ -16,10 +16,8 @@ from enzax.parameter_split import (
     get_free_parameters,
     split_parameters_by_freeing,
 )
-from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
-
-import equinox as eqx
+from enzax.steady_state import get_steady_state
 
 SEED = 1234
 

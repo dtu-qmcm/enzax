@@ -2,19 +2,19 @@ import functools
 import logging
 import warnings
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import PyTree
 
-import equinox as eqx
 from enzax.examples.smallbone import (
-    load_smallbone,
-    get_conc_assingment_species,
     enzax_log_density_sbml,
+    get_conc_assingment_species,
+    load_smallbone,
 )
-from enzax.steady_state import get_steady_state
-from enzax.statistical_modelling import prior_from_truth
 from enzax.mcmc import run_nuts
+from enzax.statistical_modelling import prior_from_truth
+from enzax.steady_state import get_steady_state
 
 SEED = 1234
 

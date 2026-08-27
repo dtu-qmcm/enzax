@@ -36,6 +36,22 @@ build-backend = "hatchling.build"
 [tool.pdm]
 distribution = true
 
+[tool.pytest.ini_options]
+# equinox warnings that enzax triggers on purpose, suppressed here rather than
+# test by test. src/enzax/__init__.py suppresses the same two for running enzax
+# outside pytest; pytest resets the warning filters for every test, so
+# import-time filters do not reach a test run.
+filterwarnings = [
+  # equinox counts a numpy array as a JAX array here. enzax's static fields
+  # hold numpy arrays describing a model's structure, which is what static
+  # fields are for.
+  'ignore:A JAX array is being set as static:UserWarning',
+  # equinox warns about `init=False` fields because they become PyTree leaves
+  # that jax.grad differentiates with respect to. Every `init=False` field in
+  # enzax is static too, so none of them is a leaf.
+  'ignore:Using `field\(init=False\)` on `equinox.Module`:UserWarning',
+]
+
 [tool.ruff]
 line-length = 80
 

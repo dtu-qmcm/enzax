@@ -1,14 +1,14 @@
 import operator
 
-from enzax.kinetic_model import RateEquationModel
-from enzax.parameter_split import ParameterSplit, combine_parameters
-from enzax.steady_state import get_steady_state
 import jax
 from jax import numpy as jnp
 from jax.scipy.stats import multivariate_normal, norm
 from jaxtyping import PyTree, Scalar
 
-from enzax.array_types import ParamDict, IndConcArr
+from enzax.array_types import IndConcArr, ParamDict
+from enzax.kinetic_model import RateEquationModel
+from enzax.parameter_split import ParameterSplit, combine_parameters
+from enzax.steady_state import get_steady_state
 
 
 def prior_from_truth(

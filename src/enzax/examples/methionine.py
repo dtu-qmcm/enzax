@@ -16,7 +16,6 @@ from enzax.rate_equations import (
     ReversibleMichaelisMenten,
 )
 
-
 stoichiometry = {
     "the_drain": {"met-L": 1.0},
     "MAT1": {"met-L": -1.0, "atp": -1.0, "pi": 1.0, "ppi": 1.0, "amet": 1.0},

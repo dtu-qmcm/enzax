@@ -29,7 +29,7 @@ in a rate equation. For example, a rate equation might use a value labelled
 "km..." both as a Michaelis constant and as a dissociation constant.
 """
 
-from typing import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 import numpy as np
 from jax import numpy as jnp

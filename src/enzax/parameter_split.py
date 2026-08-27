@@ -5,7 +5,7 @@ inference, optimisation, a sensitivity sweep. For plain simulation you just
 put the value in the array.
 """
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 import equinox as eqx
 import numpy as np

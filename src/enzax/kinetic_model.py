@@ -1,39 +1,39 @@
 """Module containing enzax's definition of a kinetic model."""
 
-import sympy
-
 from abc import abstractmethod
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
+import sympy
 import sympy2jax
 from jaxtyping import PyTree, ScalarLike
 
-from enzax.rate_equation import RateEquation, ReactionScope
+from enzax.array_types import (
+    BalancedConcArr,
+    BalancedSpeciesIx,
+    ConcArray,
+    DepSpeciesIx,
+    Flux,
+    IndConcArr,
+    IndRateArr,
+    IndSpeciesIx,
+    LinkMatrix,
+    MoietyTotalsArr,
+    SpeciesIx,
+    StoichiometricMatrix,
+    UnbalancedConcArr,
+    UnbalancedSpeciesIx,
+)
 from enzax.parameters import (
     ParameterLabels,
     check_id_has_no_separator,
     check_parameter_labels,
     merge_labels,
 )
-from enzax.array_types import (
-    BalancedConcArr,
-    ConcArray,
-    Flux,
-    IndConcArr,
-    IndRateArr,
-    MoietyTotalsArr,
-    UnbalancedConcArr,
-    StoichiometricMatrix,
-    IndSpeciesIx,
-    DepSpeciesIx,
-    LinkMatrix,
-    SpeciesIx,
-    BalancedSpeciesIx,
-    UnbalancedSpeciesIx,
-)
+from enzax.rate_equation import RateEquation, ReactionScope
 
 
 def get_ix_from_list(s: str, list_of_strings: list[str]):

@@ -1,12 +1,12 @@
-from pathlib import Path
+import functools
 import json
+from pathlib import Path
+
 import jax
 from jax import numpy as jnp
 
 from enzax.examples import methionine
 from enzax.statistical_modelling import enzax_log_density, prior_from_truth
-
-import functools
 
 jax.config.update("jax_enable_x64", True)
 SEED = 1234

@@ -1,8 +1,8 @@
 """Module containing rate equations for enzyme-catalysed reactions."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
 
 import numpy as np
 from equinox import Module

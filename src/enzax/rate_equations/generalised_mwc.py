@@ -3,32 +3,17 @@ from dataclasses import asdict, dataclass
 from jax import numpy as jnp
 from jaxtyping import Scalar
 
-from enzax.rate_equations.michaelis_menten import (
-    free_enzyme_ratio_imm,
-    free_enzyme_ratio_rmm,
-    get_irreversible_michaelis_menten_input,
-    get_irreversible_michaelis_menten_ix,
-    get_reversible_michaelis_menten_input,
-    get_reversible_michaelis_menten_ix,
-    IrreversibleMichaelisMenten,
-    IrreversibleMichaelisMentenInput,
-    IrreversibleMichaelisMentenIx,
-    MichaelisMentenLabels,
-    ReversibleMichaelisMenten,
-    ReversibleMichaelisMentenInput,
-    ReversibleMichaelisMentenIx,
-)
 from enzax.array_types import (
+    ActivationArr,
     ActivationIx,
     ActivatorArr,
+    AllostericActivatorIx,
+    AllostericInhibitorIx,
+    ConcArray,
+    InhibitionArr,
     InhibitionIx,
     InhibitorArr,
-    InhibitionArr,
-    ActivationArr,
-    ConcArray,
     ParamDict,
-    AllostericInhibitorIx,
-    AllostericActivatorIx,
 )
 from enzax.parameters import (
     ParameterLabels,
@@ -38,8 +23,23 @@ from enzax.parameters import (
 from enzax.rate_equation import (
     ReactionScope,
     get_reaction_label,
-    get_species_positions,
     get_species_labels,
+    get_species_positions,
+)
+from enzax.rate_equations.michaelis_menten import (
+    IrreversibleMichaelisMenten,
+    IrreversibleMichaelisMentenInput,
+    IrreversibleMichaelisMentenIx,
+    MichaelisMentenLabels,
+    ReversibleMichaelisMenten,
+    ReversibleMichaelisMentenInput,
+    ReversibleMichaelisMentenIx,
+    free_enzyme_ratio_imm,
+    free_enzyme_ratio_rmm,
+    get_irreversible_michaelis_menten_input,
+    get_irreversible_michaelis_menten_ix,
+    get_reversible_michaelis_menten_input,
+    get_reversible_michaelis_menten_ix,
 )
 
 
