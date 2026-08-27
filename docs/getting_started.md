@@ -75,10 +75,10 @@ model = RateEquationModel(
 
 ### Parameters and their labels
 
-Each parameter is one flat array, and each value in an array has a label. Building the model works out which labels exist, from the rate equations and from the model's structure, and records them in `model.parameter_labels`:
+Each parameter is one flat array, and each value in an array has a label. Building the model works out which labels exist, from the rate equations and from the model's structure, and records them in `model.parameter_labelling`:
 
 ```python
-model.parameter_labels["log_k"]
+model.parameter_labelling["log_k"]
 ```
 
 ```
@@ -92,7 +92,7 @@ We build a parameter set by giving a value for every label:
 
 ```python
 parameters = pack_parameters(
-    model.parameter_labels,
+    model.parameter_labelling,
     {
         "log_k": {
             "km|r1|m1e": 0.1,
@@ -119,11 +119,11 @@ parameters = pack_parameters(
 )
 ```
 
-`pack_parameters` complains about a label it does not recognise and about a label you leave out, so a typo or an omission is an error when you build the parameters rather than a wrong number later. It applies no transform: a `log_` key wants a value on the log scale, which is why the enzyme concentrations above are wrapped in `jnp.log`.
+`pack_parameters` complains about a parameter or a label it does not recognise and about a parameter or a label you leave out, so a typo or an omission is an error when you build the parameters rather than a wrong number later. It applies no transform: a `log_` key wants a value on the log scale, which is why the enzyme concentrations above are wrapped in `jnp.log`.
 
 `temperature` is the exception: it has no labels at all, because its whole array is one parameter, so it takes a value directly rather than a mapping.
 
-Going the other way, `unpack_parameters(model.parameter_labels, parameters)`
+Going the other way, `unpack_parameters(model.parameter_labelling, parameters)`
 gives back a dictionary of labelled values, which is handy when a traceback shows you something like `parameters["log_k"][6]` and you want to know which constant that is.
 
 Note that the parameters use `jnp` whereas the structure uses `np`. This is because we want JAX to trace the parameters, whereas the structure should be static. Read more about this [here](https://jax.readthedocs.io/en/latest/notebooks/thinking_in_jax.html#static-vs-traced-operations).
@@ -217,9 +217,11 @@ jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
 jacobian
 ```
 
-Because each parameter is one flat array, each entry of the Jacobian is a dense matrix whose columns are that parameter's values, in `model.parameter_labels` order. To pick out a single value's column, ask the labels where it lives:
+Because each parameter is one flat array, each entry of the Jacobian is a dense matrix whose columns are that parameter's values, in `model.parameter_labelling` order. To pick out a single value's column, ask the labels where it lives:
 
 ```python
-labels = model.parameter_labels
-jacobian["log_kcat"][:, get_parameter_position(labels, "log_kcat", "GNMT1")]
+labelling = model.parameter_labelling
+jacobian["log_kcat"][
+    :, get_parameter_position(labelling, "log_kcat", "GNMT1")
+]
 ```

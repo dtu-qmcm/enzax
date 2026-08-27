@@ -182,7 +182,7 @@ def enzax_log_density(
     :param measurements: a 3-tuple of `(observations, errors)` pairs, for
         concentrations, enzymes and fluxes in that order. Concentrations are
         in the model's `species` order, fluxes in its `reactions` order, and
-        enzymes in `model.parameter_labels["log_enzyme"]` order, which is
+        enzymes in `model.parameter_labelling["log_enzyme"]` order, which is
         the order the enzymes are first labelled in by the model's rate
         equations.
     """

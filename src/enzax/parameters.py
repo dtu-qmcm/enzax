@@ -1,13 +1,14 @@
 """Labels and positions for enzax's flat parameter arrays.
 
 Each of enzax's parameters is stored as a single flat array for the whole
-model, and a dictionary of labels says which label sits at which position. Two
-rate equations refer to the same value by using the same label, so sharing is
-just two index arrays holding the same integer.
+model, and a labelling says which label sits at which position. Two rate
+equations refer to the same value by using the same label, so sharing is just
+two index arrays holding the same integer.
 
 A *parameter* is one key of the parameter PyTree, as in `log_k` or `dgf`. A
 *label* names one value inside a parameter's array, and a *position* is where
-that value sits along the array.
+that value sits along the array. The containers themselves -- `ParamLabelling`,
+`ParamSpec` and friends -- live in `enzax.array_types`.
 
 A parameter whose labels are the empty tuple has no labelled positions: its
 leaf is one parameter in one piece. `temperature` is the only one today, being
@@ -33,9 +34,17 @@ from collections.abc import Iterable, Mapping, Sequence
 
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Int, ScalarLike
+from jaxtyping import Int
 
-from enzax.array_types import ParamDict, ParamLeaf
+from enzax.array_types import (
+    ParamDict,
+    ParamEntry,
+    ParamLabelling,
+    ParamLabels,
+    ParamLeaf,
+    ParamMap,
+    ParamSpec,
+)
 
 # Separator between the parts of a parameter label.
 SEP = "|"
@@ -66,15 +75,6 @@ PARAMETERS = KINETIC_PARAMETERS + STRUCTURAL_PARAMETERS
 # Dtype of the static index arrays that gather a reaction's parameters.
 INDEX_DTYPE = np.int32
 
-# Which label sits at which position, for each of a model's parameters.
-#
-# Derived from a model, never from a set of values, so a label that no rate
-# equation refers to cannot exist. A parameter mapped to the empty tuple is
-# unlabelled: its leaf is one parameter in one piece, as `temperature`'s is. A
-# parameter the model has nothing to label is left out altogether, so a model
-# with no drain reactions has no `log_drain` key.
-ParameterLabels = dict[str, tuple[str, ...]]
-
 
 def check_id_has_no_separator(id_string: str, what: str) -> None:
     """Raise if an id cannot be used to build a parameter label."""
@@ -94,15 +94,15 @@ def check_parameters_are_known(parameters: Iterable[str]) -> None:
         raise ValueError(msg)
 
 
-def check_parameter_labels(labels: Mapping[str, Sequence[str]]) -> None:
-    """Raise unless a set of parameter labels is well formed.
+def check_parameter_labelling(labelling: Mapping[str, Sequence[str]]) -> None:
+    """Raise unless a parameter labelling is well formed.
 
     The checks are that every parameter is one enzax knows about, that every
     `log_k` label starts with a recognised prefix, and that no parameter
     labels two of its positions the same way.
     """
-    check_parameters_are_known(labels)
-    for label in labels.get("log_k", ()):
+    check_parameters_are_known(labelling)
+    for label in labelling.get("log_k", ()):
         prefix = label.split(SEP)[0]
         if prefix not in K_PREFIXES:
             msg = (
@@ -110,15 +110,13 @@ def check_parameter_labels(labels: Mapping[str, Sequence[str]]) -> None:
                 f"start with one of {[p + SEP for p in K_PREFIXES]}."
             )
             raise ValueError(msg)
-    for parameter, parameter_labels in labels.items():
-        if len(set(parameter_labels)) != len(parameter_labels):
-            msg = (
-                f"Duplicate labels for {parameter!r}: {list(parameter_labels)}."
-            )
+    for parameter, labels in labelling.items():
+        if len(set(labels)) != len(labels):
+            msg = f"Duplicate labels for {parameter!r}: {list(labels)}."
             raise ValueError(msg)
 
 
-def merge_labels(*groups: Mapping[str, Sequence[str]]) -> ParameterLabels:
+def merge_labels(*groups: Mapping[str, Sequence[str]]) -> ParamLabelling:
     """Concatenate groups of parameter labels, keeping the first of each.
 
     A label appearing twice is not an error: that is exactly how two rate
@@ -138,11 +136,11 @@ def merge_labels(*groups: Mapping[str, Sequence[str]]) -> ParameterLabels:
 
 
 def get_parameter_position(
-    labels: ParameterLabels, parameter: str, label: str
+    labelling: ParamLabelling, parameter: str, label: str
 ) -> int:
     """Get the position of one label in one flat parameter array."""
     try:
-        return labels[parameter].index(label)
+        return labelling[parameter].index(label)
     except KeyError:
         msg = f"There is no parameter {parameter!r}."
         raise KeyError(msg) from None
@@ -152,81 +150,104 @@ def get_parameter_position(
 
 
 def get_parameter_positions(
-    labels: ParameterLabels, parameter: str, wanted: Sequence[str]
+    labelling: ParamLabelling, parameter: str, wanted: Sequence[str]
 ) -> Int[np.ndarray, " _"]:
     """Get an index of several labels' positions in one parameter array."""
     return np.array(
-        [get_parameter_position(labels, parameter, label) for label in wanted],
+        [
+            get_parameter_position(labelling, parameter, label)
+            for label in wanted
+        ],
         dtype=INDEX_DTYPE,
     )
 
 
-def check_values_cover_labels(
-    parameter: str,
-    parameter_labels: Sequence[str],
-    given: Mapping[str, ScalarLike],
+def check_spec_covers_labelling(
+    labelling: ParamLabelling, spec: ParamSpec
 ) -> None:
-    """Raise unless the given values label exactly the parameter's positions."""
-    unknown = [label for label in given if label not in parameter_labels]
+    """Raise unless a spec gives values for exactly a model's parameters."""
+    check_parameters_are_known(spec)
+    missing = [p for p in labelling if p not in spec]
+    if missing:
+        msg = f"No values given for parameters {missing}."
+        raise ValueError(msg)
+    extra = [p for p in spec if p not in labelling]
+    if extra:
+        msg = f"This model has no parameters {extra}."
+        raise ValueError(msg)
+
+
+def as_param_map(parameter: str, entry: ParamEntry) -> ParamMap:
+    """Read a labelled parameter's spec entry as a map of label to value."""
+    if not isinstance(entry, Mapping):
+        msg = (
+            f"{parameter!r} has labelled positions, so its values must be a "
+            f"mapping of label to value, not {type(entry).__name__}."
+        )
+        raise ValueError(msg)
+    return dict(entry)
+
+
+def check_map_covers_labels(
+    parameter: str, labels: ParamLabels, given: ParamMap
+) -> None:
+    """Raise unless a map labels exactly the parameter's positions."""
+    unknown = [label for label in given if label not in labels]
     if unknown:
         msg = f"{parameter!r} has no value labelled {unknown}."
         raise ValueError(msg)
-    missing = [label for label in parameter_labels if label not in given]
+    missing = [label for label in labels if label not in given]
     if missing:
         msg = f"No value given for {parameter!r} labels {missing}."
         raise ValueError(msg)
 
 
 def pack_one_parameter(
-    parameter: str,
-    parameter_labels: Sequence[str],
-    values: Mapping[str, Mapping[str, ScalarLike] | ScalarLike],
+    parameter: str, labels: ParamLabels, entry: ParamEntry
 ) -> ParamLeaf:
-    """Build one flat parameter array from the values given for it."""
-    if not parameter_labels:
-        if parameter not in values:
-            msg = f"No value given for {parameter!r}."
-            raise ValueError(msg)
-        return jnp.array(values[parameter])
-    given = values.get(parameter, {})
-    if not isinstance(given, Mapping):
-        msg = f"Values for {parameter!r} must be a mapping of label to value."
-        raise ValueError(msg)
-    check_values_cover_labels(parameter, parameter_labels, given)
-    return jnp.array([given[label] for label in parameter_labels])
+    """Build one flat parameter array from the values given for it.
+
+    An unlabelled parameter takes its value in one piece; a labelled one takes
+    a map of label to value, which must cover its labels exactly.
+    """
+    if not labels:
+        return jnp.array(entry)
+    given = as_param_map(parameter, entry)
+    check_map_covers_labels(parameter, labels, given)
+    return jnp.array([given[label] for label in labels])
 
 
-def pack_parameters(
-    labels: ParameterLabels,
-    values: Mapping[str, Mapping[str, ScalarLike] | ScalarLike],
-) -> ParamDict:
+def pack_parameters(labelling: ParamLabelling, spec: ParamSpec) -> ParamDict:
     """Build a parameter PyTree from `{parameter: {label: value}}`.
 
     No transform is applied: pass whatever scale the parameter implies, as in
     `jnp.log(...)` for a `log_` one. An unlabelled parameter such as
     `temperature` takes its value directly rather than a mapping.
 
-    Raises on a label the parameter does not have, and on a label the values
-    omit.
+    Raises on a parameter the model does not have and on one it does have but
+    the spec leaves out, and then, parameter by parameter, on a label the
+    parameter does not have and on a label the spec omits.
     """
-    check_parameters_are_known(values)
+    check_spec_covers_labelling(labelling, spec)
     return {
-        parameter: pack_one_parameter(parameter, labels[parameter], values)
+        parameter: pack_one_parameter(
+            parameter, labelling[parameter], spec[parameter]
+        )
         for parameter in PARAMETERS
-        if parameter in labels
+        if parameter in labelling
     }
 
 
-def unpack_one_parameter(
-    parameter_labels: Sequence[str], leaf: ParamLeaf
-) -> dict[str, ScalarLike] | ParamLeaf:
-    """Label one flat parameter array's values."""
-    if not parameter_labels:
+def unpack_one_parameter(labels: ParamLabels, leaf: ParamLeaf) -> ParamEntry:
+    """Label one flat parameter array's values, or return it in one piece."""
+    if not labels:
         return leaf
-    return dict(zip(parameter_labels, leaf))
+    return dict(zip(labels, leaf, strict=True))
 
 
-def unpack_parameters(labels: ParameterLabels, parameters: ParamDict) -> dict:
+def unpack_parameters(
+    labelling: ParamLabelling, parameters: ParamDict
+) -> ParamSpec:
     """Turn a parameter PyTree back into `{parameter: {label: value}}`.
 
     The inverse of `pack_parameters`, for reading a parameter set at the REPL
@@ -234,6 +255,6 @@ def unpack_parameters(labels: ParameterLabels, parameters: ParamDict) -> dict:
     own.
     """
     return {
-        parameter: unpack_one_parameter(labels[parameter], leaf)
+        parameter: unpack_one_parameter(labelling[parameter], leaf)
         for parameter, leaf in parameters.items()
     }

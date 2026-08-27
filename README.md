@@ -43,7 +43,7 @@ guess = jnp.full((5,), 0.01)
 jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
 # Each parameter is one flat array, so ask the model's labels which column
 # belongs to GNMT1's turnover number.
-ix = get_parameter_position(model.parameter_labels, "log_kcat", "GNMT1")
+ix = get_parameter_position(model.parameter_labelling, "log_kcat", "GNMT1")
 jacobian["log_kcat"][:, ix]
 ```
 ```

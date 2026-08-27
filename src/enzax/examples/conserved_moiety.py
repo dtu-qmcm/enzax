@@ -77,7 +77,7 @@ model = RateEquationModel(
     rate_equations=rate_equations,
 )
 parameters = pack_parameters(
-    model.parameter_labels,
+    model.parameter_labelling,
     {
         "log_k": {
             "km|transA|A_e": jnp.log(0.3),

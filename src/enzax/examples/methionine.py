@@ -111,7 +111,7 @@ model = RateEquationModel(
     ],
 )
 parameters = pack_parameters(
-    model.parameter_labels,
+    model.parameter_labelling,
     {
         # Every dissociation constant, whatever its role. The prefix says
         # which: km for a Michaelis constant, ki for a competitive inhibition

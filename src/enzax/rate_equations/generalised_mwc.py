@@ -14,9 +14,9 @@ from enzax.array_types import (
     InhibitionIx,
     InhibitorArr,
     ParamDict,
+    ParamLabelling,
 )
 from enzax.parameters import (
-    ParameterLabels,
     get_parameter_position,
     get_parameter_positions,
 )
@@ -90,7 +90,7 @@ class AllostericLabels(MichaelisMentenLabels):
     dc_inhibitor: tuple[str, ...]
     dc_activator: tuple[str, ...]
 
-    def by_parameter(self) -> ParameterLabels:
+    def by_parameter(self) -> ParamLabelling:
         base = super().by_parameter()
         return base | {
             "log_tc": (self.tc,),
@@ -188,12 +188,12 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
         )
 
     def resolve(
-        self, scope: ReactionScope, labels: ParameterLabels
+        self, scope: ReactionScope, labelling: ParamLabelling
     ) -> AllostericIrreversibleMichaelisMentenIx:
         lab = self.get_labels(scope)
         base = get_irreversible_michaelis_menten_ix(
             scope=scope,
-            labels=labels,
+            labelling=labelling,
             lab=lab,
             ki_species=self.get_ki_species(scope),
         )
@@ -205,12 +205,12 @@ class AllostericIrreversibleMichaelisMenten(IrreversibleMichaelisMenten):
             ix_substrate=base.ix_substrate,
             ix_ki_species=base.ix_ki_species,
             substrate_stoichiometry=base.substrate_stoichiometry,
-            ix_tc=get_parameter_position(labels, "log_tc", lab.tc),
+            ix_tc=get_parameter_position(labelling, "log_tc", lab.tc),
             ix_dc_inhibitor=get_parameter_positions(
-                labels, "log_k", lab.dc_inhibitor
+                labelling, "log_k", lab.dc_inhibitor
             ),
             ix_dc_activator=get_parameter_positions(
-                labels, "log_k", lab.dc_activator
+                labelling, "log_k", lab.dc_activator
             ),
             ix_allosteric_inhibitors=get_species_positions(
                 scope,
@@ -303,12 +303,12 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
         )
 
     def resolve(
-        self, scope: ReactionScope, labels: ParameterLabels
+        self, scope: ReactionScope, labelling: ParamLabelling
     ) -> AllostericReversibleMichaelisMentenIx:
         lab = self.get_labels(scope)
         base = get_reversible_michaelis_menten_ix(
             scope=scope,
-            labels=labels,
+            labelling=labelling,
             lab=lab,
             ki_species=self.get_ki_species(scope),
             water_stoichiometry=self.water_stoichiometry,
@@ -328,12 +328,12 @@ class AllostericReversibleMichaelisMenten(ReversibleMichaelisMenten):
             substrate_stoichiometry=base.substrate_stoichiometry,
             product_stoichiometry=base.product_stoichiometry,
             water_stoichiometry=base.water_stoichiometry,
-            ix_tc=get_parameter_position(labels, "log_tc", lab.tc),
+            ix_tc=get_parameter_position(labelling, "log_tc", lab.tc),
             ix_dc_inhibitor=get_parameter_positions(
-                labels, "log_k", lab.dc_inhibitor
+                labelling, "log_k", lab.dc_inhibitor
             ),
             ix_dc_activator=get_parameter_positions(
-                labels, "log_k", lab.dc_activator
+                labelling, "log_k", lab.dc_activator
             ),
             ix_allosteric_inhibitors=get_species_positions(
                 scope,

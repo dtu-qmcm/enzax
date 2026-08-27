@@ -48,18 +48,20 @@ def get_model(rate_equations, **kwargs):
 
 def get_parameters(model, **overrides):
     """Pack parameters for a model, taking values from `VALUES` by label."""
-    labels = model.parameter_labels
-    values = {
-        "log_k": {label: VALUES[label] for label in labels["log_k"]},
-        "log_kcat": {label: -0.1 for label in labels["log_kcat"]},
-        "log_enzyme": {label: jnp.log(0.3) for label in labels["log_enzyme"]},
+    labelling = model.parameter_labelling
+    spec = {
+        "log_k": {label: VALUES[label] for label in labelling["log_k"]},
+        "log_kcat": {label: -0.1 for label in labelling["log_kcat"]},
+        "log_enzyme": {
+            label: jnp.log(0.3) for label in labelling["log_enzyme"]
+        },
         "dgf": {"a": -3.0, "b": -1.0, "c": 1.0},
         "temperature": 310.0,
     }
-    if "log_tc" in labels:
-        values["log_tc"] = {label: -0.2 for label in labels["log_tc"]}
-    values.update(overrides)
-    return pack_parameters(labels, values)
+    if "log_tc" in labelling:
+        spec["log_tc"] = {label: -0.2 for label in labelling["log_tc"]}
+    spec.update(overrides)
+    return pack_parameters(labelling, spec)
 
 
 SEPARATE = get_model([ReversibleMichaelisMenten(), ReversibleMichaelisMenten()])
@@ -72,33 +74,33 @@ SHARED = get_model(
 
 
 def test_labels_are_in_first_seen_order():
-    labels = SEPARATE.parameter_labels
-    assert labels["log_k"] == (
+    labelling = SEPARATE.parameter_labelling
+    assert labelling["log_k"] == (
         "km|r1|a",
         "km|r1|b",
         "km|r2|a",
         "km|r2|c",
     )
-    assert labels["log_kcat"] == ("r1", "r2")
+    assert labelling["log_kcat"] == ("r1", "r2")
 
 
 def test_structural_parameters_are_labelled():
-    labels = SEPARATE.parameter_labels
-    assert labels["dgf"] == ("a", "b", "c")
+    labelling = SEPARATE.parameter_labelling
+    assert labelling["dgf"] == ("a", "b", "c")
 
 
 def test_temperature_is_unlabelled_but_still_packed():
     """Its leaf is one parameter in one piece, so it has no labels at all."""
-    assert SEPARATE.parameter_labels["temperature"] == ()
+    assert SEPARATE.parameter_labelling["temperature"] == ()
     parameters = get_parameters(SEPARATE)
     assert jnp.array_equal(parameters["temperature"], jnp.array(310.0))
 
 
 def test_a_parameter_with_nothing_to_label_is_left_out():
     """Every species is balanced and none is dependent, so neither exists."""
-    labels = SEPARATE.parameter_labels
-    assert "log_conc_unbalanced" not in labels
-    assert "conserved_pools" not in labels
+    labelling = SEPARATE.parameter_labelling
+    assert "log_conc_unbalanced" not in labelling
+    assert "conserved_pools" not in labelling
     parameters = get_parameters(SEPARATE)
     assert "log_drain" not in parameters
     assert "conserved_pools" not in parameters
@@ -106,14 +108,14 @@ def test_a_parameter_with_nothing_to_label_is_left_out():
 
 def test_labels_and_packed_parameters_have_the_same_keys():
     parameters = get_parameters(SEPARATE)
-    assert set(parameters) == set(SEPARATE.parameter_labels)
+    assert set(parameters) == set(SEPARATE.parameter_labelling)
 
 
 def test_pack_unpack_round_trip():
-    labels = SEPARATE.parameter_labels
+    labelling = SEPARATE.parameter_labelling
     parameters = get_parameters(SEPARATE)
     round_tripped = pack_parameters(
-        labels, unpack_parameters(labels, parameters)
+        labelling, unpack_parameters(labelling, parameters)
     )
     assert set(round_tripped) == set(parameters)
     for key, value in parameters.items():
@@ -121,28 +123,54 @@ def test_pack_unpack_round_trip():
 
 
 def test_pack_rejects_an_unknown_label():
-    labels = SEPARATE.parameter_labels
-    values = dict(unpack_parameters(labels, get_parameters(SEPARATE)))
-    values["log_k"] = dict(values["log_k"], **{"km|r3|a": 0.0})
+    labelling = SEPARATE.parameter_labelling
+    spec = unpack_parameters(labelling, get_parameters(SEPARATE))
+    spec["log_k"] = dict(spec["log_k"], **{"km|r3|a": 0.0})
     with pytest.raises(ValueError, match="no value labelled"):
-        pack_parameters(labels, values)
+        pack_parameters(labelling, spec)
 
 
 def test_pack_rejects_a_missing_label():
-    labels = SEPARATE.parameter_labels
-    values = dict(unpack_parameters(labels, get_parameters(SEPARATE)))
-    values["log_k"] = {
-        k: v for k, v in values["log_k"].items() if k != "km|r1|a"
-    }
-    with pytest.raises(ValueError, match="No value given"):
-        pack_parameters(labels, values)
+    labelling = SEPARATE.parameter_labelling
+    spec = unpack_parameters(labelling, get_parameters(SEPARATE))
+    spec["log_k"] = {k: v for k, v in spec["log_k"].items() if k != "km|r1|a"}
+    with pytest.raises(ValueError, match="No value given for 'log_k' labels"):
+        pack_parameters(labelling, spec)
+
+
+def test_pack_names_a_parameter_the_spec_leaves_out():
+    """An absent parameter is reported as itself, not as all its labels."""
+    labelling = SEPARATE.parameter_labelling
+    spec = unpack_parameters(labelling, get_parameters(SEPARATE))
+    del spec["log_k"]
+    with pytest.raises(
+        ValueError, match=r"No values given for parameters \['log_k'\]"
+    ):
+        pack_parameters(labelling, spec)
+
+
+def test_pack_rejects_a_parameter_the_model_does_not_have():
+    """A stale block left after editing a model is an error, not a no-op."""
+    labelling = SEPARATE.parameter_labelling
+    spec = unpack_parameters(labelling, get_parameters(SEPARATE))
+    spec["log_drain"] = {"r1": 0.0}
+    with pytest.raises(ValueError, match=r"This model has no parameters"):
+        pack_parameters(labelling, spec)
+
+
+def test_pack_rejects_a_bare_value_for_a_labelled_parameter():
+    labelling = SEPARATE.parameter_labelling
+    spec = unpack_parameters(labelling, get_parameters(SEPARATE))
+    spec["log_kcat"] = -0.1
+    with pytest.raises(ValueError, match="must be a mapping of label to value"):
+        pack_parameters(labelling, spec)
 
 
 def test_sharing_makes_one_parameter():
     """Two reactions labelling one constant get one position, not two."""
-    labels = SHARED.parameter_labels
-    assert labels["log_k"] == ("km|shared|a", "km|r1|b", "km|r2|c")
-    assert len(labels["log_k"]) == 3
+    labelling = SHARED.parameter_labelling
+    assert labelling["log_k"] == ("km|shared|a", "km|r1|b", "km|r2|c")
+    assert len(labelling["log_k"]) == 3
 
 
 def test_sharing_does_not_change_the_flux():
@@ -164,13 +192,13 @@ def test_gradient_accumulates_over_a_shared_parameter():
     shared_grad = jax.grad(total_flux, argnums=1)(
         SHARED, get_parameters(SHARED)
     )["log_k"]
-    separate_labels = SEPARATE.parameter_labels["log_k"]
+    separate_labels = SEPARATE.parameter_labelling["log_k"]
     expected = (
         separate_grad[separate_labels.index("km|r1|a")]
         + separate_grad[separate_labels.index("km|r2|a")]
     )
     shared_ix = get_parameter_position(
-        SHARED.parameter_labels, "log_k", "km|shared|a"
+        SHARED.parameter_labelling, "log_k", "km|shared|a"
     )
     assert jnp.isclose(shared_grad[shared_ix], expected)
 
@@ -185,15 +213,15 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
             ReversibleMichaelisMenten(),
         ]
     )
-    labels = model.parameter_labels
-    assert labels["log_k"] == (
+    labelling = model.parameter_labelling
+    assert labelling["log_k"] == (
         "km|r1|a",
         "km|r1|b",
         "km|r2|a",
         "km|r2|c",
     )
     ix = model.rate_equation_ix[0]
-    position = get_parameter_position(labels, "log_k", "km|r1|b")
+    position = get_parameter_position(labelling, "log_k", "km|r1|b")
     assert ix.ix_dc_activator[0] == position
     assert ix.ix_product_k[0] == position
 

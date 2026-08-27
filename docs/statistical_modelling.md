@@ -21,10 +21,10 @@ from enzax.examples.methionine import model, parameters as true_parameters
 true_parameters
 ```
 
-The parameters are a dictionary with one flat array per parameter. Which label sits at which position is recorded in `model.parameter_labels`:
+The parameters are a dictionary with one flat array per parameter. Which label sits at which position is recorded in `model.parameter_labelling`:
 
 ```python
-model.parameter_labels["log_kcat"]
+model.parameter_labelling["log_kcat"]
 ```
 
 ```
@@ -44,7 +44,7 @@ from enzax.parameter_split import (
 )
 
 split = split_parameters_by_freeing(
-    model.parameter_labels,
+    model.parameter_labelling,
     true_parameters,
     {"log_kcat": ["MAT1"], "temperature": None, "dgf": None},
 )
@@ -124,7 +124,7 @@ Leave out `split` to infer every parameter, in which case the first argument is 
 
 - concentrations are in the model's `species` order;
 - fluxes are in its `reactions` order;
-- enzyme concentrations are in `model.parameter_labels["log_enzyme"]` order, i.e. the order the model's rate equations first label their enzymes in.
+- enzyme concentrations are in `model.parameter_labelling["log_enzyme"]` order, i.e. the order the model's rate equations first label their enzymes in.
 
 The last of these is not the same as the reaction order whenever a reaction has no enzyme, as with methionine's drain reaction, or whenever two reactions share one.
 

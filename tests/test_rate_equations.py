@@ -45,17 +45,17 @@ def get_flux(rate_equation, enzyme_label="r1"):
         species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
         rate_equations=[rate_equation],
     )
-    labels = model.parameter_labels
-    values = {
-        "log_k": {label: EXAMPLE_K[label] for label in labels["log_k"]},
+    labelling = model.parameter_labelling
+    spec = {
+        "log_k": {label: EXAMPLE_K[label] for label in labelling["log_k"]},
         "log_kcat": {"r1": -0.1},
         "log_enzyme": {enzyme_label: EXAMPLE_ENZYME[enzyme_label]},
         "dgf": {"a": -3.0, "c": 1.0},
         "temperature": 310.0,
     }
-    if "log_tc" in labels:
-        values["log_tc"] = {"r1": -0.2}
-    parameters = pack_parameters(labels, values)
+    if "log_tc" in labelling:
+        spec["log_tc"] = {"r1": -0.2}
+    parameters = pack_parameters(labelling, spec)
     return model.flux(EXAMPLE_CONC, parameters)[0]
 
 

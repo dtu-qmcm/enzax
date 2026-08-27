@@ -19,12 +19,12 @@ from enzax.parameter_split import (
 from tests.test_parameters import CONC, SEPARATE, get_parameters
 
 TRUE_PARAMETERS = get_parameters(SEPARATE)
-LABELS = SEPARATE.parameter_labels
+LABELLING = SEPARATE.parameter_labelling
 
 
 def test_split_round_trips():
     split = split_parameters_by_freeing(
-        LABELS, TRUE_PARAMETERS, {"log_kcat": ["r1"], "temperature": None}
+        LABELLING, TRUE_PARAMETERS, {"log_kcat": ["r1"], "temperature": None}
     )
     combined = combine_parameters(
         split, get_free_parameters(split, TRUE_PARAMETERS)
@@ -37,7 +37,7 @@ def test_split_round_trips():
 def test_free_arrays_are_shorter_than_full_ones():
     """Scatter, not mask: a frozen position is absent, not zeroed."""
     split = split_parameters_by_freeing(
-        LABELS, TRUE_PARAMETERS, {"log_kcat": ["r1"]}
+        LABELLING, TRUE_PARAMETERS, {"log_kcat": ["r1"]}
     )
     free = get_free_parameters(split, TRUE_PARAMETERS)
     assert free["log_kcat"].shape == (1,)
@@ -50,7 +50,7 @@ def test_free_arrays_are_shorter_than_full_ones():
 def test_a_single_position_of_a_parameter_can_be_fixed():
     """The thing `eqx.partition` cannot do: freeze one element of one leaf."""
     split = split_parameters_by_fixing(
-        LABELS, TRUE_PARAMETERS, {"log_k": ["km|r1|a"]}
+        LABELLING, TRUE_PARAMETERS, {"log_k": ["km|r1|a"]}
     )
     free = get_free_parameters(split, TRUE_PARAMETERS)
     assert get_free_labels(split, "log_k") == (
@@ -66,7 +66,9 @@ def test_a_single_position_of_a_parameter_can_be_fixed():
 
 def test_a_whole_parameter_can_be_fixed():
     """A parameter with no free positions drops out of the free tree."""
-    split = split_parameters_by_fixing(LABELS, TRUE_PARAMETERS, {"log_k": None})
+    split = split_parameters_by_fixing(
+        LABELLING, TRUE_PARAMETERS, {"log_k": None}
+    )
     free = get_free_parameters(split, TRUE_PARAMETERS)
     assert "log_k" not in free
     assert get_free_labels(split, "log_k") == ()
@@ -76,7 +78,7 @@ def test_a_whole_parameter_can_be_fixed():
 
 def test_an_unlabelled_parameter_can_be_fixed_or_free():
     fixed = split_parameters_by_fixing(
-        LABELS, TRUE_PARAMETERS, {"temperature": None}
+        LABELLING, TRUE_PARAMETERS, {"temperature": None}
     )
     assert "temperature" not in get_free_parameters(fixed, TRUE_PARAMETERS)
     assert jnp.array_equal(
@@ -86,7 +88,7 @@ def test_an_unlabelled_parameter_can_be_fixed_or_free():
         TRUE_PARAMETERS["temperature"],
     )
     free = split_parameters_by_freeing(
-        LABELS, TRUE_PARAMETERS, {"temperature": None}
+        LABELLING, TRUE_PARAMETERS, {"temperature": None}
     )
     assert get_free_parameters(free, TRUE_PARAMETERS)["temperature"].shape == ()
     assert count_free_parameters(free) == 1
@@ -100,7 +102,7 @@ def test_gradient_reaches_only_the_free_parameters():
         return SEPARATE.flux(CONC, parameters).sum()
 
     split = split_parameters_by_freeing(
-        LABELS, TRUE_PARAMETERS, {"log_k": ["km|r1|a", "km|r2|c"]}
+        LABELLING, TRUE_PARAMETERS, {"log_k": ["km|r1|a", "km|r2|c"]}
     )
     full_grad = jax.grad(total_flux)(TRUE_PARAMETERS)["log_k"]
     free_grad = jax.grad(lambda f: total_flux(combine_parameters(split, f)))(
@@ -110,7 +112,7 @@ def test_gradient_reaches_only_the_free_parameters():
     assert free_grad["log_k"].shape == (2,)
     expected = jnp.array(
         [
-            full_grad[LABELS["log_k"].index(label)]
+            full_grad[LABELLING["log_k"].index(label)]
             for label in get_free_labels(split, "log_k")
         ]
     )
@@ -119,7 +121,7 @@ def test_gradient_reaches_only_the_free_parameters():
 
 def test_split_works_as_a_jit_argument():
     split = split_parameters_by_freeing(
-        LABELS, TRUE_PARAMETERS, {"log_kcat": ["r1"]}
+        LABELLING, TRUE_PARAMETERS, {"log_kcat": ["r1"]}
     )
 
     @jax.jit
@@ -134,23 +136,27 @@ def test_split_works_as_a_jit_argument():
 
 def test_split_rejects_an_unknown_parameter():
     with pytest.raises(ValueError, match="There is no parameter"):
-        split_parameters_by_freeing(LABELS, TRUE_PARAMETERS, {"log_nope": None})
+        split_parameters_by_freeing(
+            LABELLING, TRUE_PARAMETERS, {"log_nope": None}
+        )
 
 
 def test_split_rejects_an_unknown_label():
     with pytest.raises(ValueError, match="no value labelled"):
         split_parameters_by_fixing(
-            LABELS, TRUE_PARAMETERS, {"log_kcat": ["r9"]}
+            LABELLING, TRUE_PARAMETERS, {"log_kcat": ["r9"]}
         )
 
 
 def test_split_rejects_a_bare_string():
     with pytest.raises(ValueError, match="Use a list of parameter labels"):
-        split_parameters_by_freeing(LABELS, TRUE_PARAMETERS, {"log_kcat": "r1"})
+        split_parameters_by_freeing(
+            LABELLING, TRUE_PARAMETERS, {"log_kcat": "r1"}
+        )
 
 
 def test_an_unlabelled_parameter_cannot_be_chosen_by_label():
     with pytest.raises(ValueError, match="one piece"):
         split_parameters_by_freeing(
-            LABELS, TRUE_PARAMETERS, {"temperature": ["temperature"]}
+            LABELLING, TRUE_PARAMETERS, {"temperature": ["temperature"]}
         )

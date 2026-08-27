@@ -12,8 +12,13 @@ import numpy as np
 from jax import numpy as jnp
 from jaxtyping import Int
 
-from enzax.array_types import ParamDict, ParamLeaf
-from enzax.parameters import INDEX_DTYPE, ParameterLabels
+from enzax.array_types import (
+    ParamDict,
+    ParamLabelling,
+    ParamLabels,
+    ParamLeaf,
+)
+from enzax.parameters import INDEX_DTYPE
 
 # Some positions in one flat parameter array.
 Index = Int[np.ndarray, " _"]
@@ -30,19 +35,19 @@ SelectedLabels = dict[str, set[str] | None]
 
 
 def get_selected_labels_for_parameter(
-    labels: ParameterLabels,
+    labelling: ParamLabelling,
     parameter: str,
     wanted: Sequence[str] | None,
     purpose: str,
 ) -> set[str] | None:
     """Resolve one parameter's entry in a parameter selection."""
-    if parameter not in labels:
+    if parameter not in labelling:
         msg = (
             f"There is no parameter {parameter!r} to hold {purpose}. The "
-            f"model's parameters are {sorted(labels)}."
+            f"model's parameters are {sorted(labelling)}."
         )
         raise ValueError(msg)
-    known = labels[parameter]
+    known = labelling[parameter]
     if not known:
         if wanted is not None:
             msg = (
@@ -68,29 +73,29 @@ def get_selected_labels_for_parameter(
 
 
 def get_selected_labels(
-    labels: ParameterLabels, selection: ParameterSelection, purpose: str
+    labelling: ParamLabelling, selection: ParameterSelection, purpose: str
 ) -> SelectedLabels:
     """Resolve a `{parameter: labels}` selection against a model's labels."""
     return {
         parameter: get_selected_labels_for_parameter(
-            labels, parameter, wanted, purpose
+            labelling, parameter, wanted, purpose
         )
         for parameter, wanted in selection.items()
     }
 
 
 def complement_selection(
-    labels: ParameterLabels, selected: SelectedLabels
+    labelling: ParamLabelling, selected: SelectedLabels
 ) -> SelectedLabels:
     """Get the selection that chooses everything another one leaves out."""
     return {
         parameter: (
             None
-            if not parameter_labels
-            else set(parameter_labels) - (selected.get(parameter) or set())
+            if not labels
+            else set(labels) - (selected.get(parameter) or set())
         )
-        for parameter, parameter_labels in labels.items()
-        if parameter_labels or parameter not in selected
+        for parameter, labels in labelling.items()
+        if labels or parameter not in selected
     }
 
 
@@ -116,7 +121,7 @@ class ParameterSplit(eqx.Module):
     than by position.
     """
 
-    labels: ParameterLabels = eqx.field(static=True)
+    labelling: ParamLabelling = eqx.field(static=True)
     free_positions: dict[str, Index] = eqx.field(static=True)
     fixed_positions: dict[str, Index] = eqx.field(static=True)
     free_whole: tuple[str, ...] = eqx.field(static=True)
@@ -124,32 +129,30 @@ class ParameterSplit(eqx.Module):
 
 
 def split_positions(
-    parameter_labels: Sequence[str], fixed_labels: set[str]
+    labels: ParamLabels, fixed_labels: set[str]
 ) -> tuple[Index, Index]:
     """Split one parameter's positions into the free ones and the fixed ones."""
-    is_fixed = np.array(
-        [label in fixed_labels for label in parameter_labels], dtype=bool
-    )
-    positions = np.arange(len(parameter_labels), dtype=INDEX_DTYPE)
+    is_fixed = np.array([label in fixed_labels for label in labels], dtype=bool)
+    positions = np.arange(len(labels), dtype=INDEX_DTYPE)
     return positions[~is_fixed], positions[is_fixed]
 
 
 def get_parameter_split(
-    labels: ParameterLabels,
+    labelling: ParamLabelling,
     parameters: ParamDict,
     fixed_labels: SelectedLabels,
 ) -> ParameterSplit:
     """Describe how a parameter set splits, given the labels to hold fixed."""
-    present = [p for p in labels if p in parameters]
-    labelled = [p for p in present if labels[p]]
-    unlabelled = [p for p in present if not labels[p]]
+    present = [p for p in labelling if p in parameters]
+    labelled = [p for p in present if labelling[p]]
+    unlabelled = [p for p in present if not labelling[p]]
     splits = {
-        p: split_positions(labels[p], fixed_labels.get(p) or set())
+        p: split_positions(labelling[p], fixed_labels.get(p) or set())
         for p in labelled
     }
     fixed_positions = {p: fixed for p, (_, fixed) in splits.items()}
     return ParameterSplit(
-        labels=labels,
+        labelling=labelling,
         free_positions={p: free for p, (free, _) in splits.items()},
         fixed_positions=fixed_positions,
         free_whole=tuple(p for p in unlabelled if p not in fixed_labels),
@@ -159,7 +162,7 @@ def get_parameter_split(
 
 
 def split_parameters_by_fixing(
-    labels: ParameterLabels,
+    labelling: ParamLabelling,
     parameters: ParamDict,
     fixed: ParameterSelection,
 ) -> ParameterSplit:
@@ -169,12 +172,12 @@ def split_parameters_by_fixing(
         parameter. For example `{"log_tc": ["G6PDH"], "temperature": None}`.
     """
     return get_parameter_split(
-        labels, parameters, get_selected_labels(labels, fixed, "fixed")
+        labelling, parameters, get_selected_labels(labelling, fixed, "fixed")
     )
 
 
 def split_parameters_by_freeing(
-    labels: ParameterLabels,
+    labelling: ParamLabelling,
     parameters: ParamDict,
     free: ParameterSelection,
 ) -> ParameterSplit:
@@ -187,9 +190,11 @@ def split_parameters_by_freeing(
         parameter. For example `{"log_kcat": ["MAT1"], "dgf": None}`.
     """
     return get_parameter_split(
-        labels,
+        labelling,
         parameters,
-        complement_selection(labels, get_selected_labels(labels, free, "free")),
+        complement_selection(
+            labelling, get_selected_labels(labelling, free, "free")
+        ),
     )
 
 
@@ -244,21 +249,21 @@ def combine_parameters(
     fixed_whole = {
         parameter: leaf
         for parameter, leaf in split.fixed_values.items()
-        if not split.labels[parameter]
+        if not split.labelling[parameter]
     }
     return scattered | free_whole | fixed_whole
 
 
-def get_free_labels(split: ParameterSplit, parameter: str) -> tuple[str, ...]:
+def get_free_labels(split: ParameterSplit, parameter: str) -> ParamLabels:
     """Get the labels of one parameter's free positions, in free-tree order.
 
     An unlabelled parameter has none, whether it is free or not.
     """
-    parameter_labels = split.labels[parameter]
+    labels = split.labelling[parameter]
     positions = split.free_positions.get(parameter)
     if positions is None:
         return ()
-    return tuple(parameter_labels[position] for position in positions)
+    return tuple(labels[position] for position in positions)
 
 
 def count_free_parameters(split: ParameterSplit) -> int:

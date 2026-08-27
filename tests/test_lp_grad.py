@@ -54,7 +54,7 @@ obs_flux = jnp.array(
     ],
     dtype=jnp.float64,
 )
-# In `model.parameter_labels["log_enzyme"]` order, i.e. the order the model's
+# In `model.parameter_labelling["log_enzyme"]` order, i.e. the order the model's
 # rate equations first label their enzymes in. Note that
 # this is not the same as the order of `obs_flux`, which includes the drain
 # reaction.

@@ -11,10 +11,11 @@ from jaxtyping import Bool, Int, PyTree, Scalar
 from enzax.array_types import (
     ConcArray,
     ParamDict,
+    ParamLabelling,
     SpeciesIx,
     StaticSpeciesArr,
 )
-from enzax.parameters import INDEX_DTYPE, SEP, ParameterLabels
+from enzax.parameters import INDEX_DTYPE, SEP
 
 
 @dataclass(frozen=True)
@@ -141,7 +142,7 @@ class RateEquationLabels(ABC):
     """  # noqa: E501
 
     @abstractmethod
-    def by_parameter(self) -> ParameterLabels:
+    def by_parameter(self) -> ParamLabelling:
         """Regroup the labels by the parameter each one lives in.
 
         :return: a mapping from parameter to the labels this rate equation
@@ -178,13 +179,13 @@ class RateEquation(Module, ABC):
         """Get the parameter labels this rate equation refers to."""
         ...
 
-    def get_parameter_labels(self, scope: ReactionScope) -> ParameterLabels:
+    def get_parameter_labels(self, scope: ReactionScope) -> ParamLabelling:
         """Get the labels this rate equation refers to, keyed by parameter."""
         return self.get_labels(scope).by_parameter()
 
     @abstractmethod
     def resolve(
-        self, scope: ReactionScope, labels: ParameterLabels
+        self, scope: ReactionScope, labelling: ParamLabelling
     ) -> PyTree: ...
 
     @abstractmethod

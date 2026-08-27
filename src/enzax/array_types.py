@@ -1,6 +1,9 @@
 """Module defining array types for enzax's kinetic models.
 
 There are three kinds of axis name: model-level, reaction-level, and misc.
+The module also holds the containers a model's parameters travel in: the flat
+arrays themselves, the labelling that says which label sits at which position,
+and the label-keyed values a reader writes.
 
 Model-level axes start with plain `n_*`: `n_species`, `n_reaction`,
 `n_balanced`, `n_unbalanced`, `n_ind_species`, `n_dep_species`. There is one
@@ -9,8 +12,8 @@ value per `KineticModel`.
 The parameter axes are also model-level, because each parameter is stored
 as a single flat array for the whole model: `n_k` (every dissociation constant
 -- Michaelis, competitive inhibition and allosteric), `n_kcat`, `n_enzyme`,
-`n_tc`, `n_drain` and `n_dgf`. A model's `parameter_labels` say which label
-sits at which index along these axes.
+`n_tc`, `n_drain` and `n_dgf`. A model's `parameter_labelling` says which
+label sits at which index along these axes.
 
 Reaction-level axes start with `n_rxn_*`. There is one value per reaction, so
 they are ragged across a model's reactions and only mean anything inside a
@@ -28,7 +31,8 @@ Rules for the `n_rxn_*` tier:
 """
 
 import numpy as np
-from jaxtyping import Array, Float, Int
+from jax.typing import ArrayLike
+from jaxtyping import Array, Float, Int, ScalarLike
 
 # --------------------------------------------------------------------------
 # Model-level, traced
@@ -117,8 +121,39 @@ ActivationIx = Int[np.ndarray, " n_rxn_activation"]  # values index n_k
 ReactantDgfIx = Int[np.ndarray, " n_rxn_reactant"]  # values index n_dgf
 
 # --------------------------------------------------------------------------
+# Parameters
+#
+# A *parameter* is one key of the parameter PyTree, as in `log_k` or `dgf`. A
+# *label* names one value inside a parameter's array, and a *position* is where
+# that value sits along the array.
+# --------------------------------------------------------------------------
+ParamLeaf = Float[Array, "..."]
+ParamDict = dict[str, ParamLeaf]
+
+# The labels of one parameter's positions, in position order.
+ParamLabels = tuple[str, ...]
+
+# Which label sits at which position, for each of a model's parameters.
+#
+# Derived from a model, never from a set of values, so a label that no rate
+# equation refers to cannot exist. A parameter mapped to `()` is unlabelled:
+# its leaf is one parameter in one piece, as `temperature`'s is. A parameter
+# the model has nothing to label is left out altogether, so a model with no
+# drain reactions has no `log_drain` key.
+ParamLabelling = dict[str, ParamLabels]
+
+# Values for one parameter, keyed by label. Possibly incomplete.
+ParamMap = dict[str, ScalarLike]
+
+# What one parameter is given: a map of label to value if the parameter has
+# labels, or its value in one piece if it does not.
+ParamEntry = ParamMap | ArrayLike
+
+# Values for a model's parameters, as a reader writes them. Possibly
+# incomplete.
+ParamSpec = dict[str, ParamEntry]
+
+# --------------------------------------------------------------------------
 # Misc
 # --------------------------------------------------------------------------
 FloatArray1d = Float[Array, " _"]
-ParamLeaf = Float[Array, "..."]
-ParamDict = dict[str, ParamLeaf]

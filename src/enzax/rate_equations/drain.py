@@ -4,8 +4,8 @@ import equinox as eqx
 from jax import numpy as jnp
 from jaxtyping import Scalar
 
-from enzax.array_types import ConcArray, ParamDict
-from enzax.parameters import ParameterLabels, get_parameter_position
+from enzax.array_types import ConcArray, ParamDict, ParamLabelling
+from enzax.parameters import get_parameter_position
 from enzax.rate_equation import (
     RateEquation,
     RateEquationLabels,
@@ -20,7 +20,7 @@ class DrainLabels(RateEquationLabels):
 
     drain: str
 
-    def by_parameter(self) -> ParameterLabels:
+    def by_parameter(self) -> ParamLabelling:
         return {"log_drain": (self.drain,)}
 
 
@@ -50,10 +50,12 @@ class Drain(RateEquation):
             drain=get_reaction_label(self.drain, scope.reaction_id)
         )
 
-    def resolve(self, scope: ReactionScope, labels: ParameterLabels) -> DrainIx:
+    def resolve(
+        self, scope: ReactionScope, labelling: ParamLabelling
+    ) -> DrainIx:
         lab = self.get_labels(scope)
         return DrainIx(
-            ix_drain=get_parameter_position(labels, "log_drain", lab.drain)
+            ix_drain=get_parameter_position(labelling, "log_drain", lab.drain)
         )
 
     def get_input(self, parameters: ParamDict, ix: DrainIx) -> DrainInput:

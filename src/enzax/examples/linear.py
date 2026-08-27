@@ -32,7 +32,7 @@ model = RateEquationModel(
     rate_equations=rate_equations,
 )
 parameters = pack_parameters(
-    model.parameter_labels,
+    model.parameter_labelling,
     {
         "log_k": {
             "km|r1|m1e": 0.1,  # r1's substrate

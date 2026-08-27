@@ -62,7 +62,7 @@ def main():
     default_guess = jnp.full((5,), 0.01)
     true_steady = get_steady_state(model, default_guess, true_parameters)
     split = split_parameters_by_freeing(
-        model.parameter_labels,
+        model.parameter_labelling,
         true_parameters,
         FREE_PARAMETERS,
     )
@@ -79,7 +79,7 @@ def main():
         model.get_log_conc_unbalanced(true_parameters),
     )
     true_flux = model.flux(true_steady, methionine.parameters)
-    # Already flat, and in `model.parameter_labels["log_enzyme"]` order,
+    # Already flat, and in `model.parameter_labelling["log_enzyme"]` order,
     # which is the order enzyme measurements have to be given in.
     true_log_enz = true_parameters["log_enzyme"]
     # simulate observations

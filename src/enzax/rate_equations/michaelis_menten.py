@@ -11,6 +11,7 @@ from enzax.array_types import (
     KiArr,
     KiIx,
     ParamDict,
+    ParamLabelling,
     ProductArr,
     ProductIx,
     ProductKIx,
@@ -25,7 +26,6 @@ from enzax.array_types import (
     SubstrateKIx,
 )
 from enzax.parameters import (
-    ParameterLabels,
     get_parameter_position,
     get_parameter_positions,
 )
@@ -89,7 +89,7 @@ class MichaelisMentenLabels(RateEquationLabels):
     product_k: tuple[str, ...]
     ki: tuple[str, ...]
 
-    def by_parameter(self) -> ParameterLabels:
+    def by_parameter(self) -> ParamLabelling:
         return {
             "log_kcat": (self.kcat,),
             "log_enzyme": (self.enzyme,),
@@ -196,18 +196,18 @@ def get_michaelis_menten_labels(
 
 def get_irreversible_michaelis_menten_ix(
     scope: ReactionScope,
-    labels: ParameterLabels,
+    labelling: ParamLabelling,
     lab: MichaelisMentenLabels,
     ki_species: tuple[str, ...],
 ) -> IrreversibleMichaelisMentenIx:
     ix_substrate = get_species_positions(scope, get_substrates(scope))
     return IrreversibleMichaelisMentenIx(
-        ix_kcat=get_parameter_position(labels, "log_kcat", lab.kcat),
-        ix_enzyme=get_parameter_position(labels, "log_enzyme", lab.enzyme),
+        ix_kcat=get_parameter_position(labelling, "log_kcat", lab.kcat),
+        ix_enzyme=get_parameter_position(labelling, "log_enzyme", lab.enzyme),
         ix_substrate_k=get_parameter_positions(
-            labels, "log_k", lab.substrate_k
+            labelling, "log_k", lab.substrate_k
         ),
-        ix_ki=get_parameter_positions(labels, "log_k", lab.ki),
+        ix_ki=get_parameter_positions(labelling, "log_k", lab.ki),
         ix_substrate=ix_substrate,
         ix_ki_species=get_species_positions(scope, ki_species),
         substrate_stoichiometry=scope.stoichiometry[ix_substrate],
@@ -216,7 +216,7 @@ def get_irreversible_michaelis_menten_ix(
 
 def get_reversible_michaelis_menten_ix(
     scope: ReactionScope,
-    labels: ParameterLabels,
+    labelling: ParamLabelling,
     lab: MichaelisMentenLabels,
     ki_species: tuple[str, ...],
     water_stoichiometry: float,
@@ -225,13 +225,13 @@ def get_reversible_michaelis_menten_ix(
     ix_substrate = get_species_positions(scope, get_substrates(scope))
     ix_product = get_species_positions(scope, get_products(scope))
     return ReversibleMichaelisMentenIx(
-        ix_kcat=get_parameter_position(labels, "log_kcat", lab.kcat),
-        ix_enzyme=get_parameter_position(labels, "log_enzyme", lab.enzyme),
+        ix_kcat=get_parameter_position(labelling, "log_kcat", lab.kcat),
+        ix_enzyme=get_parameter_position(labelling, "log_enzyme", lab.enzyme),
         ix_substrate_k=get_parameter_positions(
-            labels, "log_k", lab.substrate_k
+            labelling, "log_k", lab.substrate_k
         ),
-        ix_product_k=get_parameter_positions(labels, "log_k", lab.product_k),
-        ix_ki=get_parameter_positions(labels, "log_k", lab.ki),
+        ix_product_k=get_parameter_positions(labelling, "log_k", lab.product_k),
+        ix_ki=get_parameter_positions(labelling, "log_k", lab.ki),
         ix_dgf=scope.species_to_dgf_ix[ix_reactant],
         ix_reactant=ix_reactant,
         ix_substrate=ix_substrate,
@@ -399,11 +399,11 @@ class IrreversibleMichaelisMenten(RateEquation):
         )
 
     def resolve(
-        self, scope: ReactionScope, labels: ParameterLabels
+        self, scope: ReactionScope, labelling: ParamLabelling
     ) -> IrreversibleMichaelisMentenIx:
         return get_irreversible_michaelis_menten_ix(
             scope=scope,
-            labels=labels,
+            labelling=labelling,
             lab=self.get_labels(scope),
             ki_species=self.get_ki_species(scope),
         )
@@ -473,11 +473,11 @@ class ReversibleMichaelisMenten(RateEquation):
         )
 
     def resolve(
-        self, scope: ReactionScope, labels: ParameterLabels
+        self, scope: ReactionScope, labelling: ParamLabelling
     ) -> ReversibleMichaelisMentenIx:
         return get_reversible_michaelis_menten_ix(
             scope=scope,
-            labels=labels,
+            labelling=labelling,
             lab=self.get_labels(scope),
             ki_species=self.get_ki_species(scope),
             water_stoichiometry=self.water_stoichiometry,

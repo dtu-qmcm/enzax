@@ -22,15 +22,15 @@ from enzax.array_types import (
     IndSpeciesIx,
     LinkMatrix,
     MoietyTotalsArr,
+    ParamLabelling,
     SpeciesIx,
     StoichiometricMatrix,
     UnbalancedConcArr,
     UnbalancedSpeciesIx,
 )
 from enzax.parameters import (
-    ParameterLabels,
     check_id_has_no_separator,
-    check_parameter_labels,
+    check_parameter_labelling,
     merge_labels,
 )
 from enzax.rate_equation import RateEquation, ReactionScope
@@ -155,7 +155,7 @@ class KineticModel(eqx.Module):
     dependent_species_ix: DepSpeciesIx = eqx.field(static=True, init=False)
     S: StoichiometricMatrix = eqx.field(static=True, init=False)
     L0: LinkMatrix = eqx.field(static=True, init=False)
-    parameter_labels: ParameterLabels = eqx.field(static=True, init=False)
+    parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
 
     def __post_init__(self):
         if self.species_to_dgf_ix is None:
@@ -205,11 +205,11 @@ class KineticModel(eqx.Module):
             check_id_has_no_separator(species_i, "Species")
         for reaction in self.reactions:
             check_id_has_no_separator(reaction, "Reaction")
-        self.parameter_labels = self._build_parameter_labels()
-        check_parameter_labels(self.parameter_labels)
+        self.parameter_labelling = self._build_parameter_labelling()
+        check_parameter_labelling(self.parameter_labelling)
 
-    def _build_parameter_labels(self) -> ParameterLabels:
-        """Get the model's parameter labels.
+    def _build_parameter_labelling(self) -> ParamLabelling:
+        """Get the model's parameter labelling.
 
         The base implementation has no parameters to label. Subclasses that
         know where their parameters come from override it.
@@ -316,11 +316,10 @@ class KineticModel(eqx.Module):
 class RateEquationModel(KineticModel):
     """A kinetic model that specifies its fluxes using RateEquation objects.
 
-    The model owns the parameter labels built from its rate equations' labels,
-    plus the labels implied by its own structure. Each rate equation's labels
-    are resolved to positions in the flat parameter arrays once, here, and
-    stored
-    in `rate_equation_ix`.
+    The model owns the parameter labelling built from its rate equations'
+    labels, plus the labels implied by its own structure. Each rate equation's
+    labels are resolved to positions in the flat parameter arrays once, here,
+    and stored in `rate_equation_ix`.
     """
 
     rate_equations: list[RateEquation] = eqx.field(
@@ -331,11 +330,11 @@ class RateEquationModel(KineticModel):
     def __post_init__(self):
         super().__post_init__()
         self.rate_equation_ix = [
-            rate_equation.resolve(scope, self.parameter_labels)
+            rate_equation.resolve(scope, self.parameter_labelling)
             for rate_equation, scope in zip(self.rate_equations, self._scopes())
         ]
 
-    def _build_parameter_labels(self) -> ParameterLabels:
+    def _build_parameter_labelling(self) -> ParamLabelling:
         """Collect parameter labels from the rate equations and the structure.
 
         Labels are added in first-seen order: reaction by reaction, and within
