@@ -6,14 +6,10 @@ litres, moles and hours, so concentrations are in mol/L and every `kcat` is
 per hour.
 
 The values are not that file's. They are a maximum a posteriori fit of the
-same model to three CHO cell lines -- `CHO-S wt`, `CHO-ZeLa` and
-`CHO-ZenZeLa` -- reconstructed from the fit's own output in
-`cho_stan_map_newton.json` and `cho_stan_data.json`. `parameters` and
-`steady_state` are the wild type's; `line_parameters` and `line_steady_state`
-hold all three, and `get_parameters` packs one. The SBML file's own values are
-not fitted, and put several pools at concentrations no cell has, so they live
-in `tests/data/sbml_glycolysis_parameters.json`, where the test that checks
-these rate laws against the SBML's own uses them.
+same model to data from the CHO-S wild type line. The SBML file's own values
+are not fitted, and put several pools at concentrations no cell has, so they
+live in `tests/data/sbml_glycolysis_parameters.json`, where the test that
+checks these rate laws against the SBML's own uses them.
 
 Six of these rate laws are why `enzax.binding` exists. HEX1 and HEX2 have
 abortive complexes, FBA has a ternary one, HEX2 has a concentration-independent
@@ -28,8 +24,8 @@ separately -- PFKL's is 4.2e-04 against PFKM's 1.2e-04.
 
 Nothing else differs. Against the julia implementation of the same model, at
 the parameters that version was fitted at, every reaction but glucose
-transport agrees to better than 1e-9 for all three of its cell lines, and its
-steady state is a steady state here too -- see `tests/test_glycolysis.py`.
+transport agrees to better than 1e-9, and its steady state is a steady state
+here too -- see `tests/test_glycolysis.py`.
 Glucose transport is the exception because that version holds it at exactly
 zero, where here it is computed and inert.
 
@@ -45,14 +41,13 @@ It stays because the fit is conditioned on it: these formation energies were
 estimated with that term in the likelihood, so `p3g`'s and `pep`'s fitted
 values have both absorbed it, and dropping the override does not restore a
 more correct model -- it produces a different one. Removing it moves ENO's
-flux by 6e-4 at the wild type's steady state and 2-phosphoglycerate's
-concentration by up to 6% across the three lines. Correcting it properly
-means refitting.
+flux by 6e-4 at this steady state and 2-phosphoglycerate's concentration by
+1%. Correcting it properly means refitting.
 """
 
 from jax import numpy as jnp
 
-from enzax.array_types import ParamDict, ParamValueSpec
+from enzax.array_types import ParamValueSpec
 from enzax.binding import ONE, dead_end, site
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
@@ -293,9 +288,9 @@ model = RateEquationModel(
     species_to_compound=species_to_compound,
     rate_equations=rate_equations,
 )
-# Values the fit shares between the three cell lines: every dissociation
-# constant, every formation energy, and every turnover number but the drains'.
-shared_parameter_values: ParamValueSpec = {
+# The values are a maximum a posteriori fit of this model to data from the
+# CHO-S wild type line, reconstructed from the fit's own output.
+parameter_values: ParamValueSpec = {
     "log_k": {
         "km|GLUT4|glc_e": jnp.log(0.0015000000000000007),
         "km|GLUT4|glc_c": jnp.log(0.005000000000000002),
@@ -436,242 +431,82 @@ shared_parameter_values: ParamValueSpec = {
         "TKT1": jnp.log(11.484376501038163),
         "TKT2": jnp.log(93.64208097857714),
         "TALA": jnp.log(73.91119282530336),
+        "r5p_drain": jnp.log(3.6493302257375484e-07),
+        "pyr_drain": jnp.log(2.351570646158108e-05),
         "lac_transport": jnp.log(148.12150749520725),
     },
     "log_tc": {
+        "HEX2": jnp.log(0.16322219710958413),
         "PFKM": jnp.log(1.2554513131367715),
         "PFKL": jnp.log(0.9999177133537318),
         "G6PDH": jnp.log(0.9876073293140514),
     },
     "log_enzyme": {
         "GLUT4": jnp.log(100.09999999999997),
+        "HEX1": jnp.log(2.13671490395641e-06),
+        "HEX2": jnp.log(9.715210440088749e-08),
+        "PGI": jnp.log(1.8637611282374567e-06),
+        "PFKM": jnp.log(4.512109325986278e-08),
+        "PFKL": jnp.log(5.975732855595407e-08),
+        "FBA": jnp.log(1.692379552716806e-06),
+        "TPI": jnp.log(2.1151771290774358e-06),
+        "GAPD": jnp.log(1.4132718326156494e-05),
+        "PGK": jnp.log(2.7474372221792905e-06),
+        "PGM": jnp.log(2.004810530850335e-06),
+        "ENO": jnp.log(2.2086036096048037e-05),
+        "PKM1": jnp.log(1.0543763608322215e-05),
+        "PKM2": jnp.log(1.4498275973124783e-07),
+        "LDHA": jnp.log(2.9987620633732926e-06),
+        "G6PDH": jnp.log(1.422391558338244e-07),
+        "PGL": jnp.log(2.004287529967488e-07),
+        "GND": jnp.log(8.301445455942287e-07),
+        "RPI": jnp.log(2.6325781493768136e-07),
+        "RPE": jnp.log(3.3653559714064954e-08),
+        "TKT": jnp.log(3.2331004160208377e-06),
+        "TALA": jnp.log(5.694670007427955e-07),
         "r5p_drain": jnp.log(1.0),
         "pyr_drain": jnp.log(1.0),
         "lac_transport": jnp.log(1.01),
     },
     "log_conc_unbalanced": {
+        "glc_e": jnp.log(0.02999873709439894),
+        "glc_c": jnp.log(0.013491181893977135),
         "atp_c": jnp.log(0.003990859730450967),
         "adp_c": jnp.log(0.001300517391801067),
+        "pi_c": jnp.log(0.015936000926517386),
         "nad_c": jnp.log(0.0011573204532712193),
         "nadh_c": jnp.log(5.175643353588031e-07),
+        "f26bp_c": jnp.log(1.120658467542603),
+        "lac_e": jnp.log(0.0004209472622261274),
         "nadp_c": jnp.log(6.045842011698207e-05),
+        "nadph_c": jnp.log(1.3492204010902024e-05),
+        "co2_c": jnp.log(0.0018383836218588772),
         "gdp_c": jnp.log(0.0002810654493260845),
     },
     "temperature": 298.15,
 }
+parameters = pack_parameters(model.parameter_labelling, parameter_values)
 
-# What the fit found different between the lines: the enzyme concentrations,
-# the two drain rates, hexokinase 2's allosteric constant, and seven of the
-# fixed concentrations.
-line_parameter_values: dict[str, ParamValueSpec] = {
-    "CHO-S wt": {
-        "log_kcat": {
-            "r5p_drain": jnp.log(3.6493302257375484e-07),
-            "pyr_drain": jnp.log(2.351570646158108e-05),
-        },
-        "log_enzyme": {
-            "HEX1": jnp.log(2.13671490395641e-06),
-            "HEX2": jnp.log(9.715210440088749e-08),
-            "PGI": jnp.log(1.8637611282374567e-06),
-            "PFKM": jnp.log(4.512109325986278e-08),
-            "PFKL": jnp.log(5.975732855595407e-08),
-            "FBA": jnp.log(1.692379552716806e-06),
-            "TPI": jnp.log(2.1151771290774358e-06),
-            "GAPD": jnp.log(1.4132718326156494e-05),
-            "PGK": jnp.log(2.7474372221792905e-06),
-            "PGM": jnp.log(2.004810530850335e-06),
-            "ENO": jnp.log(2.2086036096048037e-05),
-            "PKM1": jnp.log(1.0543763608322215e-05),
-            "PKM2": jnp.log(1.4498275973124783e-07),
-            "LDHA": jnp.log(2.9987620633732926e-06),
-            "G6PDH": jnp.log(1.422391558338244e-07),
-            "PGL": jnp.log(2.004287529967488e-07),
-            "GND": jnp.log(8.301445455942287e-07),
-            "RPI": jnp.log(2.6325781493768136e-07),
-            "RPE": jnp.log(3.3653559714064954e-08),
-            "TKT": jnp.log(3.2331004160208377e-06),
-            "TALA": jnp.log(5.694670007427955e-07),
-        },
-        "log_tc": {
-            "HEX2": jnp.log(0.16322219710958413),
-        },
-        "log_conc_unbalanced": {
-            "glc_e": jnp.log(0.02999873709439894),
-            "glc_c": jnp.log(0.013491181893977135),
-            "pi_c": jnp.log(0.015936000926517386),
-            "f26bp_c": jnp.log(1.120658467542603),
-            "lac_e": jnp.log(0.0004209472622261274),
-            "nadph_c": jnp.log(1.3492204010902024e-05),
-            "co2_c": jnp.log(0.0018383836218588772),
-        },
-    },
-    "CHO-ZeLa": {
-        "log_kcat": {
-            "r5p_drain": jnp.log(3.861461160962416e-07),
-            "pyr_drain": jnp.log(0.00011191885031968586),
-        },
-        "log_enzyme": {
-            "HEX1": jnp.log(2.6767397906487928e-06),
-            "HEX2": jnp.log(1.1878425173001956e-07),
-            "PGI": jnp.log(2.857352674748283e-06),
-            "PFKM": jnp.log(5.790431095255444e-08),
-            "PFKL": jnp.log(9.013745986209863e-08),
-            "FBA": jnp.log(2.6319540575281408e-06),
-            "TPI": jnp.log(2.9964718841167483e-06),
-            "GAPD": jnp.log(1.655326822179151e-05),
-            "PGK": jnp.log(2.9271801631394803e-06),
-            "PGM": jnp.log(3.0873976696272556e-06),
-            "ENO": jnp.log(1.4033012057092469e-05),
-            "PKM1": jnp.log(8.870157547170652e-06),
-            "PKM2": jnp.log(2.0272549791668512e-07),
-            "LDHA": jnp.log(1.0000000000000237e-300),
-            "G6PDH": jnp.log(1.495375956216934e-07),
-            "PGL": jnp.log(2.446779453259553e-07),
-            "GND": jnp.log(1.0786632661064743e-06),
-            "RPI": jnp.log(3.31547748495205e-07),
-            "RPE": jnp.log(3.738508533115543e-08),
-            "TKT": jnp.log(4.087103620586341e-06),
-            "TALA": jnp.log(7.280639130151803e-07),
-        },
-        "log_tc": {
-            "HEX2": jnp.log(0.27179066743567826),
-        },
-        "log_conc_unbalanced": {
-            "glc_e": jnp.log(0.02999873582408497),
-            "glc_c": jnp.log(0.011790568131731398),
-            "pi_c": jnp.log(0.0017737745302275447),
-            "f26bp_c": jnp.log(0.9999999932573104),
-            "lac_e": jnp.log(1.6714311992871255e-05),
-            "nadph_c": jnp.log(0.0011858640665808324),
-            "co2_c": jnp.log(0.008037913696096645),
-        },
-    },
-    "CHO-ZenZeLa": {
-        "log_kcat": {
-            "r5p_drain": jnp.log(3.915592468558883e-07),
-            "pyr_drain": jnp.log(2.9103910830966943e-05),
-        },
-        "log_enzyme": {
-            "HEX1": jnp.log(3.077632270369609e-06),
-            "HEX2": jnp.log(1.41324383030815e-07),
-            "PGI": jnp.log(3.8038075729885894e-06),
-            "PFKM": jnp.log(6.760938717517829e-08),
-            "PFKL": jnp.log(1.4389125446310568e-07),
-            "FBA": jnp.log(2.206270554104967e-06),
-            "TPI": jnp.log(3.858041062767207e-06),
-            "GAPD": jnp.log(1.7091505025966426e-05),
-            "PGK": jnp.log(4.1639475639590614e-06),
-            "PGM": jnp.log(4.766963683900475e-06),
-            "ENO": jnp.log(4.467698794407496e-05),
-            "PKM1": jnp.log(1.1964543383679184e-05),
-            "PKM2": jnp.log(1.6890439367525214e-07),
-            "LDHA": jnp.log(9.113042698554213e-07),
-            "G6PDH": jnp.log(1.9879354759823306e-07),
-            "PGL": jnp.log(2.83888579917116e-07),
-            "GND": jnp.log(1.6968584281012092e-06),
-            "RPI": jnp.log(4.004908168157015e-07),
-            "RPE": jnp.log(3.919557418374365e-08),
-            "TKT": jnp.log(5.1384658284785975e-06),
-            "TALA": jnp.log(1.055870513489749e-06),
-        },
-        "log_tc": {
-            "HEX2": jnp.log(8.310901493867116),
-        },
-        "log_conc_unbalanced": {
-            "glc_e": jnp.log(0.029998736966195066),
-            "glc_c": jnp.log(0.0077680084515351034),
-            "pi_c": jnp.log(0.00029143784488609855),
-            "f26bp_c": jnp.log(0.359284315051522),
-            "lac_e": jnp.log(0.0004979280347082347),
-            "nadph_c": jnp.log(0.00017227516206278677),
-            "co2_c": jnp.log(0.002040484759804038),
-        },
-    },
-}
-
-
-def get_parameters(line: str) -> ParamDict:
-    """Pack one cell line's parameters, in the model's label order."""
-    values = {
-        parameter: dict(entry) if isinstance(entry, dict) else entry
-        for parameter, entry in shared_parameter_values.items()
-    }
-    for parameter, entry in line_parameter_values[line].items():
-        values[parameter] = {**values.get(parameter, {}), **entry}  # pyright: ignore[reportArgumentType]
-    return pack_parameters(model.parameter_labelling, values)
-
-
-line_parameters = {line: get_parameters(line) for line in line_parameter_values}
-
-# The steady state each line's fit sits at, which is a steady state here too.
-line_steady_state = {
-    "CHO-S wt": jnp.array(
-        [
-            0.0004662513471268097,  # g6p_c
-            0.00022096658089050886,  # f6p_c
-            0.0005624120688774678,  # fdp_c
-            5.676632398102121e-05,  # dhap_c
-            4.384404454726257e-06,  # g3p_c
-            2.4564364799791964e-05,  # dpg_c
-            0.014559463285097801,  # p3g_c
-            0.0021459286209115614,  # p2g_c
-            8.06472194603238e-06,  # pep_c
-            0.00013784057192012914,  # pyr_c
-            0.0004209475587547363,  # lac_c
-            0.008491343359296587,  # pgl6_c
-            1.3616781752440732e-05,  # pgc6_c
-            1.0493798056255385e-05,  # ru5p_c
-            4.864498188641598e-05,  # r5p_c
-            2.1563452697145036e-05,  # xu5p_c
-            2.5973400187151666e-06,  # e4p_c
-            0.00015161734647285103,  # s7p_c
-        ]
-    ),
-    "CHO-ZeLa": jnp.array(
-        [
-            0.0010137675990220165,  # g6p_c
-            0.00048386751515815677,  # f6p_c
-            0.010640025012891512,  # fdp_c
-            0.000989122007055538,  # dhap_c
-            0.00010237924642655591,  # g3p_c
-            0.0001488404546848882,  # dpg_c
-            0.09862487316332286,  # p3g_c
-            0.015284776792743943,  # p2g_c
-            5.8188939388510285e-06,  # pep_c
-            6.941252148670442e-07,  # pyr_c
-            1.6714311992871255e-05,  # lac_c
-            0.000518926328029066,  # pgl6_c
-            0.0003353764189375616,  # pgc6_c
-            2.9261226719562042e-05,  # ru5p_c
-            0.00014176149422661432,  # r5p_c
-            7.408546287851291e-05,  # xu5p_c
-            3.430338489133263e-05,  # e4p_c
-            0.00012026616740594053,  # s7p_c
-        ]
-    ),
-    "CHO-ZenZeLa": jnp.array(
-        [
-            0.0008120245087428826,  # g6p_c
-            0.0003878445470549545,  # f6p_c
-            0.00033833377321658935,  # fdp_c
-            6.403660686306735e-05,  # dhap_c
-            6.03511735766632e-06,  # g3p_c
-            6.002763849074075e-07,  # dpg_c
-            0.00023702240525696306,  # p3g_c
-            3.659819724186233e-05,  # p2g_c
-            5.938799457519929e-06,  # pep_c
-            0.0002789799328763046,  # pyr_c
-            0.0004979282284384905,  # lac_c
-            0.0020747738611883297,  # pgl6_c
-            1.7473748809500887e-05,  # pgc6_c
-            1.1441141775369078e-05,  # ru5p_c
-            5.458471343288532e-05,  # r5p_c
-            2.6490230810895264e-05,  # xu5p_c
-            4.646369596399455e-06,  # e4p_c
-            0.00024008628172832752,  # s7p_c
-        ]
-    ),
-}
-
-parameters = line_parameters["CHO-S wt"]
-steady_state = line_steady_state["CHO-S wt"]
+# The steady state the fit sits at, which is a steady state here too.
+steady_state = jnp.array(
+    [
+        0.0004662513471268097,  # g6p_c
+        0.00022096658089050886,  # f6p_c
+        0.0005624120688774678,  # fdp_c
+        5.676632398102121e-05,  # dhap_c
+        4.384404454726257e-06,  # g3p_c
+        2.4564364799791964e-05,  # dpg_c
+        0.014559463285097801,  # p3g_c
+        0.0021459286209115614,  # p2g_c
+        8.06472194603238e-06,  # pep_c
+        0.00013784057192012914,  # pyr_c
+        0.0004209475587547363,  # lac_c
+        0.008491343359296587,  # pgl6_c
+        1.3616781752440732e-05,  # pgc6_c
+        1.0493798056255385e-05,  # ru5p_c
+        4.864498188641598e-05,  # r5p_c
+        2.1563452697145036e-05,  # xu5p_c
+        2.5973400187151666e-06,  # e4p_c
+        0.00015161734647285103,  # s7p_c
+    ]
+)

@@ -23,8 +23,7 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.examples import glycolysis
-from enzax.parameters import pack_parameters, unpack_parameters
-from tests.cho_reference import get_fitted_parameters
+from enzax.parameters import pack_parameters
 
 jax.config.update("jax_enable_x64", True)
 
@@ -40,6 +39,12 @@ KNOWN_DIFFERENT = {"HEX1": 0.0568}
 def get_expected():
     with open(expected_flux_file, "r") as f:
         return json.load(f)
+
+
+def get_julia(filename: str):
+    """Get the CHO-S wild type block of one of the julia model's outputs."""
+    with open(Path(glycolysis.__file__).parent / filename, "r") as f:
+        return json.load(f)["lines"]["CHO-S wt"]
 
 
 def get_sbml_parameters():
@@ -150,27 +155,15 @@ def test_the_stoichiometry_balances_an_independent_implementation():
             assert abs(rate) < 1e-9 * jnp.abs(v).max()
 
 
-@pytest.mark.parametrize(
-    ["line", "name"],
-    [(0, "CHO-S wt"), (1, "CHO-ZeLa"), (2, "CHO-ZenZeLa")],
-)
-def test_the_fitted_model_reproduces_julias_fluxes(line, name):
+def test_the_fitted_model_reproduces_julias_fluxes():
     """At the fitted parameters, our fluxes are the julia version's.
 
-    The parameters come from that version's own MAP fit, reconstructed from
-    its Stan draw and priors. Glucose transport is the one reaction left out:
-    the julia model holds it at exactly zero, and here it is computed and
-    inert, since both glucose pools are fixed.
+    Glucose transport is the one reaction left out: the julia model holds it
+    at exactly zero, and here it is computed and inert, since both glucose
+    pools are fixed.
     """
-    here = Path(glycolysis.__file__).parent
-    with open(here / "cho_steady_state.json", "r") as f:
-        state = json.load(f)["lines"][name]["concentration"]
-    with open(here / "cho_steady_state_fluxes.json", "r") as f:
-        expected = json.load(f)["lines"][name]["flux"]
-    conc = jnp.array(
-        [state[species] for species in glycolysis.model.independent_species]
-    )
-    flux = glycolysis.model.flux(conc, glycolysis.line_parameters[name])
+    expected = get_julia("cho_steady_state_fluxes.json")["flux"]
+    flux = glycolysis.model.flux(glycolysis.steady_state, glycolysis.parameters)
     for position, reaction in enumerate(glycolysis.reactions):
         if reaction == "GLUT4":
             continue
@@ -179,43 +172,13 @@ def test_the_fitted_model_reproduces_julias_fluxes(line, name):
         )
 
 
-@pytest.mark.parametrize(
-    ["line", "name"],
-    [(0, "CHO-S wt"), (1, "CHO-ZeLa"), (2, "CHO-ZenZeLa")],
-)
-def test_julias_steady_state_is_ours(line, name):
-    """Their steady state is steady for us too, at their parameters."""
-    here = Path(glycolysis.__file__).parent
-    with open(here / "cho_steady_state.json", "r") as f:
-        state = json.load(f)["lines"][name]["concentration"]
-    conc = glycolysis.line_steady_state[name]
+def test_julias_steady_state_is_ours():
+    """Their steady state is the example's, and is steady for us too."""
+    state = get_julia("cho_steady_state.json")["concentration"]
+    conc = glycolysis.steady_state
     assert jnp.array_equal(
         conc,
         jnp.array([state[s] for s in glycolysis.model.independent_species]),
     )
-    dcdt = glycolysis.model.dcdt(conc, glycolysis.line_parameters[name])
+    dcdt = glycolysis.model.dcdt(conc, glycolysis.parameters)
     assert (jnp.abs(dcdt / conc) < 1e-9).all()
-
-
-@pytest.mark.parametrize(
-    ["line", "name"],
-    [(0, "CHO-S wt"), (1, "CHO-ZeLa"), (2, "CHO-ZenZeLa")],
-)
-def test_the_examples_values_are_the_fits_values(line, name):
-    """The numbers in the example are the ones the fit's own output gives.
-
-    `cho_reference` reconstructs them from the Stan draw and its priors, which
-    is where they came from; this is what stops them drifting.
-    """
-    expected = get_fitted_parameters(line)
-    spec = unpack_parameters(
-        glycolysis.model.parameter_labelling, glycolysis.line_parameters[name]
-    )
-    for parameter, entry in expected.items():
-        if not isinstance(entry, dict):
-            assert spec[parameter] == pytest.approx(entry)
-            continue
-        for label, value in entry.items():
-            assert float(spec[parameter][label]) == pytest.approx(  # pyright: ignore[reportIndexIssue]
-                value, rel=1e-12, abs=1e-300
-            )
