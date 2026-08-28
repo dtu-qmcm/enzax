@@ -1,9 +1,9 @@
 """Module defining array types for enzax's kinetic models.
 
-There are three kinds of axis name: model-level, reaction-level, and misc.
-The module also holds the containers a model's parameters travel in: the flat
-arrays themselves, the labelling that says which label sits at which position,
-and the label-keyed values a reader writes.
+There are four kinds of axis name: model-level, reaction-level, factor-level
+and misc. The module also holds the containers a model's parameters travel in:
+the flat arrays themselves, the labelling that says which label sits at which
+position, and the label-keyed values a reader writes.
 
 Model-level axes start with plain `n_*`: `n_species`, `n_reaction`,
 `n_balanced`, `n_unbalanced`, `n_ind_species`, `n_dep_species`. There is one
@@ -18,6 +18,12 @@ label sits at which index along these axes.
 Reaction-level axes start with `n_rxn_*`. There is one value per reaction, so
 they are ragged across a model's reactions and only mean anything inside a
 single reaction's scope.
+
+Factor-level axes start with `n_factor_*`. One factor of one term of one
+binding polynomial is as far as they mean anything: two sites of the same
+polynomial hold different numbers of species, so they are ragged even within a
+single reaction. Binding polynomials therefore evaluate a factor at a time,
+each call its own jaxtyping scope, rather than in one flat loop.
 
 Rules for the `n_rxn_*` tier:
 
@@ -119,6 +125,16 @@ KiIx = Int[np.ndarray, " n_rxn_ki"]  # values index n_k
 InhibitionIx = Int[np.ndarray, " n_rxn_inhibition"]  # values index n_k
 ActivationIx = Int[np.ndarray, " n_rxn_activation"]  # values index n_k
 ReactantDgfIx = Int[np.ndarray, " n_rxn_reactant"]  # values index n_dgf
+
+# --------------------------------------------------------------------------
+# Factor-level, static: where one binding polynomial factor reads from
+#
+# A factor binds some species and divides each by a dissociation constant, so
+# its two index arrays always have the same length -- but only within that one
+# factor, which is why they get their own axis.
+# --------------------------------------------------------------------------
+FactorSpeciesIx = Int[np.ndarray, " n_factor_species"]  # values index n_species
+FactorKIx = Int[np.ndarray, " n_factor_species"]  # values index n_k
 
 # --------------------------------------------------------------------------
 # Parameters

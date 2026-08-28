@@ -202,6 +202,16 @@ def test_gradient_accumulates_over_a_shared_parameter():
     assert jnp.isclose(shared_grad[shared_ix], expected)
 
 
+def get_k_positions(polynomial) -> list[int]:
+    """Get every `log_k` position a binding polynomial reads."""
+    return [
+        int(position)
+        for term in polynomial.terms
+        for factor in term.factors
+        for position in factor.ix_k
+    ]
+
+
 def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
     """The G6PDH case: a reaction reuses its own catalytic Km allosterically."""
     model = get_model(
@@ -221,8 +231,8 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
     )
     ix = model.rate_equation_ix[0]
     position = get_parameter_position(labelling, "log_k", "km|r1|b")
-    assert ix.ix_dc_activator[0] == position
-    assert ix.ix_product_k[0] == position
+    assert position in get_k_positions(ix.binding_polynomial)
+    assert position in get_k_positions(ix.allostery.relaxed_state)
 
 
 def test_separator_is_rejected_in_an_id():

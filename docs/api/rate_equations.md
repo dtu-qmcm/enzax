@@ -4,6 +4,7 @@
       filters:
         - "!check"
       members:
+        - SaturableRateEquation
         - Drain
         - IrreversibleMichaelisMenten
         - ReversibleMichaelisMenten
