@@ -176,6 +176,7 @@ class SaturableRateEquationIx(eqx.Module):
     ix_dgf: ReactantDgfIx
     reactant_stoichiometry: StaticReactantArr
     water_stoichiometry: float
+    water_dgf: float
     binding_polynomial: BindingPolynomial
     allostery: AllostericIx | None
 
@@ -197,6 +198,7 @@ class SaturableRateEquationInput(eqx.Module):
     ix_reactant: ReactantIx
     reactant_stoichiometry: StaticReactantArr
     water_stoichiometry: float
+    water_dgf: float
     binding_polynomial: BindingPolynomial
     allostery: AllostericInput | None
 
@@ -227,10 +229,9 @@ def get_reversibility(
     temperature: Scalar,
     reactant_stoichiometry: StaticReactantArr,
     water_stoichiometry: float,
+    water_dgf: float,
 ) -> Scalar:
     """Get the reversibility of a reaction.
-
-    Hard coded water dgf is taken from <http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001>.
 
     The equation is
 
@@ -240,9 +241,8 @@ def get_reversibility(
     """  # noqa: E501
     RT = temperature * 0.008314
     conc_clipped = jnp.clip(reactant_conc, min=1e-9)
-    dgf_water = -150.9
     dgr_std = (
-        reactant_stoichiometry.T @ dgf + water_stoichiometry * dgf_water
+        reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf
     ).flatten()
     quotient = (reactant_stoichiometry.T @ jnp.log(conc_clipped)).flatten()
     expand = jnp.clip((dgr_std / RT) + quotient, min=-1e2, max=1e2)
@@ -285,6 +285,14 @@ class SaturableRateEquation(RateEquation):
     * `reversible`: whether the rate law has a thermodynamic driving force.
     * `water_stoichiometry`: how much water the reaction consumes or produces,
       which only a reversible reaction cares about.
+    * `water_dgf`: water's formation energy, which the default is
+      [equilibrator's](http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001).
+      It belongs to the model rather than to the reaction, so give every
+      reaction that touches water the same value.
+    * `dgf_species`: `{species: compound}` for a reaction whose standard free
+      energy change does not follow from the model's `species_to_compound`.
+      It is an escape hatch for reproducing a model that says otherwise, not
+      something a model of your own should need.
     * `allosteric`: whether the rate law has a Monod Wyman Changeux factor.
     * `tc`: label of the transfer constant. Defaults to the reaction id.
     * `dc_inhibitor`: the reaction's allosteric inhibitors, either as a list of
@@ -313,7 +321,9 @@ class SaturableRateEquation(RateEquation):
     ki: list[str] | dict[str, str] | None = None
     reversible: bool = True
     water_stoichiometry: float = 0.0
+    water_dgf: float = -150.9
     allosteric: bool = False
+    dgf_species: dict[str, str] | None = None
     tc: str | None = None
     dc_inhibitor: list[str] | dict[str, str] | None = None
     dc_activator: list[str] | dict[str, str] | None = None
@@ -480,14 +490,43 @@ class SaturableRateEquation(RateEquation):
             ),
             ix_substrate=get_species_positions(scope, get_substrates(scope)),
             ix_reactant=ix_reactant,
-            ix_dgf=scope.species_to_dgf_ix[ix_reactant],
+            ix_dgf=self.get_dgf_positions(scope, labelling, ix_reactant),
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
+            water_dgf=self.water_dgf,
             binding_polynomial=resolve_expression(
                 self.get_expression(scope), scope, labelling, "km"
             ),
             allostery=self.resolve_allostery(scope, labelling, lab),
         )
+
+    def get_dgf_positions(
+        self,
+        scope: ReactionScope,
+        labelling: ParamLabelling,
+        ix_reactant: ReactantIx,
+    ) -> ReactantDgfIx:
+        """Get the formation energy each reactant contributes, by position.
+
+        The model's `species_to_compound` decides this, unless `dgf_species`
+        overrides it for some of the reaction's species.
+        """
+        positions = scope.species_to_dgf_ix[ix_reactant].copy()
+        if self.dgf_species is None:
+            return positions
+        reactants = get_reactants(scope)
+        for species_id, compound in self.dgf_species.items():
+            if species_id not in reactants:
+                msg = (
+                    f"Reaction {scope.reaction_id}'s dgf_species names "
+                    f"{species_id!r}, which is not one of its reactants "
+                    f"{list(reactants)}."
+                )
+                raise ValueError(msg)
+            positions[reactants.index(species_id)] = get_parameter_position(
+                labelling, "dgf", compound
+            )
+        return positions
 
     def resolve_allostery(
         self,
@@ -528,6 +567,7 @@ class SaturableRateEquation(RateEquation):
             ix_reactant=ix.ix_reactant,
             reactant_stoichiometry=ix.reactant_stoichiometry,
             water_stoichiometry=ix.water_stoichiometry,
+            water_dgf=ix.water_dgf,
             binding_polynomial=ix.binding_polynomial,
             allostery=allostery,
         )
@@ -557,6 +597,7 @@ class SaturableRateEquation(RateEquation):
                 dgf=rate_input.dgf,
                 temperature=rate_input.temperature,
                 water_stoichiometry=rate_input.water_stoichiometry,
+                water_dgf=rate_input.water_dgf,
             )
         rate = rev * rate_input.kcat * rate_input.enzyme * numerator * fer
         if rate_input.allostery is not None:

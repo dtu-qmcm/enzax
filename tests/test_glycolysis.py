@@ -3,8 +3,16 @@
 `data/expected_glycolysis_flux.json` holds the initial concentrations of
 `mammalian_glycolysis.xml` and the flux its own rate laws give there,
 evaluated from the SBML function definitions rather than through enzax. Every
-reaction is expected to agree, apart from the three the example's docstring
+reaction is expected to agree, apart from the two the example's docstring
 names.
+
+Those two are also where the julia implementation of the same model
+(`cho_steady_state_fluxes.json` came from it) sides with one of us: it
+normalises HEX1's glucose by glucose's own constant, as we do, and takes ENO's
+standard free energy change from 3-phosphoglycerate, as the SBML does. Against
+julia's rate laws at the same parameter values, 24 of our 26 reactions agree to
+better than 1e-12; the exceptions are ENO at 5e-4 and glucose transport, which
+julia holds at zero.
 """
 
 import json
@@ -15,24 +23,35 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.examples import glycolysis
+from enzax.parameters import pack_parameters, unpack_parameters
+from tests.cho_reference import get_fitted_parameters
 
 jax.config.update("jax_enable_x64", True)
 
 HERE = Path(__file__).parent
 expected_flux_file = HERE / "data" / "expected_glycolysis_flux.json"
 
-# The three reactions enzax deliberately does not reproduce, and by how much.
-# HEX1 divides glucose by its own Michaelis constant rather than by ATP's; ENO
-# gets its standard free energy change from its stoichiometry, so it uses
-# phosphoenolpyruvate's formation energy where the SBML uses
-# 3-phosphoglycerate's; and PGL feels enzax's hardcoded formation energy of
-# water, which is -150.9 against the SBML's -154.4.
-KNOWN_DIFFERENT = {"HEX1": 0.0568, "ENO": 1.2077, "PGL": 0.019}
+# The one reaction enzax does not reproduce, and by how much: HEX1 divides
+# glucose by its own Michaelis constant rather than by ATP's, which the model's
+# write-up calls a correction.
+KNOWN_DIFFERENT = {"HEX1": 0.0568}
 
 
 def get_expected():
     with open(expected_flux_file, "r") as f:
         return json.load(f)
+
+
+def get_sbml_parameters():
+    """Pack the SBML file's own parameter values, which the example does not.
+
+    The example carries a fit of this model to CHO data instead, so the values
+    the file itself ships live here, next to the fluxes they produce.
+    """
+    with open(HERE / "data" / "sbml_glycolysis_parameters.json", "r") as f:
+        return pack_parameters(
+            glycolysis.model.parameter_labelling, json.load(f)
+        )
 
 
 def get_initial_conc(expected) -> jnp.ndarray:
@@ -44,14 +63,16 @@ def get_initial_conc(expected) -> jnp.ndarray:
 def get_flux_at_initial_conc(expected) -> jnp.ndarray:
     model = glycolysis.model
     conc = get_initial_conc(expected)
-    return model.flux(conc[model.balanced_species_ix], glycolysis.parameters)
+    return model.flux(conc[model.balanced_species_ix], get_sbml_parameters())
 
 
 def test_the_model_has_the_shape_of_the_sbml_file():
     model = glycolysis.model
     assert len(model.species) == 31
-    assert len(model.balanced_species) == 19
-    assert len(model.unbalanced_species) == 12
+    # Cytosolic glucose is balanced in the SBML file and fixed here, as it is
+    # in the fitted julia version of the same model.
+    assert len(model.balanced_species) == 18
+    assert len(model.unbalanced_species) == 13
     assert len(model.reactions) == 26
     # Glucose and lactate are the two compounds in two compartments each.
     assert len(model.parameter_labelling["dgf"]) == 29
@@ -102,3 +123,99 @@ def test_the_steady_state_carries_glycolytic_flux():
     forwards = ["GLUT4", "PGI", "GAPD", "ENO", "LDHA", "G6PDH"]
     for reaction in forwards:
         assert flux[glycolysis.reactions.index(reaction)] > 0.0
+
+
+def test_the_stoichiometry_balances_an_independent_implementation():
+    """The julia version's steady-state fluxes are steady under our `S` too.
+
+    `cho_steady_state_fluxes.json` comes from a separately written version of
+    this model, at parameter values fitted to CHO data rather than the ones in
+    the SBML file. The fluxes therefore do not match ours, but they must
+    satisfy the same mass balance, which makes them a check on the
+    stoichiometry that owes nothing to any parameter value. Glucose is left
+    out because that model holds it fixed: its glucose transport flux is zero
+    and cytosolic glucose is not one of its 18 states.
+    """
+    here = Path(glycolysis.__file__).parent
+    flux_file = here / "cho_steady_state_fluxes.json"
+    state_file = here / "cho_steady_state.json"
+    with open(flux_file, "r") as f:
+        flux = json.load(f)["lines"]["CHO-S wt"]["flux"]
+    with open(state_file, "r") as f:
+        balanced = json.load(f)["lines"]["CHO-S wt"]["concentration"]
+    v = jnp.array([flux[reaction] for reaction in glycolysis.reactions])
+    dcdt = glycolysis.model.S @ v
+    for species, rate in zip(glycolysis.species, dcdt):
+        if species in balanced:
+            assert abs(rate) < 1e-9 * jnp.abs(v).max()
+
+
+@pytest.mark.parametrize(
+    ["line", "name"],
+    [(0, "CHO-S wt"), (1, "CHO-ZeLa"), (2, "CHO-ZenZeLa")],
+)
+def test_the_fitted_model_reproduces_julias_fluxes(line, name):
+    """At the fitted parameters, our fluxes are the julia version's.
+
+    The parameters come from that version's own MAP fit, reconstructed from
+    its Stan draw and priors. Glucose transport is the one reaction left out:
+    the julia model holds it at exactly zero, and here it is computed and
+    inert, since both glucose pools are fixed.
+    """
+    here = Path(glycolysis.__file__).parent
+    with open(here / "cho_steady_state.json", "r") as f:
+        state = json.load(f)["lines"][name]["concentration"]
+    with open(here / "cho_steady_state_fluxes.json", "r") as f:
+        expected = json.load(f)["lines"][name]["flux"]
+    conc = jnp.array(
+        [state[species] for species in glycolysis.model.independent_species]
+    )
+    flux = glycolysis.model.flux(conc, glycolysis.line_parameters[name])
+    for position, reaction in enumerate(glycolysis.reactions):
+        if reaction == "GLUT4":
+            continue
+        assert float(flux[position]) == pytest.approx(
+            expected[reaction], rel=1e-9, abs=1e-30
+        )
+
+
+@pytest.mark.parametrize(
+    ["line", "name"],
+    [(0, "CHO-S wt"), (1, "CHO-ZeLa"), (2, "CHO-ZenZeLa")],
+)
+def test_julias_steady_state_is_ours(line, name):
+    """Their steady state is steady for us too, at their parameters."""
+    here = Path(glycolysis.__file__).parent
+    with open(here / "cho_steady_state.json", "r") as f:
+        state = json.load(f)["lines"][name]["concentration"]
+    conc = glycolysis.line_steady_state[name]
+    assert jnp.array_equal(
+        conc,
+        jnp.array([state[s] for s in glycolysis.model.independent_species]),
+    )
+    dcdt = glycolysis.model.dcdt(conc, glycolysis.line_parameters[name])
+    assert (jnp.abs(dcdt / conc) < 1e-9).all()
+
+
+@pytest.mark.parametrize(
+    ["line", "name"],
+    [(0, "CHO-S wt"), (1, "CHO-ZeLa"), (2, "CHO-ZenZeLa")],
+)
+def test_the_examples_values_are_the_fits_values(line, name):
+    """The numbers in the example are the ones the fit's own output gives.
+
+    `cho_reference` reconstructs them from the Stan draw and its priors, which
+    is where they came from; this is what stops them drifting.
+    """
+    expected = get_fitted_parameters(line)
+    spec = unpack_parameters(
+        glycolysis.model.parameter_labelling, glycolysis.line_parameters[name]
+    )
+    for parameter, entry in expected.items():
+        if not isinstance(entry, dict):
+            assert spec[parameter] == pytest.approx(entry)
+            continue
+        for label, value in entry.items():
+            assert float(spec[parameter][label]) == pytest.approx(  # pyright: ignore[reportIndexIssue]
+                value, rel=1e-12, abs=1e-300
+            )
