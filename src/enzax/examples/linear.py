@@ -1,6 +1,5 @@
 """A simple linear kinetic model."""
 
-import numpy as np
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
@@ -28,7 +27,7 @@ model = RateEquationModel(
     species=species,
     reactions=reactions,
     balanced_species=balanced_species,
-    species_to_dgf_ix=np.array([0, 0, 1, 1]),
+    species_to_compound={"m1e": "m1", "m1c": "m1", "m2c": "m2", "m2e": "m2"},
     rate_equations=rate_equations,
 )
 parameters = pack_parameters(
@@ -52,9 +51,9 @@ parameters = pack_parameters(
             "r3": jnp.log(0.1),
         },
         "log_tc": {"r1": -0.2, "r2": 0.3},
-        # m1e and m1c share a formation energy, as do m2c and m2e: each group
-        # is named after the first species that uses it.
-        "dgf": {"m1e": -3.0, "m2c": -1.0},
+        # m1e and m1c are the same compound m1, as are m2c and m2e, so
+        # there are two formation energies rather than four.
+        "dgf": {"m1": -3.0, "m2": -1.0},
         "log_conc_unbalanced": {"m1e": jnp.log(0.5), "m2e": jnp.log(0.1)},
         "temperature": 310.0,
     },

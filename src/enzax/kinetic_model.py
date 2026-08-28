@@ -134,6 +134,12 @@ class KineticModel(eqx.Module):
     `independent_species` is the rest of `balanced_species`. Instantiating a
     model checks this, along with the other conditions listed in
     `validate_kinetic_model`.
+
+    Formation energies belong to compounds rather than species, so species
+    that represent the same compound in different compartments share one. Use
+    `species_to_compound` to say which compound a species represents, as in
+    `{"m1_e": "m1", "m1_c": "m1"}`; any species left out represents a compound
+    of its own.
     """
 
     stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
@@ -143,7 +149,10 @@ class KineticModel(eqx.Module):
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
-    species_to_dgf_ix: SpeciesIx | None = eqx.field(static=True, default=None)
+    species_to_compound: dict[str, str] | None = eqx.field(
+        static=True, default=None
+    )
+    species_to_dgf_ix: SpeciesIx = eqx.field(static=True, init=False)
     balanced_species_ix: BalancedSpeciesIx = eqx.field(static=True, init=False)
     unbalanced_species_ix: UnbalancedSpeciesIx = eqx.field(
         static=True, init=False
@@ -158,11 +167,25 @@ class KineticModel(eqx.Module):
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
 
     def __post_init__(self):
-        if self.species_to_dgf_ix is None:
-            # by default every species has its own formation energy
-            self.species_to_dgf_ix = np.arange(
-                len(self.species), dtype=np.int16
+        if self.species_to_compound is None:
+            self.species_to_compound = {}
+        not_species = [
+            s for s in self.species_to_compound if s not in self.species
+        ]
+        if not_species:
+            msg = (
+                "species_to_compound can only refer to the model's species, "
+                f"but {not_species} are not among them."
             )
+            raise ValueError(msg)
+        self.species_to_compound = {
+            s: self.species_to_compound.get(s, s) for s in self.species
+        }
+        compounds = self._dgf_labels()
+        self.species_to_dgf_ix = np.array(
+            [compounds.index(c) for c in self.species_to_compound.values()],
+            dtype=np.int16,
+        )
         self.unbalanced_species = [
             s for s in self.species if s not in self.balanced_species
         ]
@@ -205,6 +228,8 @@ class KineticModel(eqx.Module):
             check_id_has_no_separator(species_i, "Species")
         for reaction in self.reactions:
             check_id_has_no_separator(reaction, "Reaction")
+        for compound in self._dgf_labels():
+            check_id_has_no_separator(compound, "Compound")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
 
@@ -229,21 +254,13 @@ class KineticModel(eqx.Module):
         ]
 
     def _dgf_labels(self) -> list[str]:
-        """Label each formation energy after the first species that uses it.
+        """Label each formation energy after the compound it belongs to.
 
-        Several species may share a formation energy, via
-        `species_to_dgf_ix`; the group takes the label of the first of them.
+        Species that represent the same compound, according to
+        `species_to_compound`, share a formation energy. The labels come in
+        the order the compounds first appear in `species`.
         """
-        names: dict[int, str] = {}
-        for species_i, ix_dgf in zip(self.species, self.species_to_dgf_ix):
-            names.setdefault(int(ix_dgf), species_i)
-        if sorted(names) != list(range(len(names))):
-            msg = (
-                "species_to_dgf_ix must use every formation energy from 0 "
-                f"up to its highest index, but {sorted(names)} were used."
-            )
-            raise ValueError(msg)
-        return [names[ix] for ix in range(len(names))]
+        return list(dict.fromkeys(self.species_to_compound.values()))
 
     def get_conc(
         self,

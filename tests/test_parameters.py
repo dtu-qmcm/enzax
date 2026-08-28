@@ -6,7 +6,6 @@ Michaelis constants for it or share one.
 """
 
 import jax
-import numpy as np
 import pytest
 from jax import numpy as jnp
 
@@ -247,11 +246,11 @@ def test_log_k_labels_must_have_a_known_prefix():
         )
 
 
-def test_formation_energies_must_be_contiguous():
-    with pytest.raises(ValueError, match="every formation energy"):
+def test_compounds_must_belong_to_species():
+    with pytest.raises(ValueError, match="can only refer to the model"):
         get_model(
             [ReversibleMichaelisMenten(), ReversibleMichaelisMenten()],
-            species_to_dgf_ix=np.array([0, 2, 3]),
+            species_to_compound={"not_a_species": "a"},
         )
 
 

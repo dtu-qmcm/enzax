@@ -25,7 +25,6 @@ Two features of the model:
 
 """
 
-import numpy as np
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
@@ -50,7 +49,17 @@ species = ["A_c", "A_e", "B_c", "C_c", "D_c", "D_e", "X1_c", "X2_c", "Z_c"]
 balanced_species = ["A_c", "B_c", "C_c", "D_c", "X1_c", "X2_c"]
 dependent_species = ["X2_c"]
 # A and D each live in two compartments, so they share a formation energy.
-species_to_dgf_ix = np.array([0, 0, 1, 2, 3, 3, 4, 5, 6], dtype=np.int16)
+species_to_compound = {
+    "A_c": "A",
+    "A_e": "A",
+    "B_c": "B",
+    "C_c": "C",
+    "D_c": "D",
+    "D_e": "D",
+    "X1_c": "X1",
+    "X2_c": "X2",
+    "Z_c": "Z",
+}
 rate_equations = [
     ReversibleMichaelisMenten(),  # transA
     ReversibleMichaelisMenten(ki=["D_c"]),  # r1, inhibited competitively
@@ -73,7 +82,7 @@ model = RateEquationModel(
     reactions=reactions,
     balanced_species=balanced_species,
     dependent_species=dependent_species,
-    species_to_dgf_ix=species_to_dgf_ix,
+    species_to_compound=species_to_compound,
     rate_equations=rate_equations,
 )
 parameters = pack_parameters(
@@ -124,16 +133,16 @@ parameters = pack_parameters(
             "regX": jnp.log(0.3),
         },
         "log_tc": {"r2A": jnp.log(0.5), "r2B": jnp.log(2.0)},
-        # Each formation energy is named after the first species that uses it,
-        # so A_c stands for A in both compartments and D_c for D in both.
+        # Each formation energy is labelled by its compound, so A covers
+        # both compartments and so does D.
         "dgf": {
-            "A_c": 0.0,
-            "B_c": -5.0,
-            "C_c": -5.0,
-            "D_c": -15.0,
-            "X1_c": 0.0,
-            "X2_c": 5.0,
-            "Z_c": 5.0,
+            "A": 0.0,
+            "B": -5.0,
+            "C": -5.0,
+            "D": -15.0,
+            "X1": 0.0,
+            "X2": 5.0,
+            "Z": 5.0,
         },
         "log_conc_unbalanced": {
             "A_e": jnp.log(0.5),

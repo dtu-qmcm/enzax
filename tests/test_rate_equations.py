@@ -6,7 +6,6 @@ The reaction turns species `a` into species `b`; species `c` takes no part in
 it, and is there to be an allosteric activator.
 """
 
-import numpy as np
 import pytest
 from jax import numpy as jnp
 
@@ -22,7 +21,7 @@ from enzax.rate_equations import (
 EXAMPLE_SPECIES = ["a", "b", "c"]
 EXAMPLE_STOICHIOMETRY = {"r1": {"a": -1.0, "b": 1.0}}
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
-EXAMPLE_SPECIES_TO_DGF_IX = np.array([0, 0, 1])
+EXAMPLE_SPECIES_TO_COMPOUND = {"b": "a"}  # a and b are the same compound
 EXAMPLE_K = {
     "km|r1|a": 0.1,
     "km|r1|b": -0.2,
@@ -42,7 +41,7 @@ def get_flux(rate_equation, enzyme_label="r1"):
         species=EXAMPLE_SPECIES,
         reactions=["r1"],
         balanced_species=EXAMPLE_SPECIES,
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
+        species_to_compound=EXAMPLE_SPECIES_TO_COMPOUND,
         rate_equations=[rate_equation],
     )
     labelling = model.parameter_labelling

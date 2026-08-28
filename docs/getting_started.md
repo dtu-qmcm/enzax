@@ -18,12 +18,10 @@ Enzax provides building blocks for you to construct a wide range of differentiab
 
 Here we write a model describing a simple linear pathway with two state variables, two boundary species and three reactions.
 
-First we import some enzax classes, as well as [equinox](https://github.com/patrick-kidger/equinox) and both JAX and standard versions of numpy:
+First we import some enzax classes, as well as [equinox](https://github.com/patrick-kidger/equinox) and JAX's version of numpy:
 
 ```python
 import equinox as eqx
-
-import numpy as np
 
 from jax import numpy as jnp
 
@@ -59,7 +57,7 @@ rate_equations = [
 ]
 ```
 
-Now we can make a RateEquationModel object. Note the `species_to_dgf_ix` argument, which says that `m1e` and `m1c` share a formation energy, as do `m2c` and `m2e`: the model has four species but only two formation energies.
+Now we can make a RateEquationModel object. Note the `species_to_compound` argument, which says that `m1e` and `m1c` are the same compound `m1`, as are `m2c` and `m2e`: the model has four species but only two compounds, and formation energies belong to compounds. Any species left out of this map is a compound of its own.
 
 ```python
 model = RateEquationModel(
@@ -67,7 +65,7 @@ model = RateEquationModel(
     species=species,
     reactions=reactions,
     balanced_species=balanced_species,
-    species_to_dgf_ix=np.array([0, 0, 1, 1]),
+    species_to_compound={"m1e": "m1", "m1c": "m1", "m2c": "m2", "m2e": "m2"},
     rate_equations=rate_equations,
 )
 
@@ -112,7 +110,7 @@ parameters = pack_parameters(
             "r3": jnp.log(0.1),
         },
         "log_tc": {"r1": -0.2, "r2": 0.3},
-        "dgf": {"m1e": -3.0, "m2c": -1.0},
+        "dgf": {"m1": -3.0, "m2": -1.0},
         "log_conc_unbalanced": {"m1e": jnp.log(0.5), "m2e": jnp.log(0.1)},
         "temperature": 310.0,
     }

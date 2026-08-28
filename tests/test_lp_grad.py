@@ -102,7 +102,7 @@ def deserialize_jax_dict(file_path):
 
 
 def get_methionine_gradient():
-    """Get the gradient of methionine's log posterior density."""
+    """Get the gradient of the methionine model's log posterior density."""
     true_parameters = methionine.parameters
     true_model = methionine.model
     default_state_guess = jnp.full((5,), 0.01)
