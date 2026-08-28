@@ -32,6 +32,22 @@ transport agrees to better than 1e-9 for all three of its cell lines, and its
 steady state is a steady state here too -- see `tests/test_glycolysis.py`.
 Glucose transport is the exception because that version holds it at exactly
 zero, where here it is computed and inert.
+
+ENO's `dgf_species` is worth reading before anyone decides it is a bug.
+Enolase is `p2g -> pep + h2o`, so its standard free energy change should be
+built from phosphoenolpyruvate's formation energy; the SBML file builds it
+from 3-phosphoglycerate's, and the julia version inherited that verbatim.
+Almost certainly a slip, and not a small one: the two formation energies are
+about 154 kJ/mol apart, which is the difference between an enolase near
+equilibrium and one that is effectively irreversible.
+
+It stays because the fit is conditioned on it: these formation energies were
+estimated with that term in the likelihood, so `p3g`'s and `pep`'s fitted
+values have both absorbed it, and dropping the override does not restore a
+more correct model -- it produces a different one. Removing it moves ENO's
+flux by 6e-4 at the wild type's steady state and 2-phosphoglycerate's
+concentration by up to 6% across the three lines. Correcting it properly
+means refitting.
 """
 
 from jax import numpy as jnp
