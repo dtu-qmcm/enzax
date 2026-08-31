@@ -232,9 +232,7 @@ rate_equations = [
     # energies were estimated against it, so reproducing either means
     # reproducing this.
     ReversibleMichaelisMenten(  # ENO
-        water_stoichiometry=1.0,
-        water_dgf=-154.4,
-        dgf_species={"pep_c": "p3g"},
+        water_stoichiometry=1.0, water_dgf=-154.4
     ),
     ReversibleMichaelisMenten(),  # PKM1
     ReversibleMichaelisMenten(),  # PKM2
