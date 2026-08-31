@@ -42,30 +42,28 @@ stoichiometry = {
     "r2": {"m1c": -1.0, "m2c": 1.0},
     "r3": {"m2c": -1.0, "m2e": 1.0},
 }
-reactions = ["r1", "r2", "r3"]
-species = ["m1e", "m1c", "m2c", "m2e"]
 balanced_species = ["m1c", "m2c"]
 ```
 
-Next we specify the model's rate equations. The order of the equations should match our `reactions` list. Species are referred to by id, so `dc_activator=["m2c"]` says that `r1` is allosterically activated by `m2c`.
+The model works out its own reactions and species from this: the reactions are the stoichiometry's keys, in order, and the species are what they consume and produce, in the order they first appear. A species that takes part in no reaction, like an allosteric effector, joins them when a rate equation names it.
+
+Next we specify the model's rate equations. The order of the equations should match the stoichiometry's keys. Species are referred to by id, so `allosteric_activators=["m2c"]` says that `r1` is allosterically activated by `m2c`.
 
 ```python
 rate_equations = [
-    AllostericReversibleMichaelisMenten(dc_activator=["m2c"], subunits=1),
-    AllostericReversibleMichaelisMenten(dc_inhibitor=["m1c"], ki=["m1c"]),
+    AllostericReversibleMichaelisMenten(allosteric_activators=["m2c"], subunits=1),
+    AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
     ReversibleMichaelisMenten(water_stoichiometry=0.0),
 ]
 ```
 
-Now we can make a RateEquationModel object. Note the `species_to_compound` argument, which says that `m1e` and `m1c` are the same compound `m1`, as are `m2c` and `m2e`: the model has four species but only two compounds, and formation energies belong to compounds. Any species left out of this map is a compound of its own.
+Now we can make a RateEquationModel object. Note the `compound_to_species` argument, which says that `m1e` and `m1c` are the same compound `m1`, as are `m2c` and `m2e`: the model has four species but only two compounds, and formation energies belong to compounds. It is partial, so only compounds with more than one species need mentioning; any species no compound claims is a compound of its own, labelled by its own id.
 
 ```python
 model = RateEquationModel(
     stoichiometry=stoichiometry,
-    species=species,
-    reactions=reactions,
     balanced_species=balanced_species,
-    species_to_compound={"m1e": "m1", "m1c": "m1", "m2c": "m2", "m2e": "m2"},
+    compound_to_species={"m1": ["m1e", "m1c"], "m2": ["m2c", "m2e"]},
     rate_equations=rate_equations,
 )
 
@@ -76,7 +74,7 @@ model = RateEquationModel(
 Each parameter is one flat array, and each value in an array has a label. Building the model works out which labels exist, from the rate equations and from the model's structure, and records them in `model.parameter_labelling`:
 
 ```python
-model.parameter_labelling["log_k"]
+model.parameter_labelling["log_saturation_constant"]
 ```
 
 ```
@@ -84,7 +82,7 @@ model.parameter_labelling["log_k"]
  'ki|r2|m1c', 'dc|r2|m1c', 'km|r3|m2c', 'km|r3|m2e')
 ```
 
-`log_k` holds every dissociation constant, whatever it does. The prefix says what a constant does: `km` for a Michaelis constant, `ki` for a competitive inhibition constant and `dc` for an allosteric one. Keeping them in one array is what lets two reactions share a constant, or a reaction reuse one of its own Michaelis constants as an allosteric constant --- in both cases the two uses simply give the same label.
+`log_saturation_constant` holds every constant that a concentration is divided by, whatever it does. The prefix says which kind it is: `km` for a Michaelis constant, `ki` for a competitive inhibition constant and `dc` for an allosteric dissociation constant. Keeping them in one array is what lets two reactions share a constant, or a reaction reuse one of its own Michaelis constants as an allosteric constant --- in both cases the two uses simply give the same label.
 
 We build a parameter set by giving a value for every label:
 
@@ -92,7 +90,7 @@ We build a parameter set by giving a value for every label:
 parameters = pack_parameters(
     model.parameter_labelling,
     {
-        "log_k": {
+        "log_saturation_constant": {
             "km|r1|m1e": 0.1,
             "km|r1|m1c": -0.2,
             "dc|r1|m2c": -0.1,
@@ -122,7 +120,7 @@ parameters = pack_parameters(
 `temperature` is the exception: it has no labels at all, because its whole array is one parameter, so it takes a value directly rather than a mapping.
 
 Going the other way, `unpack_parameters(model.parameter_labelling, parameters)`
-gives back a dictionary of labelled values, which is handy when a traceback shows you something like `parameters["log_k"][6]` and you want to know which constant that is.
+gives back a dictionary of labelled values, which is handy when a traceback shows you something like `parameters["log_saturation_constant"][6]` and you want to know which constant that is.
 
 Note that the parameters use `jnp` whereas the structure uses `np`. This is because we want JAX to trace the parameters, whereas the structure should be static. Read more about this [here](https://jax.readthedocs.io/en/latest/notebooks/thinking_in_jax.html#static-vs-traced-operations).
 
@@ -133,16 +131,16 @@ Two rate equations that use the same label use the same value --- one position i
 ```python
 shared_rate_equations = [
     AllostericReversibleMichaelisMenten(
-        dc_activator=["m2c"],
+        allosteric_activators=["m2c"],
         subunits=1,
         enzyme="E1",
-        k={"m1e": "km|E1|substrate"},
+        michaelis_constants={"m1e": "km|E1|substrate"},
     ),
-    AllostericReversibleMichaelisMenten(dc_inhibitor=["m1c"], ki=["m1c"]),
+    AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
     ReversibleMichaelisMenten(
         water_stoichiometry=0.0,
         enzyme="E1",
-        k={"m2c": "km|E1|substrate"},
+        michaelis_constants={"m2c": "km|E1|substrate"},
     ),
 ]
 ```

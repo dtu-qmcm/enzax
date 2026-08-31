@@ -118,39 +118,6 @@ stoichiometry = {
     "pyr_drain": {"pyr_c": -1.0},
     "lac_transport": {"lac_c": -1.0, "lac_e": 1.0},
 }
-species = [
-    "glc_e",
-    "glc_c",
-    "atp_c",
-    "adp_c",
-    "g6p_c",
-    "f6p_c",
-    "fdp_c",
-    "dhap_c",
-    "g3p_c",
-    "pi_c",
-    "nad_c",
-    "nadh_c",
-    "dpg_c",
-    "p3g_c",
-    "p2g_c",
-    "f26bp_c",
-    "pep_c",
-    "pyr_c",
-    "lac_c",
-    "lac_e",
-    "nadp_c",
-    "nadph_c",
-    "pgl6_c",
-    "pgc6_c",
-    "ru5p_c",
-    "r5p_c",
-    "co2_c",
-    "xu5p_c",
-    "e4p_c",
-    "s7p_c",
-    "gdp_c",
-]
 # The SBML file's boundary species are the ones enzax leaves unbalanced, plus
 # cytosolic glucose: the file balances it against glucose transport, but the
 # fitted julia version of this model holds it fixed and has no transport flux,
@@ -176,14 +143,14 @@ balanced_species = [
     "e4p_c",
     "s7p_c",
 ]
-# Formation energies belong to compounds, so a species' compartment suffix
-# comes off. Glucose and lactate are the two compounds that appear in both
-# compartments, which is what makes the transport reactions' standard free
-# energy change vanish.
-species_to_compound = {
-    species_id: species_id.rsplit("_", 1)[0] for species_id in species
+# Formation energies belong to compounds. Glucose and lactate are the only
+# compounds here with a species in each of two compartments, which is what
+# makes the transport reactions' standard free energy change vanish. Every
+# other compound has one species and is labelled by it.
+compound_to_species = {
+    "glc": ["glc_e", "glc_c"],
+    "lac": ["lac_c", "lac_e"],
 }
-reactions = list(stoichiometry)
 rate_equations = [
     ReversibleMichaelisMenten(),  # GLUT4
     ReversibleMichaelisMenten(  # HEX1
@@ -253,7 +220,7 @@ rate_equations = [
         # One transketolase catalyses both TKT reactions, with one set of
         # Michaelis constants and a turnover number each.
         enzyme="TKT",
-        k={
+        michaelis_constants={
             "r5p_c": "km|TKT|r5p_c",
             "xu5p_c": "km|TKT|xu5p_c",
             "s7p_c": "km|TKT|s7p_c",
@@ -262,7 +229,7 @@ rate_equations = [
     ),
     ReversibleMichaelisMenten(  # TKT2
         enzyme="TKT",
-        k={
+        michaelis_constants={
             "e4p_c": "km|TKT|e4p_c",
             "xu5p_c": "km|TKT|xu5p_c",
             "f6p_c": "km|TKT|f6p_c",
@@ -278,16 +245,14 @@ rate_equations = [
 ]
 model = RateEquationModel(
     stoichiometry=stoichiometry,
-    species=species,
-    reactions=reactions,
     balanced_species=balanced_species,
-    species_to_compound=species_to_compound,
+    compound_to_species=compound_to_species,
     rate_equations=rate_equations,
 )
 # The values are a maximum a posteriori fit of this model to data from the
 # CHO-S wild type line, reconstructed from the fit's own output.
 parameter_values: ParamValueSpec = {
-    "log_k": {
+    "log_saturation_constant": {
         "km|GLUT4|glc_e": jnp.log(0.0015000000000000007),
         "km|GLUT4|glc_c": jnp.log(0.005000000000000002),
         "km|HEX1|glc_c": jnp.log(5.679620313853646e-05),
@@ -374,34 +339,34 @@ parameter_values: ParamValueSpec = {
     },
     "dgf": {
         "glc": -406.46188686219284,
-        "atp": -2277.2890627651195,
-        "adp": -1403.2633692533918,
-        "g6p": -1300.0149509382939,
-        "f6p": -1298.1938315031573,
-        "fdp": -2188.957672092369,
-        "dhap": -1085.7912976639468,
-        "g3p": -1080.207064538999,
-        "pi": -1056.7079235765934,
-        "nad": -1161.205952968819,
-        "nadh": -1096.1079942440228,
-        "dpg": -2199.645186055141,
-        "p3g": -1344.8874882852788,
-        "p2g": -1340.3559531673432,
-        "f26bp": -2168.402646708031,
-        "pep": -1190.4771555259874,
-        "pyr": -342.05926337599294,
+        "atp_c": -2277.2890627651195,
+        "adp_c": -1403.2633692533918,
+        "g6p_c": -1300.0149509382939,
+        "f6p_c": -1298.1938315031573,
+        "fdp_c": -2188.957672092369,
+        "dhap_c": -1085.7912976639468,
+        "g3p_c": -1080.207064538999,
+        "pi_c": -1056.7079235765934,
+        "nad_c": -1161.205952968819,
+        "nadh_c": -1096.1079942440228,
+        "dpg_c": -2199.645186055141,
+        "p3g_c": -1344.8874882852788,
+        "p2g_c": -1340.3559531673432,
+        "f26bp_c": -2168.402646708031,
+        "pep_c": -1190.4771555259874,
+        "pyr_c": -342.05926337599294,
         "lac": -301.822292025329,
-        "nadp": -2047.3990792319028,
-        "nadph": -1982.3699339961047,
-        "pgl6": -1370.8061638577083,
-        "pgc6": -1550.0612535608789,
-        "ru5p": -1219.8776711515422,
-        "r5p": -1223.7964306530832,
-        "co2": -384.63682950771874,
-        "xu5p": -1222.1672327465312,
-        "e4p": -1148.8730722453213,
-        "s7p": -1366.1314676883026,
-        "gdp": 0.0,
+        "nadp_c": -2047.3990792319028,
+        "nadph_c": -1982.3699339961047,
+        "pgl6_c": -1370.8061638577083,
+        "pgc6_c": -1550.0612535608789,
+        "ru5p_c": -1219.8776711515422,
+        "r5p_c": -1223.7964306530832,
+        "co2_c": -384.63682950771874,
+        "xu5p_c": -1222.1672327465312,
+        "e4p_c": -1148.8730722453213,
+        "s7p_c": -1366.1314676883026,
+        "gdp_c": 0.0,
     },
     "log_kcat": {
         "GLUT4": jnp.log(9.999999999999997e-06),

@@ -29,27 +29,6 @@ stoichiometry = {
     "MTHFR1": {"5mthf": 1.0, "mlthf": -1.0, "nadp": 1.0, "nadph": -1.0},
     "PROT1": {"met-L": -1.0},
 }
-species = [
-    "met-L",
-    "atp",
-    "pi",
-    "ppi",
-    "amet",
-    "ahcys",
-    "gly",
-    "sarcs",
-    "hcys-L",
-    "adn",
-    "thf",
-    "5mthf",
-    "mlthf",
-    "glyb",
-    "dmgly",
-    "ser-L",
-    "nadp",
-    "nadph",
-    "cyst-L",
-]
 balanced_species = [
     "met-L",
     "amet",
@@ -57,41 +36,26 @@ balanced_species = [
     "hcys-L",
     "5mthf",
 ]
-reactions = [
-    "the_drain",
-    "MAT1",
-    "MAT3",
-    "METH-Gen",
-    "GNMT1",
-    "AHC1",
-    "MS1",
-    "BHMT1",
-    "CBS1",
-    "MTHFR1",
-    "PROT1",
-]
 model = RateEquationModel(
     stoichiometry=stoichiometry,
-    species=species,
-    reactions=reactions,
     balanced_species=balanced_species,
     rate_equations=[
         Drain(sign=1.0),  # met-L source
         IrreversibleMichaelisMenten(  # MAT1
-            ki=["amet"],
+            competitive_inhibitors=["amet"],
         ),
         AllostericIrreversibleMichaelisMenten(  # MAT3
             subunits=2,
-            dc_activator=["met-L", "amet"],
+            allosteric_activators=["met-L", "amet"],
         ),
         IrreversibleMichaelisMenten(  # METH
-            ki=["ahcys"],
+            competitive_inhibitors=["ahcys"],
         ),
         AllostericIrreversibleMichaelisMenten(  # GNMT1
             subunits=4,
-            ki=["ahcys"],
-            dc_inhibitor=["mlthf"],
-            dc_activator=["amet"],
+            competitive_inhibitors=["ahcys"],
+            allosteric_inhibitors=["mlthf"],
+            allosteric_activators=["amet"],
         ),
         ReversibleMichaelisMenten(  # AHC
             water_stoichiometry=-1.0,
@@ -100,12 +64,12 @@ model = RateEquationModel(
         IrreversibleMichaelisMenten(),  # BHMT
         AllostericIrreversibleMichaelisMenten(  # CBS1
             subunits=2,
-            dc_inhibitor=["amet"],
+            allosteric_inhibitors=["amet"],
         ),
         AllostericIrreversibleMichaelisMenten(  # MTHFR
             subunits=2,
-            dc_inhibitor=["amet"],
-            dc_activator=["ahcys"],
+            allosteric_inhibitors=["amet"],
+            allosteric_activators=["ahcys"],
         ),
         IrreversibleMichaelisMenten(),  # PROT
     ],
@@ -113,10 +77,10 @@ model = RateEquationModel(
 parameters = pack_parameters(
     model.parameter_labelling,
     {
-        # Every dissociation constant, whatever its role. The prefix says
+        # Every saturation constant, whatever its role. The prefix says
         # which: km for a Michaelis constant, ki for a competitive inhibition
         # constant, dc for an allosteric one.
-        "log_k": {
+        "log_saturation_constant": {
             "km|MAT1|met-L": jnp.log(0.000106919),
             "km|MAT1|atp": jnp.log(0.00203015),
             "ki|MAT1|amet": jnp.log(0.000346704),

@@ -10,7 +10,7 @@ Model-level axes start with plain `n_*`: `n_species`, `n_reaction`,
 value per `KineticModel`.
 
 The parameter axes are also model-level, because each parameter is stored
-as a single flat array for the whole model: `n_k` (every dissociation constant
+as a single flat array for the whole model: `n_k` (every saturation constant
 -- Michaelis, competitive inhibition and allosteric), `n_kcat`, `n_enzyme`,
 `n_tc`, `n_drain` and `n_dgf`. A model's `parameter_labelling` says which
 label sits at which index along these axes.
@@ -56,7 +56,7 @@ Flux = Float[Array, " n_reaction"]
 # Model-level, traced: the flat parameter arrays
 #
 # One array per parameter, shared by every reaction. `KArr` holds every
-# dissociation constant, whatever it does: what it does lives in its label
+# saturation constant, whatever it is a constant of: that lives in its label
 # (`km|`, `ki|` or `dc|`), not in the array it sits in.
 # --------------------------------------------------------------------------
 KArr = Float[Array, " n_k"]
@@ -115,7 +115,7 @@ AllostericActivatorIx = Int[np.ndarray, " n_rxn_activator"]  # index n_species
 # Reaction-level, static: where a reaction's parameters sit in the flat arrays
 #
 # These are the gathers that replace the old per-reaction dict lookups. Note
-# that every dissociation constant is gathered from the same `n_k` axis, which
+# that every saturation constant is gathered from the same `n_k` axis, which
 # is what lets two reactions share a slot, and what lets an allosteric `dc`
 # name a catalytic `km` slot.
 # --------------------------------------------------------------------------
@@ -129,7 +129,7 @@ ReactantDgfIx = Int[np.ndarray, " n_rxn_reactant"]  # values index n_dgf
 # --------------------------------------------------------------------------
 # Factor-level, static: where one binding polynomial factor reads from
 #
-# A factor binds some species and divides each by a dissociation constant, so
+# A factor binds some species and divides each by a saturation constant, so
 # its two index arrays always have the same length -- but only within that one
 # factor, which is why they get their own axis.
 # --------------------------------------------------------------------------
@@ -139,7 +139,8 @@ FactorKIx = Int[np.ndarray, " n_factor_species"]  # values index n_k
 # --------------------------------------------------------------------------
 # Parameters
 #
-# A *parameter* is one key of the parameter PyTree, as in `log_k` or `dgf`. A
+# A *parameter* is one key of the parameter PyTree, as in
+# `log_saturation_constant` or `dgf`. A
 # *label* names one value inside a parameter's array, and a *position* is where
 # that value sits along the array.
 # --------------------------------------------------------------------------

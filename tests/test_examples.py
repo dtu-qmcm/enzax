@@ -47,7 +47,8 @@ def test_conserved_moiety_is_conserved():
         guess,
         conserved_moiety.parameters,
     )
-    ix_conserved = jnp.array([6, 7])
+    species = conserved_moiety.model.species
+    ix_conserved = jnp.array([species.index("X1_c"), species.index("X2_c")])
     conc_steady = get_conc(steady)
     conserved_sum_steady = conc_steady[ix_conserved].sum()
     assert jnp.isclose(conserved_sum_steady, pool[0]).all()

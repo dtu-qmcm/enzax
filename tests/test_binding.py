@@ -6,6 +6,7 @@ FBA's ternary abortive complex. Each is checked against the formula written
 out in the spec, evaluated by hand at one concentration vector.
 """
 
+import numpy as np
 import pytest
 from jax import numpy as jnp
 
@@ -19,6 +20,7 @@ from enzax.binding import (
     site,
 )
 from enzax.kinetic_model import RateEquationModel
+from enzax.rate_equation import ReactionScope, get_species_positions
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
     AllostericReversibleMichaelisMenten,
@@ -36,21 +38,28 @@ FBA_CONC = jnp.array([0.2, 0.15, 0.35])
 
 
 def get_model(species, stoichiometry, reactions, rate_equations):
+    """Build a model whose species are `species`, whatever it binds.
+
+    The model works its own species out, so `extra_species` is what keeps the
+    concentration vectors here the same length for every rate equation under
+    test, including the ones that name no effector at all.
+    """
     return RateEquationModel(
         stoichiometry=stoichiometry,
-        species=species,
-        reactions=reactions,
         balanced_species=species,
+        extra_species=species,
         rate_equations=rate_equations,
     )
 
 
 def get_parameters(model, k_values, tc=1.0):
-    """Pack parameters, giving every label but `log_k` an arbitrary value."""
+    """Pack parameters, giving every label but the saturation constants an
+    arbitrary value."""
     labelling = model.parameter_labelling
     spec = {
-        "log_k": {
-            label: jnp.log(k_values[label]) for label in labelling["log_k"]
+        "log_saturation_constant": {
+            label: jnp.log(k_values[label])
+            for label in labelling["log_saturation_constant"]
         },
         "log_kcat": {label: 0.0 for label in labelling["log_kcat"]},
         "log_enzyme": {label: 0.0 for label in labelling["log_enzyme"]},
@@ -65,7 +74,7 @@ def get_parameters(model, k_values, tc=1.0):
 def get_polynomial_value(model, ix_reaction, conc, parameters):
     """Evaluate one reaction's binding polynomial."""
     polynomial = model.rate_equation_ix[ix_reaction].binding_polynomial
-    return polynomial(conc, jnp.exp(parameters["log_k"]))
+    return polynomial(conc, jnp.exp(parameters["log_saturation_constant"]))
 
 
 def test_default_expression_is_the_old_hard_coded_one():
@@ -74,7 +83,7 @@ def test_default_expression_is_the_old_hard_coded_one():
         HEX_SPECIES,
         HEX_STOICHIOMETRY,
         ["HEX1"],
-        [ReversibleMichaelisMenten(ki=["gdp_c"])],
+        [ReversibleMichaelisMenten(competitive_inhibitors=["gdp_c"])],
     )
     expression = model.rate_equations[0].get_expression(model._scopes()[0])
     assert expression == BindingPolynomialExpression(
@@ -151,7 +160,9 @@ def test_hex1_abortive_complexes():
         "km|HEX1|adp_c": 0.6,
         "km|HEX1|gdp_c": 0.8,
     }
-    assert "km|HEX1|gdp_c" in model.parameter_labelling["log_k"]
+    assert (
+        "km|HEX1|gdp_c" in model.parameter_labelling["log_saturation_constant"]
+    )
     parameters = get_parameters(model, k_values)
     glc, atp, g6p, adp, gdp = HEX_CONC
     expected = (
@@ -186,7 +197,7 @@ def test_hex2_can_borrow_hex1s_constant():
             ),
         ],
     )
-    labels = model.parameter_labelling["log_k"]
+    labels = model.parameter_labelling["log_saturation_constant"]
     assert labels.count("km|HEX1|gdp_c") == 1
     assert "km|HEX2|gdp_c" not in labels
     hex1_factor = model.rate_equation_ix[0].binding_polynomial.terms[-1]
@@ -236,25 +247,41 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
             )
         ],
     )
-    assert model.parameter_labelling["log_k"] == (
+    assert model.parameter_labelling["log_saturation_constant"] == (
         "km|FBA|fdp_c",
         "km|FBA|g3p_c",
         "km|FBA|dhap_c",
     )
 
 
-def test_an_expression_naming_an_unknown_species_is_an_error():
+def test_an_expression_can_name_a_species_no_reaction_touches():
+    """A species is whatever the model's parts name, expressions included."""
+    model = RateEquationModel(
+        stoichiometry=FBA_STOICHIOMETRY,
+        balanced_species=FBA_SPECIES,
+        rate_equations=[
+            ReversibleMichaelisMenten(
+                extra_states_expression=dead_end("fdp_c", "gdp_c"),
+            )
+        ],
+    )
+    assert model.species == [*FBA_SPECIES, "gdp_c"]
+    assert "gdp_c" in model.unbalanced_species
+    assert (
+        "km|FBA|gdp_c" in model.parameter_labelling["log_saturation_constant"]
+    )
+
+
+def test_species_positions_reject_a_species_the_model_does_not_have():
+    """Nothing a rate equation names can miss, so the guard is tested here."""
+    scope = ReactionScope(
+        reaction_id="FBA",
+        species=tuple(FBA_SPECIES),
+        stoichiometry=np.array([-1.0, 1.0, 1.0]),
+        species_to_dgf_ix=np.array([0, 1, 2], dtype=np.int16),
+    )
     with pytest.raises(ValueError, match="which are not in the model"):
-        get_model(
-            FBA_SPECIES,
-            FBA_STOICHIOMETRY,
-            ["FBA"],
-            [
-                ReversibleMichaelisMenten(
-                    extra_states_expression=dead_end("fdp_c", "not_a_species"),
-                )
-            ],
-        )
+        get_species_positions(scope, ["not_a_species"])
 
 
 def test_a_non_positive_polynomial_is_an_error():

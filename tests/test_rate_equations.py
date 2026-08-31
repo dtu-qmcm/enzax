@@ -21,7 +21,8 @@ from enzax.rate_equations import (
 EXAMPLE_SPECIES = ["a", "b", "c"]
 EXAMPLE_STOICHIOMETRY = {"r1": {"a": -1.0, "b": 1.0}}
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
-EXAMPLE_SPECIES_TO_COMPOUND = {"b": "a"}  # a and b are the same compound
+# a and b are the same compound, so they share a formation energy
+EXAMPLE_COMPOUND_TO_SPECIES = {"a": ["a", "b"]}
 EXAMPLE_K = {
     "km|r1|a": 0.1,
     "km|r1|b": -0.2,
@@ -38,15 +39,20 @@ def get_flux(rate_equation, enzyme_label="r1"):
     """
     model = RateEquationModel(
         stoichiometry=EXAMPLE_STOICHIOMETRY,
-        species=EXAMPLE_SPECIES,
-        reactions=["r1"],
         balanced_species=EXAMPLE_SPECIES,
-        species_to_compound=EXAMPLE_SPECIES_TO_COMPOUND,
+        # `c` takes part in no reaction, so only a rate equation that names it
+        # as an effector would put it in the model. It is a species here
+        # whether or not the rate equation under test wants it.
+        extra_species=EXAMPLE_SPECIES,
+        compound_to_species=EXAMPLE_COMPOUND_TO_SPECIES,
         rate_equations=[rate_equation],
     )
     labelling = model.parameter_labelling
     spec = {
-        "log_k": {label: EXAMPLE_K[label] for label in labelling["log_k"]},
+        "log_saturation_constant": {
+            label: EXAMPLE_K[label]
+            for label in labelling["log_saturation_constant"]
+        },
         "log_kcat": {"r1": -0.1},
         "log_enzyme": {enzyme_label: EXAMPLE_ENZYME[enzyme_label]},
         "dgf": {"a": -3.0, "c": 1.0},
@@ -83,7 +89,7 @@ def test_allosteric_irreversible_michaelis_menten():
     expected_rate = 0.05608589
     rate = get_flux(
         AllostericIrreversibleMichaelisMenten(
-            dc_activator=["c"],
+            allosteric_activators=["c"],
             subunits=1,
         )
     )
@@ -94,7 +100,7 @@ def test_allosteric_irreversible_michaelis_menten_with_enzyme_name():
     expected_rate = 0.03739059
     rate = get_flux(
         AllostericIrreversibleMichaelisMenten(
-            dc_activator=["c"],
+            allosteric_activators=["c"],
             subunits=1,
             enzyme="e1",
         ),
@@ -107,7 +113,7 @@ def test_allosteric_reversible_michaelis_menten():
     expected_rate = 0.03027414
     rate = get_flux(
         AllostericReversibleMichaelisMenten(
-            dc_activator=["c"],
+            allosteric_activators=["c"],
             subunits=1,
         )
     )
@@ -118,7 +124,7 @@ def test_allosteric_reversible_michaelis_menten_with_enzyme_name():
     expected_rate = 0.02018276
     rate = get_flux(
         AllostericReversibleMichaelisMenten(
-            dc_activator=["c"],
+            allosteric_activators=["c"],
             subunits=1,
             enzyme="e1",
         ),
@@ -131,13 +137,13 @@ def test_michaelis_constants_can_be_declared_in_any_order():
     """The k declaration is keyed by species, so its order cannot matter."""
     forwards = get_flux(
         ReversibleMichaelisMenten(
-            k={"a": "km|r1|a", "b": "km|r1|b"},
+            michaelis_constants={"a": "km|r1|a", "b": "km|r1|b"},
             water_stoichiometry=0.0,
         )
     )
     backwards = get_flux(
         ReversibleMichaelisMenten(
-            k={"b": "km|r1|b", "a": "km|r1|a"},
+            michaelis_constants={"b": "km|r1|b", "a": "km|r1|a"},
             water_stoichiometry=0.0,
         )
     )
@@ -146,14 +152,16 @@ def test_michaelis_constants_can_be_declared_in_any_order():
 
 def test_k_declaration_rejects_a_non_reactant():
     with pytest.raises(ValueError, match="not among its reactants"):
-        get_flux(ReversibleMichaelisMenten(k={"c": "km|r1|c"}))
+        get_flux(
+            ReversibleMichaelisMenten(michaelis_constants={"c": "km|r1|c"})
+        )
 
 
 def test_species_cannot_be_both_activator_and_inhibitor():
     with pytest.raises(ValueError, match="both allosteric inhibitors"):
         get_flux(
             AllostericReversibleMichaelisMenten(
-                dc_inhibitor=["c"],
-                dc_activator=["c"],
+                allosteric_inhibitors=["c"],
+                allosteric_activators=["c"],
             )
         )

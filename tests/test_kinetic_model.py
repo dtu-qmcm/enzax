@@ -6,14 +6,15 @@ import pytest
 from enzax.kinetic_model import RateEquationModel, validate_kinetic_model
 
 
-def get_model(stoichiometry, species, balanced_species, dependent_species):
+def get_model(
+    stoichiometry, balanced_species, dependent_species, extra_species=()
+):
     """Make a model with no rate equations, for testing structure only."""
     return RateEquationModel(
         stoichiometry=stoichiometry,
-        species=species,
-        reactions=list(stoichiometry.keys()),
         balanced_species=balanced_species,
         dependent_species=dependent_species,
+        extra_species=list(extra_species),
     )
 
 
@@ -21,14 +22,12 @@ def get_model(stoichiometry, species, balanced_species, dependent_species):
 # conservation relation.
 CYCLE = dict(
     stoichiometry={"f": {"A": -1.0, "B": 1.0}, "b": {"A": 1.0, "B": -1.0}},
-    species=["A", "B"],
     balanced_species=["A", "B"],
 )
 # A and B are each consumed by their own reaction, so neither determines the
 # other.
 TWO_DRAINS = dict(
     stoichiometry={"ra": {"A": -1.0}, "rb": {"B": -1.0}},
-    species=["A", "B"],
     balanced_species=["A", "B"],
 )
 # A cofactor X1/X2 is recycled while A is turned into B, so the model has two
@@ -39,7 +38,6 @@ TWO_MOIETIES = dict(
         "r": {"A": -1.0, "X1": -1.0, "B": 1.0, "X2": 1.0},
         "regen": {"X2": -1.0, "X1": 1.0},
     },
-    species=["A", "B", "X1", "X2"],
     balanced_species=["A", "B", "X1", "X2"],
 )
 
@@ -71,8 +69,9 @@ def test_validate_kinetic_model_valid(structure, dependent_species):
         (
             dict(
                 stoichiometry=CYCLE["stoichiometry"],
-                species=["A", "B", "C"],
                 balanced_species=["A", "B"],
+                # C takes part in no reaction, so nothing else names it.
+                extra_species=["C"],
             ),
             ["C"],
             "Dependent species must be balanced species",

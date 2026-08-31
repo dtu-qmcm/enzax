@@ -50,30 +50,34 @@ def test_free_arrays_are_shorter_than_full_ones():
 def test_a_single_position_of_a_parameter_can_be_fixed():
     """The thing `eqx.partition` cannot do: freeze one element of one leaf."""
     split = split_parameters_by_fixing(
-        LABELLING, TRUE_PARAMETERS, {"log_k": ["km|r1|a"]}
+        LABELLING, TRUE_PARAMETERS, {"log_saturation_constant": ["km|r1|a"]}
     )
     free = get_free_parameters(split, TRUE_PARAMETERS)
-    assert get_free_labels(split, "log_k") == (
+    assert get_free_labels(split, "log_saturation_constant") == (
         "km|r1|b",
         "km|r2|a",
         "km|r2|c",
     )
-    assert free["log_k"].shape == (3,)
+    assert free["log_saturation_constant"].shape == (3,)
     assert jnp.array_equal(
-        combine_parameters(split, free)["log_k"], TRUE_PARAMETERS["log_k"]
+        combine_parameters(split, free)["log_saturation_constant"],
+        TRUE_PARAMETERS["log_saturation_constant"],
     )
 
 
 def test_a_whole_parameter_can_be_fixed():
     """A parameter with no free positions drops out of the free tree."""
     split = split_parameters_by_fixing(
-        LABELLING, TRUE_PARAMETERS, {"log_k": None}
+        LABELLING, TRUE_PARAMETERS, {"log_saturation_constant": None}
     )
     free = get_free_parameters(split, TRUE_PARAMETERS)
-    assert "log_k" not in free
-    assert get_free_labels(split, "log_k") == ()
+    assert "log_saturation_constant" not in free
+    assert get_free_labels(split, "log_saturation_constant") == ()
     combined = combine_parameters(split, free)
-    assert jnp.array_equal(combined["log_k"], TRUE_PARAMETERS["log_k"])
+    assert jnp.array_equal(
+        combined["log_saturation_constant"],
+        TRUE_PARAMETERS["log_saturation_constant"],
+    )
 
 
 def test_an_unlabelled_parameter_can_be_fixed_or_free():
@@ -102,21 +106,23 @@ def test_gradient_reaches_only_the_free_parameters():
         return SEPARATE.flux(CONC, parameters).sum()
 
     split = split_parameters_by_freeing(
-        LABELLING, TRUE_PARAMETERS, {"log_k": ["km|r1|a", "km|r2|c"]}
+        LABELLING,
+        TRUE_PARAMETERS,
+        {"log_saturation_constant": ["km|r1|a", "km|r2|c"]},
     )
-    full_grad = jax.grad(total_flux)(TRUE_PARAMETERS)["log_k"]
+    full_grad = jax.grad(total_flux)(TRUE_PARAMETERS)["log_saturation_constant"]
     free_grad = jax.grad(lambda f: total_flux(combine_parameters(split, f)))(
         get_free_parameters(split, TRUE_PARAMETERS)
     )
-    assert set(free_grad) == {"log_k"}
-    assert free_grad["log_k"].shape == (2,)
+    assert set(free_grad) == {"log_saturation_constant"}
+    assert free_grad["log_saturation_constant"].shape == (2,)
     expected = jnp.array(
         [
-            full_grad[LABELLING["log_k"].index(label)]
-            for label in get_free_labels(split, "log_k")
+            full_grad[LABELLING["log_saturation_constant"].index(label)]
+            for label in get_free_labels(split, "log_saturation_constant")
         ]
     )
-    assert jnp.allclose(free_grad["log_k"], expected)
+    assert jnp.allclose(free_grad["log_saturation_constant"], expected)
 
 
 def test_split_works_as_a_jit_argument():

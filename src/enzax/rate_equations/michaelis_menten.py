@@ -29,8 +29,8 @@ class ReversibleMichaelisMenten(SaturableRateEquation):
 class AllostericIrreversibleMichaelisMenten(SaturableRateEquation):
     """Irreversible Michaelis Menten kinetics with a Monod Wyman Changeux term.
 
-    Declare the effectors with `dc_inhibitor` and `dc_activator`, and the
-    number of subunits with `subunits`.
+    Declare the effectors with `allosteric_inhibitors` and
+    `allosteric_activators`, and the number of subunits with `subunits`.
     """
 
     reversible: bool = False
@@ -40,8 +40,8 @@ class AllostericIrreversibleMichaelisMenten(SaturableRateEquation):
 class AllostericReversibleMichaelisMenten(SaturableRateEquation):
     """Reversible Michaelis Menten kinetics with a Monod Wyman Changeux term.
 
-    Declare the effectors with `dc_inhibitor` and `dc_activator`, and the
-    number of subunits with `subunits`.
+    Declare the effectors with `allosteric_inhibitors` and
+    `allosteric_activators`, and the number of subunits with `subunits`.
     """
 
     allosteric: bool = True

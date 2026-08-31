@@ -35,7 +35,10 @@ def main():
         print(f"\tSteady state concentration: {conc_steady}")
         print(f"\tFlux: {flux}")
         print(f"\tSv: {sv}")
-        print(f"\tDissociation constant Jacobian: {jac['log_k']}")
+        print(
+            "\tSaturation constant Jacobian: "
+            f"{jac['log_saturation_constant']}"
+        )
         print(f"\tDgf Jacobian: {jac['dgf']}")
 
 

@@ -5,7 +5,8 @@ model, and a labelling says which label sits at which position. Two rate
 equations refer to the same value by using the same label, so sharing is just
 two index arrays holding the same integer.
 
-A *parameter* is one key of the parameter PyTree, as in `log_k` or `dgf`. A
+A *parameter* is one key of the parameter PyTree, as in
+`log_saturation_constant` or `dgf`. A
 *label* names one value inside a parameter's array, and a *position* is where
 that value sits along the array. The containers themselves -- `ParamLabelling`,
 `ParamValueSpec` and friends -- live in `enzax.array_types`.
@@ -16,10 +17,10 @@ a scalar, but nothing here assumes that a parameter's leaf is either scalar or
 one dimensional -- a parameter whose leaf were a covariance matrix would be
 unlabelled too.
 
-Every binding constant (e.g. Michaelis constants, competitive inhibition
-constants, dissociation constants) lives in one array called `log_k`. Enzax
-distinguishes between the different types of binding constants using this
-labelling convention:
+Every constant that a concentration is divided by lives in one array called
+`log_saturation_constant`: they saturate the same way, whatever they are
+constants of. Enzax distinguishes between the kinds using this labelling
+convention:
 
     km|{reaction}|{species}     substrate and product Michaelis constants
     ki|{reaction}|{species}     competitive inhibition constants
@@ -27,7 +28,7 @@ labelling convention:
 
 Note that a value's label doesn't necessarily correspond to the part it plays
 in a rate equation. For example, a rate equation might use a value labelled
-"km..." both as a Michaelis constant and as a dissociation constant.
+"km..." both as a Michaelis constant and as an allosteric one.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -48,12 +49,12 @@ from enzax.array_types import (
 # Separator between the parts of a parameter label.
 SEP = "|"
 
-# Valid label prefixes for values in the `log_k` array.
+# Valid label prefixes for values in the `log_saturation_constant` array.
 K_PREFIXES = ("km", "ki", "dc")
 
 # Parameters whose labels come from the model's rate equations.
 KINETIC_PARAMETERS = (
-    "log_k",
+    "log_saturation_constant",
     "log_kcat",
     "log_enzyme",
     "log_tc",
@@ -97,15 +98,16 @@ def check_parameter_labelling(labelling: Mapping[str, Sequence[str]]) -> None:
     """Raise unless a parameter labelling is well formed.
 
     The checks are that every parameter is one enzax knows about, that every
-    `log_k` label starts with a recognised prefix, and that no parameter
-    labels two of its positions the same way.
+    `log_saturation_constant` label starts with a recognised prefix, and
+    that no parameter labels two of its positions the same way.
     """
     check_parameters_are_known(labelling)
-    for label in labelling.get("log_k", ()):
+    for label in labelling.get("log_saturation_constant", ()):
         prefix = label.split(SEP)[0]
         if prefix not in K_PREFIXES:
             msg = (
-                f"log_k label {label!r} has prefix {prefix!r}, but must "
+                f"log_saturation_constant label {label!r} has prefix "
+                f"{prefix!r}, but must "
                 f"start with one of {[p + SEP for p in K_PREFIXES]}."
             )
             raise ValueError(msg)
@@ -246,8 +248,8 @@ def unpack_parameters(
     """Turn a parameter PyTree back into `{parameter: {label: value}}`.
 
     The inverse of `pack_parameters`, for reading a parameter set at the REPL
-    or in a traceback, where `parameters["log_k"][17]` means nothing on its
-    own.
+    or in a traceback, where `parameters["log_saturation_constant"][17]`
+    means nothing on its own.
     """
     return {
         parameter: unpack_one_parameter(labelling[parameter], leaf)

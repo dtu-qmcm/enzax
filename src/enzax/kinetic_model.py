@@ -1,7 +1,7 @@
 """Module containing enzax's definition of a kinetic model."""
 
 from abc import abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import equinox as eqx
@@ -66,6 +66,50 @@ def get_link_matrix(
     # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
     L0_T = S_ind.T.solve_least_squares(S_dep.T)
     return np.array(L0_T.T, dtype=np.float64)
+
+
+def get_species_to_compound(
+    species: Sequence[str],
+    compound_to_species: Mapping[str, Sequence[str]] | None,
+) -> dict[str, str]:
+    """Work out which compound each species represents.
+
+    `compound_to_species` says which species share a compound, as in
+    `{"m1": ["m1_e", "m1_c"]}`. It is partial: a species no compound claims is
+    a compound of its own, with the same id.
+    """
+    declared = compound_to_species or {}
+    species_to_compound: dict[str, str] = {}
+    for compound, species_ids in declared.items():
+        if isinstance(species_ids, str):
+            msg = (
+                f"compound_to_species maps compound {compound!r} to the "
+                f"string {species_ids!r}. Use a list of species ids."
+            )
+            raise ValueError(msg)
+        if compound in species and compound not in species_ids:
+            msg = (
+                f"compound_to_species declares a compound {compound!r}, but "
+                "that is also the id of a species it does not claim, which "
+                "would give two compounds the same label."
+            )
+            raise ValueError(msg)
+        for species_id in species_ids:
+            if species_id not in species:
+                msg = (
+                    f"compound_to_species gives compound {compound!r} a "
+                    f"species {species_id!r}, which is not one of the model's "
+                    "species."
+                )
+                raise ValueError(msg)
+            if species_id in species_to_compound:
+                msg = (
+                    f"Species {species_id!r} is claimed by two compounds, "
+                    f"{species_to_compound[species_id]!r} and {compound!r}."
+                )
+                raise ValueError(msg)
+            species_to_compound[species_id] = compound
+    return {s: species_to_compound.get(s, s) for s in species}
 
 
 def validate_kinetic_model(model: "KineticModel") -> None:
@@ -135,23 +179,33 @@ class KineticModel(eqx.Module):
     model checks this, along with the other conditions listed in
     `validate_kinetic_model`.
 
+    The reactions and species come from the stoichiometry: the reactions are
+    its keys, in order, and the species are what they consume and produce, in
+    the order they first appear. A species that takes part in no reaction, as
+    an allosteric effector does, joins them if a rate equation names it, or
+    via `extra_species` for a model whose fluxes do not come from rate
+    equations.
+
     Formation energies belong to compounds rather than species, so species
     that represent the same compound in different compartments share one. Use
-    `species_to_compound` to say which compound a species represents, as in
-    `{"m1_e": "m1", "m1_c": "m1"}`; any species left out represents a compound
-    of its own.
+    `compound_to_species` to say which species a compound has, as in
+    `{"m1": ["m1_e", "m1_c"]}`. It is partial: a species that no compound
+    claims is a compound of its own, so only compounds with more than one
+    species need mentioning.
     """
 
     stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
-    species: list[str] = eqx.field(static=True)
-    reactions: list[str] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
-    independent_species: list[str] = eqx.field(static=True, init=False)
-    unbalanced_species: list[str] = eqx.field(static=True, init=False)
-    species_to_compound: dict[str, str] | None = eqx.field(
+    compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
     )
+    extra_species: list[str] = eqx.field(static=True, default_factory=list)
+    species: list[str] = eqx.field(static=True, init=False)
+    reactions: list[str] = eqx.field(static=True, init=False)
+    independent_species: list[str] = eqx.field(static=True, init=False)
+    unbalanced_species: list[str] = eqx.field(static=True, init=False)
+    species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
     species_to_dgf_ix: SpeciesIx = eqx.field(static=True, init=False)
     balanced_species_ix: BalancedSpeciesIx = eqx.field(static=True, init=False)
     unbalanced_species_ix: UnbalancedSpeciesIx = eqx.field(
@@ -167,20 +221,20 @@ class KineticModel(eqx.Module):
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
 
     def __post_init__(self):
-        if self.species_to_compound is None:
-            self.species_to_compound = {}
-        not_species = [
-            s for s in self.species_to_compound if s not in self.species
-        ]
+        self.reactions = list(self.stoichiometry)
+        self.species = self._build_species()
+        named = dict.fromkeys(self.balanced_species + self.dependent_species)
+        not_species = [s for s in named if s not in self.species]
         if not_species:
             msg = (
-                "species_to_compound can only refer to the model's species, "
-                f"but {not_species} are not among them."
+                f"Species {not_species} take part in no reaction, and nothing "
+                "else names them either, so the model has no such species. A "
+                "balanced species needs a reaction that changes it."
             )
             raise ValueError(msg)
-        self.species_to_compound = {
-            s: self.species_to_compound.get(s, s) for s in self.species
-        }
+        self.species_to_compound = get_species_to_compound(
+            self.species, self.compound_to_species
+        )
         compounds = self._dgf_labels()
         self.species_to_dgf_ix = np.array(
             [compounds.index(c) for c in self.species_to_compound.values()],
@@ -233,6 +287,35 @@ class KineticModel(eqx.Module):
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
 
+    def _build_species(self) -> list[str]:
+        """Work out the model's species, in the order they are first named.
+
+        The stoichiometry names most of them. A species that takes part in no
+        reaction is named by whatever does use it -- a rate equation, via
+        `_declared_species`, or `extra_species` when there is no rate equation
+        to ask.
+        """
+        from_reactions = [
+            species_id
+            for reaction in self.reactions
+            for species_id in self.stoichiometry[reaction]
+        ]
+        return list(
+            dict.fromkeys(
+                from_reactions
+                + list(self.extra_species)
+                + list(self._declared_species())
+            )
+        )
+
+    def _declared_species(self) -> list[str]:
+        """Get the species the model's flux definition names.
+
+        The base implementation has no flux definition to ask. Subclasses that
+        have one override it.
+        """
+        return []
+
     def _build_parameter_labelling(self) -> ParamLabelling:
         """Get the model's parameter labelling.
 
@@ -256,9 +339,8 @@ class KineticModel(eqx.Module):
     def _dgf_labels(self) -> list[str]:
         """Label each formation energy after the compound it belongs to.
 
-        Species that represent the same compound, according to
-        `species_to_compound`, share a formation energy. The labels come in
-        the order the compounds first appear in `species`.
+        Species that represent the same compound share a formation energy.
+        The labels come in the order the compounds first appear in `species`.
         """
         return list(dict.fromkeys(self.species_to_compound.values()))
 
@@ -343,6 +425,19 @@ class RateEquationModel(KineticModel):
         static=True, default_factory=list
     )
     rate_equation_ix: list[PyTree] = eqx.field(static=True, init=False)
+
+    def _declared_species(self) -> list[str]:
+        """Get the species the rate equations name, in declaration order.
+
+        An allosteric effector or a dead-end binder takes part in no reaction,
+        so the stoichiometry does not mention it, but it is a species of the
+        model all the same.
+        """
+        return [
+            species_id
+            for rate_equation in self.rate_equations
+            for species_id in rate_equation.get_species()
+        ]
 
     def __post_init__(self):
         super().__post_init__()

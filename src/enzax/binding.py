@@ -204,6 +204,20 @@ def get_declared_species(
     return tuple(declared)
 
 
+def get_expression_species(
+    expression: BindingPolynomialExpression,
+) -> tuple[str, ...]:
+    """Get the species an expression names, in the order it names them."""
+    return tuple(
+        dict.fromkeys(
+            species_id
+            for term in expression.terms
+            for factor in term.factors
+            for species_id, _ in factor.species
+        )
+    )
+
+
 def site(
     *species: SpeciesDeclaration, exponent: float = 1.0
 ) -> BindingPolynomialExpression:
@@ -310,7 +324,9 @@ def resolve_factor(
         scope, (species_id for species_id, _ in factor.species)
     )
     ix_k = get_parameter_positions(
-        labelling, "log_k", get_factor_labels(factor, scope, prefix)
+        labelling,
+        "log_saturation_constant",
+        get_factor_labels(factor, scope, prefix),
     )
     if isinstance(factor, NamedSite):
         return SiteFactor(
@@ -328,7 +344,8 @@ def resolve_expression(
     """Compile a declaration into a polynomial that reads flat arrays.
 
     Names are resolved here and nowhere else, so an unknown species or a label
-    with no `log_k` position is an error when the model is built.
+    with no `log_saturation_constant` position is an error when the model
+    is built.
     """
     return BindingPolynomial(
         terms=tuple(

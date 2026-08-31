@@ -174,6 +174,16 @@ class RateEquation(Module, ABC):
     their own jaxtyping scope.
     """  # noqa: E501
 
+    def get_species(self) -> tuple[str, ...]:
+        """Get every species this rate equation names, in declaration order.
+
+        The model builds its species list from its stoichiometry and this, so
+        a species that takes part in no reaction -- an allosteric effector,
+        say -- is still one of the model's species. A rate equation that only
+        ever mentions its own reactants has nothing to add.
+        """
+        return ()
+
     @abstractmethod
     def get_labels(self, scope: ReactionScope) -> RateEquationLabels:
         """Get the parameter labels this rate equation refers to."""

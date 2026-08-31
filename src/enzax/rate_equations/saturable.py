@@ -44,6 +44,7 @@ from enzax.binding import (
     dead_end,
     get_default_expression,
     get_expression_labels,
+    get_expression_species,
     resolve_expression,
 )
 from enzax.parameters import (
@@ -82,7 +83,8 @@ def get_michaelis_constant_labels(
     unexpected = [s for s in given if s not in species_ids]
     if unexpected:
         msg = (
-            f"Reaction {reaction_id}'s k declaration names {unexpected}, "
+            f"Reaction {reaction_id}'s michaelis_constants declaration "
+            f"names {unexpected}, "
             f"which are not among its {what} {list(species_ids)}."
         )
         raise ValueError(msg)
@@ -92,8 +94,23 @@ def get_michaelis_constant_labels(
         )
         for species_id in species_ids
     }
-    check_species_labels_are_distinct(labels, reaction_id, "k")
+    check_species_labels_are_distinct(
+        labels, reaction_id, "michaelis_constants"
+    )
     return labels
+
+
+def declared_species_ids(
+    declaration: Sequence[str] | Mapping[str, str] | None,
+) -> tuple[str, ...]:
+    """Get the species a list-or-mapping declaration names, in order.
+
+    Unlike `get_species_labels` this asks no questions about the labels, so it
+    can run before the model knows what its species are.
+    """
+    if declaration is None or isinstance(declaration, str):
+        return ()
+    return tuple(declaration)
 
 
 def get_allosteric_species(
@@ -109,10 +126,11 @@ def get_allosteric_species(
 class SaturableRateEquationLabels(RateEquationLabels):
     """The labels a saturable rate equation refers to.
 
-    Every group but `kcat`, `enzyme` and `tc` is gathered from `log_k`, which
-    is what lets two reactions share a constant, and what lets an allosteric
-    constant be the same value as a catalytic one. A reaction that is not
-    allosteric has no `tc` and no `dc` labels.
+    Every group but `kcat`, `enzyme` and `tc` is gathered from
+    `log_saturation_constant`, which is what lets two reactions share a
+    constant, and what lets an allosteric constant be the same value as a
+    catalytic one. A reaction that is not allosteric has no `tc` and no `dc`
+    labels.
 
     `binding` holds whatever a hand-written binding polynomial names, which is
     mostly labels the other groups hold already. Duplicates are dropped when
@@ -123,22 +141,22 @@ class SaturableRateEquationLabels(RateEquationLabels):
     enzyme: str
     substrate_k: tuple[str, ...]
     product_k: tuple[str, ...]
-    ki: tuple[str, ...]
+    competitive_inhibitor: tuple[str, ...]
     tc: str | None
-    dc_inhibitor: tuple[str, ...]
-    dc_activator: tuple[str, ...]
+    allosteric_inhibitor: tuple[str, ...]
+    allosteric_activator: tuple[str, ...]
     binding: tuple[str, ...]
 
     def by_parameter(self) -> ParamLabelling:
         labelling: ParamLabelling = {
             "log_kcat": (self.kcat,),
             "log_enzyme": (self.enzyme,),
-            "log_k": (
+            "log_saturation_constant": (
                 self.substrate_k
                 + self.product_k
-                + self.ki
-                + self.dc_inhibitor
-                + self.dc_activator
+                + self.competitive_inhibitor
+                + self.allosteric_inhibitor
+                + self.allosteric_activator
                 + self.binding
             ),
         }
@@ -165,7 +183,7 @@ class SaturableRateEquationIx(eqx.Module):
 
     Built once, when the model is constructed. `ix_kcat`, `ix_enzyme` and
     `ix_dgf` index their own arrays, and everything else that ends in `_k`
-    indexes the single `log_k` array.
+    indexes the single `log_saturation_constant` array.
     """
 
     ix_kcat: int
@@ -275,13 +293,14 @@ class SaturableRateEquation(RateEquation):
     * `kcat`: label of the turnover number. Defaults to the reaction id.
     * `enzyme`: label of the enzyme concentration. Defaults to the reaction id,
       so two reactions catalysed by the same enzyme share it by labelling it.
-    * `k`: labels for the Michaelis constants, as `{species: label}`. Partial:
-      a species that is not mentioned gets the default label
-      `km|{reaction}|{species}`. There is no separate field for substrates and
-      products, because which is which depends on the direction the reaction
-      happens to be written in.
-    * `ki`: the reaction's competitive inhibitors, either as a list of species
-      ids (default labels `ki|{reaction}|{species}`) or as `{species: label}`.
+    * `michaelis_constants`: labels for the Michaelis constants, as
+      `{species: label}`. Partial: a species that is not mentioned gets the
+      default label `km|{reaction}|{species}`. There is no separate field for
+      substrates and products, because which is which depends on the direction
+      the reaction happens to be written in.
+    * `competitive_inhibitors`: species that bind the free enzyme and stop it
+      working, either as a list of species ids (default labels
+      `ki|{reaction}|{species}`) or as `{species: label}`.
     * `reversible`: whether the rate law has a thermodynamic driving force.
     * `water_stoichiometry`: how much water the reaction consumes or produces,
       which only a reversible reaction cares about.
@@ -290,17 +309,17 @@ class SaturableRateEquation(RateEquation):
       It belongs to the model rather than to the reaction, so give every
       reaction that touches water the same value.
     * `dgf_species`: `{species: compound}` for a reaction whose standard free
-      energy change does not follow from the model's `species_to_compound`.
+      energy change does not follow from the model's compounds.
       It is an escape hatch for reproducing a model that says otherwise, not
       something a model of your own should need.
     * `allosteric`: whether the rate law has a Monod Wyman Changeux factor.
     * `tc`: label of the transfer constant. Defaults to the reaction id.
-    * `dc_inhibitor`: the reaction's allosteric inhibitors, either as a list of
-      species ids (default labels `dc|{reaction}|{species}`) or as
-      `{species: label}`. Using a `km|...` label makes the allosteric constant
-      the same value as a catalytic one.
-    * `dc_activator`: the reaction's allosteric activators, declared the same
-      way.
+    * `allosteric_inhibitors`: species that stabilise the enzyme's tense
+      state, either as a list of species ids (default labels
+      `dc|{reaction}|{species}`) or as `{species: label}`. Using a `km|...`
+      label makes the allosteric constant the same value as a catalytic one.
+    * `allosteric_activators`: species that stabilise the relaxed state,
+      declared the same way.
     * `subunits`: number of subunits in the enzyme.
     * `extra_states_expression`: more states the enzyme can be in, added to
       the binding polynomial the stoichiometry implies. A dead-end complex of
@@ -317,25 +336,64 @@ class SaturableRateEquation(RateEquation):
 
     kcat: str | None = None
     enzyme: str | None = None
-    k: dict[str, str] | None = None
-    ki: list[str] | dict[str, str] | None = None
+    michaelis_constants: dict[str, str] | None = None
+    competitive_inhibitors: list[str] | dict[str, str] | None = None
     reversible: bool = True
     water_stoichiometry: float = 0.0
     water_dgf: float = -150.9
     allosteric: bool = False
     dgf_species: dict[str, str] | None = None
     tc: str | None = None
-    dc_inhibitor: list[str] | dict[str, str] | None = None
-    dc_activator: list[str] | dict[str, str] | None = None
+    allosteric_inhibitors: list[str] | dict[str, str] | None = None
+    allosteric_activators: list[str] | dict[str, str] | None = None
     subunits: int = 1
     extra_states_expression: BindingPolynomialExpression | None = None
     binding_polynomial_expression: BindingPolynomialExpression | None = None
     tense_state_expression: BindingPolynomialExpression | None = None
     relaxed_state_expression: BindingPolynomialExpression | None = None
 
-    def get_ki_species(self, scope: ReactionScope) -> tuple[str, ...]:
+    def get_species(self) -> tuple[str, ...]:
+        """Get every species this rate equation names.
+
+        The reactants come from the stoichiometry, so what matters here is
+        everything else: competitive inhibitors, allosteric effectors, and
+        whatever a hand-written binding polynomial binds. `michaelis_constants`
+        is left out on purpose, since naming a species that is not a reactant
+        there is an error rather than a declaration.
+        """
+        declared = [
+            declared_species_ids(self.competitive_inhibitors),
+        ]
+        expressions = [
+            self.extra_states_expression,
+            self.binding_polynomial_expression,
+        ]
+        if self.allosteric:
+            declared.append(declared_species_ids(self.allosteric_inhibitors))
+            declared.append(declared_species_ids(self.allosteric_activators))
+            expressions.append(self.tense_state_expression)
+            expressions.append(self.relaxed_state_expression)
+        for expression in expressions:
+            if expression is not None:
+                declared.append(get_expression_species(expression))
+        return tuple(dict.fromkeys(s for group in declared for s in group))
+
+    def get_competitive_inhibitors(
+        self, scope: ReactionScope
+    ) -> tuple[str, ...]:
         """Get the reaction's competitive inhibitors, in declaration order."""
-        return tuple(get_species_labels(self.ki, "ki", scope.reaction_id, "ki"))
+        return tuple(self.get_competitive_inhibitor_labels(scope))
+
+    def get_competitive_inhibitor_labels(
+        self, scope: ReactionScope
+    ) -> dict[str, str]:
+        """Get the reaction's competitive inhibitors, as `{species: label}`."""
+        return get_species_labels(
+            self.competitive_inhibitors,
+            "ki",
+            scope.reaction_id,
+            "competitive_inhibitors",
+        )
 
     def get_labels(self, scope: ReactionScope) -> SaturableRateEquationLabels:
         """Get the labels this reaction refers to.
@@ -361,13 +419,13 @@ class SaturableRateEquation(RateEquation):
         products = get_products(scope) if self.reversible else ()
         k_map = get_michaelis_constant_labels(
             self.get_labelled_species(scope),
-            self.k,
+            self.michaelis_constants,
             scope.reaction_id,
             "reactants" if self.reversible else "substrates",
         )
-        ki_map = get_species_labels(self.ki, "ki", scope.reaction_id, "ki")
-        inhibitors = self.get_allosteric_labels(scope, "dc_inhibitor")
-        activators = self.get_allosteric_labels(scope, "dc_activator")
+        ki_map = self.get_competitive_inhibitor_labels(scope)
+        inhibitors = self.get_allosteric_labels(scope, "allosteric_inhibitors")
+        activators = self.get_allosteric_labels(scope, "allosteric_activators")
         both = [s for s in inhibitors if s in activators]
         if both:
             msg = (
@@ -380,12 +438,12 @@ class SaturableRateEquation(RateEquation):
             enzyme=get_reaction_label(self.enzyme, scope.reaction_id),
             substrate_k=tuple(k_map[s] for s in substrates),
             product_k=tuple(k_map[s] for s in products),
-            ki=tuple(ki_map.values()),
+            competitive_inhibitor=tuple(ki_map.values()),
             tc=get_reaction_label(self.tc, scope.reaction_id)
             if self.allosteric
             else None,
-            dc_inhibitor=tuple(inhibitors.values()),
-            dc_activator=tuple(activators.values()),
+            allosteric_inhibitor=tuple(inhibitors.values()),
+            allosteric_activator=tuple(activators.values()),
             binding=self.get_binding_labels(scope),
         )
 
@@ -418,14 +476,14 @@ class SaturableRateEquation(RateEquation):
         if tense is None:
             tense = ONE
             for species_id, label in self.get_allosteric_labels(
-                scope, "dc_inhibitor"
+                scope, "allosteric_inhibitors"
             ).items():
                 tense = tense + dead_end({species_id: label})
         relaxed = self.relaxed_state_expression
         if relaxed is None:
             relaxed = ONE
             for species_id, label in self.get_allosteric_labels(
-                scope, "dc_activator"
+                scope, "allosteric_activators"
             ).items():
                 relaxed = relaxed + dead_end({species_id: label})
             relaxed = self.get_expression(scope) * relaxed
@@ -442,7 +500,9 @@ class SaturableRateEquation(RateEquation):
     ) -> dict[str, str]:
         """Get one of the reaction's allosteric declarations, as a dict."""
         declaration = (
-            self.dc_inhibitor if what == "dc_inhibitor" else self.dc_activator
+            self.allosteric_inhibitors
+            if what == "allosteric_inhibitors"
+            else self.allosteric_activators
         )
         if not self.allosteric:
             return {}
@@ -461,11 +521,11 @@ class SaturableRateEquation(RateEquation):
         """
         k_map = get_michaelis_constant_labels(
             self.get_labelled_species(scope),
-            self.k,
+            self.michaelis_constants,
             scope.reaction_id,
             "reactants" if self.reversible else "substrates",
         )
-        ki_map = get_species_labels(self.ki, "ki", scope.reaction_id, "ki")
+        ki_map = self.get_competitive_inhibitor_labels(scope)
         expression = self.binding_polynomial_expression
         if expression is None:
             expression = get_default_expression(
@@ -486,7 +546,7 @@ class SaturableRateEquation(RateEquation):
                 labelling, "log_enzyme", lab.enzyme
             ),
             ix_substrate_k=get_parameter_positions(
-                labelling, "log_k", lab.substrate_k
+                labelling, "log_saturation_constant", lab.substrate_k
             ),
             ix_substrate=get_species_positions(scope, get_substrates(scope)),
             ix_reactant=ix_reactant,
@@ -508,7 +568,7 @@ class SaturableRateEquation(RateEquation):
     ) -> ReactantDgfIx:
         """Get the formation energy each reactant contributes, by position.
 
-        The model's `species_to_compound` decides this, unless `dgf_species`
+        The model's compounds decide this, unless `dgf_species`
         overrides it for some of the reaction's species.
         """
         positions = scope.species_to_dgf_ix[ix_reactant].copy()
@@ -559,8 +619,10 @@ class SaturableRateEquation(RateEquation):
         return SaturableRateEquationInput(
             kcat=jnp.exp(parameters["log_kcat"][ix.ix_kcat]),
             enzyme=jnp.exp(parameters["log_enzyme"][ix.ix_enzyme]),
-            substrate_kms=jnp.exp(parameters["log_k"][ix.ix_substrate_k]),
-            k=jnp.exp(parameters["log_k"]),
+            substrate_kms=jnp.exp(
+                parameters["log_saturation_constant"][ix.ix_substrate_k]
+            ),
+            k=jnp.exp(parameters["log_saturation_constant"]),
             dgf=parameters["dgf"][ix.ix_dgf],
             temperature=parameters["temperature"],
             ix_substrate=ix.ix_substrate,
