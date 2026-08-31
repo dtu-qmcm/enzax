@@ -16,11 +16,27 @@ abortive complexes, FBA has a ternary one, HEX2 has a concentration-independent
 allosteric factor, and PFKM, PFKL and G6PDH have Monod Wyman Changeux factors
 whose two states are not the ones a stoichiometry implies.
 
-Two differences from the XML, both of which the model's own write-up calls
+Three differences from the XML. Two of them the model's own write-up calls
 corrections: HEX1 divides glucose by its own Michaelis constant rather than by
 ATP's, and PFKL divides fructose-6-phosphate by its own rather than by PFKM's.
 Both matter here, because the fit estimated the constants they distinguish
 separately -- PFKL's is 4.2e-04 against PFKM's 1.2e-04.
+
+The third is a typo. Enolase is `p2g -> pep + h2o`, so its standard free
+energy change is built from phosphoenolpyruvate's formation energy; the SBML
+file builds it from 3-phosphoglycerate's, and the julia version inherited that
+verbatim. The two formation energies are about 154 kJ/mol apart, which is the
+difference between an enolase near equilibrium and one that is effectively
+irreversible: at the SBML's own concentrations it puts ENO's driving force at
+1 rather than 0.71. Both this example and the julia version now use
+phosphoenolpyruvate's, so `tests/test_glycolysis.py` expects ENO to be one of
+the two reactions the SBML's own rate laws do not reproduce.
+
+The formation energies below still come from the fit that had the typo in its
+likelihood, where ENO's term constrained `p3g`'s and `p2g`'s rather than
+`pep`'s. Only refitting would undo that. What the correction does move, at
+these parameters, is the steady state: 3-phosphoglycerate and
+2-phosphoglycerate by 1.25%, everything else by less.
 
 Nothing else differs. Against the julia implementation of the same model, at
 the parameters that version was fitted at, every reaction but glucose
@@ -28,21 +44,6 @@ transport agrees to better than 1e-9, and its steady state is a steady state
 here too -- see `tests/test_glycolysis.py`.
 Glucose transport is the exception because that version holds it at exactly
 zero, where here it is computed and inert.
-
-ENO's `dgf_species` is worth reading before anyone decides it is a bug.
-Enolase is `p2g -> pep + h2o`, so its standard free energy change should be
-built from phosphoenolpyruvate's formation energy; the SBML file builds it
-from 3-phosphoglycerate's, and the julia version inherited that verbatim.
-Almost certainly a slip, and not a small one: the two formation energies are
-about 154 kJ/mol apart, which is the difference between an enolase near
-equilibrium and one that is effectively irreversible.
-
-It stays because the fit is conditioned on it: these formation energies were
-estimated with that term in the likelihood, so `p3g`'s and `pep`'s fitted
-values have both absorbed it, and dropping the override does not restore a
-more correct model -- it produces a different one. Removing it moves ENO's
-flux by 6e-4 at this steady state and 2-phosphoglycerate's concentration by
-1%. Correcting it properly means refitting.
 """
 
 from jax import numpy as jnp
@@ -227,10 +228,7 @@ rate_equations = [
     ReversibleMichaelisMenten(),  # PGM
     # water_dgf is the SBML's own value, not enzax's equilibrator default.
     # The SBML's driving force for ENO uses 3-phosphoglycerate's formation
-    # energy where phosphoenolpyruvate's belongs -- almost certainly a slip,
-    # but the fitted version of this model inherited it and its formation
-    # energies were estimated against it, so reproducing either means
-    # reproducing this.
+    # energy where phosphoenolpyruvate's belongs, which this does not follow.
     ReversibleMichaelisMenten(  # ENO
         water_stoichiometry=1.0, water_dgf=-154.4
     ),
@@ -488,23 +486,23 @@ parameters = pack_parameters(model.parameter_labelling, parameter_values)
 # The steady state the fit sits at, which is a steady state here too.
 steady_state = jnp.array(
     [
-        0.0004662513471268097,  # g6p_c
-        0.00022096658089050886,  # f6p_c
-        0.0005624120688774678,  # fdp_c
-        5.676632398102121e-05,  # dhap_c
-        4.384404454726257e-06,  # g3p_c
-        2.4564364799791964e-05,  # dpg_c
-        0.014559463285097801,  # p3g_c
-        0.0021459286209115614,  # p2g_c
-        8.06472194603238e-06,  # pep_c
-        0.00013784057192012914,  # pyr_c
-        0.0004209475587547363,  # lac_c
-        0.008491343359296587,  # pgl6_c
-        1.3616781752440732e-05,  # pgc6_c
-        1.0493798056255385e-05,  # ru5p_c
-        4.864498188641598e-05,  # r5p_c
-        2.1563452697145036e-05,  # xu5p_c
-        2.5973400187151666e-06,  # e4p_c
-        0.00015161734647285103,  # s7p_c
+        0.00046639630367128885,  # g6p_c
+        0.00022103630518370952,  # f6p_c
+        0.0005642387175484956,  # fdp_c
+        5.697901688637481e-05,  # dhap_c
+        4.406769064460834e-06,  # g3p_c
+        2.486363384213697e-05,  # dpg_c
+        0.014741497012695325,  # p3g_c
+        0.002172822309432318,  # p2g_c
+        8.062477760110338e-06,  # pep_c
+        0.00013779515695061005,  # pyr_c
+        0.00042094755864222137,  # lac_c
+        0.008493542199521099,  # pgl6_c
+        1.361941965052812e-05,  # pgc6_c
+        1.0503329287144712e-05,  # ru5p_c
+        4.8690470568276866e-05,  # r5p_c
+        2.1585925028279545e-05,  # xu5p_c
+        2.6074383457096873e-06,  # e4p_c
+        0.00015129302192134288,  # s7p_c
     ]
 )

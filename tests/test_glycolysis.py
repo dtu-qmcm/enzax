@@ -6,13 +6,14 @@ evaluated from the SBML function definitions rather than through enzax. Every
 reaction is expected to agree, apart from the two the example's docstring
 names.
 
-Those two are also where the julia implementation of the same model
-(`cho_steady_state_fluxes.json` came from it) sides with one of us: it
-normalises HEX1's glucose by glucose's own constant, as we do, and takes ENO's
-standard free energy change from 3-phosphoglycerate, as the SBML does. Against
-julia's rate laws at the same parameter values, 24 of our 26 reactions agree to
-better than 1e-12; the exceptions are ENO at 5e-4 and glucose transport, which
-julia holds at zero.
+The julia implementation of the same model, which
+`cho_steady_state_fluxes.json` came from, agrees with us on both: it
+normalises HEX1's glucose by glucose's own constant, and it takes ENO's
+standard free energy change from phosphoenolpyruvate rather than from
+3-phosphoglycerate, which is the typo both it and this example used to
+inherit from the SBML. Against julia's rate laws at the same parameter values,
+24 of our 26 reactions agree to better than 1e-12; the exceptions are lactate
+transport at 5e-10 and glucose transport, which julia holds at zero.
 """
 
 import json
@@ -30,10 +31,13 @@ jax.config.update("jax_enable_x64", True)
 HERE = Path(__file__).parent
 expected_flux_file = HERE / "data" / "expected_glycolysis_flux.json"
 
-# The one reaction enzax does not reproduce, and by how much: HEX1 divides
+# The two reactions enzax does not reproduce, and by how much. HEX1 divides
 # glucose by its own Michaelis constant rather than by ATP's, which the model's
-# write-up calls a correction.
-KNOWN_DIFFERENT = {"HEX1": 0.0568}
+# write-up calls a correction. ENO builds its standard free energy change from
+# phosphoenolpyruvate, where the SBML uses 3-phosphoglycerate: a typo worth
+# 154 kJ/mol, which at these concentrations is the difference between an
+# enolase at a driving force of 0.71 and one saturated at 1.
+KNOWN_DIFFERENT = {"HEX1": 0.0568, "ENO": 0.2943}
 
 
 def get_expected():
