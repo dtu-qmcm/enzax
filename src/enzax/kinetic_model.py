@@ -149,8 +149,8 @@ class KineticModel(eqx.Module):
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
-    species_to_compound: dict[str, str] | None = eqx.field(
-        static=True, default=None
+    species_to_compound: dict[str, str] = eqx.field(
+        static=True, default_factory=dict
     )
     species_to_dgf_ix: SpeciesIx = eqx.field(static=True, init=False)
     balanced_species_ix: BalancedSpeciesIx = eqx.field(static=True, init=False)
@@ -339,10 +339,10 @@ class RateEquationModel(KineticModel):
     and stored in `rate_equation_ix`.
     """
 
-    rate_equations: list[RateEquation] = eqx.field(
+    rate_equations: Sequence[RateEquation] = eqx.field(
         static=True, default_factory=list
     )
-    rate_equation_ix: list[PyTree] = eqx.field(static=True, init=False)
+    rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
 
     def __post_init__(self):
         super().__post_init__()
