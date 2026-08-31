@@ -421,10 +421,10 @@ class RateEquationModel(KineticModel):
     and stored in `rate_equation_ix`.
     """
 
-    rate_equations: list[RateEquation] = eqx.field(
+    rate_equations: Sequence[RateEquation] = eqx.field(
         static=True, default_factory=list
     )
-    rate_equation_ix: list[PyTree] = eqx.field(static=True, init=False)
+    rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
 
     def _declared_species(self) -> list[str]:
         """Get the species the rate equations name, in declaration order.
