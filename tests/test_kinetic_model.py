@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from enzax.kinetic_model import RateEquationModel, validate_kinetic_model
-from enzax.rate_equations import ReversibleMichaelisMenten
+from enzax.rate_equations import MichaelisMenten
 
 
 def get_model(
@@ -17,7 +17,7 @@ def get_model(
         dependent_species=dependent_species,
         extra_species=list(extra_species),
         rate_equations={
-            reaction: ReversibleMichaelisMenten() for reaction in stoichiometry
+            reaction: MichaelisMenten() for reaction in stoichiometry
         },
     )
 
@@ -130,7 +130,7 @@ def test_every_reaction_needs_a_rate_equation():
         RateEquationModel(
             stoichiometry=CYCLE["stoichiometry"],
             balanced_species=["A", "B"],
-            rate_equations={"f": ReversibleMichaelisMenten()},
+            rate_equations={"f": MichaelisMenten()},
         )
 
 
@@ -140,8 +140,8 @@ def test_a_rate_equation_needs_a_reaction():
             stoichiometry=CYCLE["stoichiometry"],
             balanced_species=["A", "B"],
             rate_equations={
-                "f": ReversibleMichaelisMenten(),
-                "b": ReversibleMichaelisMenten(),
-                "not_a_reaction": ReversibleMichaelisMenten(),
+                "f": MichaelisMenten(),
+                "b": MichaelisMenten(),
+                "not_a_reaction": MichaelisMenten(),
             },
         )

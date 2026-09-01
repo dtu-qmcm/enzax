@@ -4,9 +4,6 @@
       filters:
         - "!check"
       members:
+        - MichaelisMenten
         - SaturableRateEquation
         - Drain
-        - IrreversibleMichaelisMenten
-        - ReversibleMichaelisMenten
-        - AllostericIrreversibleMichaelisMenten
-        - AllostericReversibleMichaelisMenten

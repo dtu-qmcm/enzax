@@ -22,10 +22,7 @@ from enzax.binding import (
 from enzax.kinetic_model import RateEquationModel
 from enzax.rate_equation import ReactionScope, get_species_positions
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
+from enzax.rate_equations import MichaelisMenten, SaturableRateEquation
 
 HEX_SPECIES = ["glc_c", "atp_c", "g6p_c", "adp_c", "gdp_c"]
 HEX_STOICHIOMETRY = {
@@ -83,7 +80,7 @@ def test_default_expression_is_the_old_hard_coded_one():
         HEX_SPECIES,
         HEX_STOICHIOMETRY,
         ["HEX1"],
-        [ReversibleMichaelisMenten(competitive_inhibitors=["gdp_c"])],
+        [MichaelisMenten(competitive_inhibitors=["gdp_c"])],
     )
     expression = model.rate_equations["HEX1"].get_expression(model._scopes()[0])
     assert expression == BindingPolynomialExpression(
@@ -146,8 +143,8 @@ def test_hex1_abortive_complexes():
         HEX_STOICHIOMETRY,
         ["HEX1"],
         [
-            ReversibleMichaelisMenten(
-                extra_states_expression=(
+            SaturableRateEquation(
+                dead_end_states_expression=(
                     dead_end("glc_c", "g6p_c") + dead_end("glc_c", "gdp_c")
                 ),
             )
@@ -187,11 +184,11 @@ def test_hex2_can_borrow_hex1s_constant():
         stoichiometry,
         ["HEX1", "HEX2"],
         [
-            ReversibleMichaelisMenten(
-                extra_states_expression=dead_end("glc_c", "gdp_c"),
+            SaturableRateEquation(
+                dead_end_states_expression=dead_end("glc_c", "gdp_c"),
             ),
-            ReversibleMichaelisMenten(
-                extra_states_expression=dead_end(
+            SaturableRateEquation(
+                dead_end_states_expression=dead_end(
                     {"glc_c": "km|HEX2|glc_c", "gdp_c": "km|HEX1|gdp_c"}
                 ),
             ),
@@ -212,8 +209,8 @@ def test_fba_ternary_abortive_complex():
         FBA_STOICHIOMETRY,
         ["FBA"],
         [
-            ReversibleMichaelisMenten(
-                extra_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
+            SaturableRateEquation(
+                dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
             )
         ],
     )
@@ -242,8 +239,8 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
         FBA_STOICHIOMETRY,
         ["FBA"],
         [
-            ReversibleMichaelisMenten(
-                extra_states_expression=dead_end("fdp_c", "g3p_c"),
+            SaturableRateEquation(
+                dead_end_states_expression=dead_end("fdp_c", "g3p_c"),
             )
         ],
     )
@@ -260,8 +257,8 @@ def test_an_expression_can_name_a_species_no_reaction_touches():
         stoichiometry=FBA_STOICHIOMETRY,
         balanced_species=FBA_SPECIES,
         rate_equations={
-            "FBA": ReversibleMichaelisMenten(
-                extra_states_expression=dead_end("fdp_c", "gdp_c"),
+            "FBA": SaturableRateEquation(
+                dead_end_states_expression=dead_end("fdp_c", "gdp_c"),
             )
         },
     )
@@ -291,7 +288,7 @@ def test_a_non_positive_polynomial_is_an_error():
         FBA_STOICHIOMETRY,
         ["FBA"],
         [
-            ReversibleMichaelisMenten(
+            SaturableRateEquation(
                 binding_polynomial_expression=-1.0 * ONE,
             )
         ],
@@ -342,9 +339,7 @@ def get_allosteric_factor(
     Whatever the rest of the rate law does, it does the same in both, so what
     is left is the Monod Wyman Changeux factor on its own.
     """
-    plain = get_model(
-        species, stoichiometry, [reaction], [ReversibleMichaelisMenten()]
-    )
+    plain = get_model(species, stoichiometry, [reaction], [MichaelisMenten()])
     fancy = get_model(species, stoichiometry, [reaction], [allosteric])
     plain_flux = plain.flux(conc, get_parameters(plain, k))
     fancy_flux = fancy.flux(conc, get_parameters(fancy, k, tc))
@@ -358,7 +353,7 @@ def test_g6pdh_reuses_a_catalytic_constant_allosterically():
         G6PDH_STOICHIOMETRY,
         "G6PDH",
         G6PDH_CONC,
-        AllostericReversibleMichaelisMenten(
+        SaturableRateEquation(
             subunits=2,
             tense_state_expression=site({"nadph_c": "km|G6PDH|nadph_c"}),
             relaxed_state_expression=ONE,
@@ -378,7 +373,7 @@ def test_pfkm_ratio_of_two_products_of_sites():
         PFK_STOICHIOMETRY,
         "PFKM",
         PFK_CONC,
-        AllostericReversibleMichaelisMenten(
+        SaturableRateEquation(
             subunits=4,
             tense_state_expression=(
                 14.0 * site({"atp_c": "km|PFKM|atp_c"}) * site("lac_c")
@@ -405,7 +400,7 @@ def test_a_constant_allosteric_factor():
         G6PDH_STOICHIOMETRY,
         "G6PDH",
         G6PDH_CONC,
-        AllostericReversibleMichaelisMenten(
+        SaturableRateEquation(
             tense_state_expression=ONE,
             relaxed_state_expression=ONE,
         ),
@@ -415,11 +410,49 @@ def test_a_constant_allosteric_factor():
     assert jnp.isclose(factor, 1.0 / 1.25)
 
 
-def test_an_allosteric_state_needs_an_allosteric_reaction():
-    with pytest.raises(ValueError, match="not allosteric"):
-        get_model(
-            G6PDH_SPECIES,
-            G6PDH_STOICHIOMETRY,
-            ["G6PDH"],
-            [ReversibleMichaelisMenten(tense_state_expression=ONE)],
+def test_declaring_a_state_makes_a_reaction_allosteric():
+    """A Monod Wyman Changeux factor with no effectors, declared by its states.
+
+    Nothing else says this reaction is allosteric: it has no allosteric
+    inhibitor, no activator and no transfer constant label, so the states are
+    what enzax has to go on.
+    """
+    rate_equation = SaturableRateEquation(
+        tense_state_expression=ONE,
+        relaxed_state_expression=ONE,
+    )
+    assert rate_equation.is_allosteric()
+    model = get_model(
+        G6PDH_SPECIES,
+        G6PDH_STOICHIOMETRY,
+        ["G6PDH"],
+        [rate_equation],
+    )
+    assert "G6PDH" in model.parameter_labelling["log_tc"]
+
+
+def test_declaring_an_effector_makes_a_reaction_allosteric():
+    """An effector is enough on its own, with the states left to default."""
+    rate_equation = MichaelisMenten(allosteric_activators=["nadp_c"])
+    assert rate_equation.is_allosteric()
+    assert rate_equation.get_species() == ("nadp_c",)
+    model = get_model(
+        G6PDH_SPECIES,
+        G6PDH_STOICHIOMETRY,
+        ["G6PDH"],
+        [rate_equation],
+    )
+    assert "G6PDH" in model.parameter_labelling["log_tc"]
+    assert (
+        "dc|G6PDH|nadp_c"
+        in model.parameter_labelling["log_saturation_constant"]
+    )
+
+
+def test_a_michaelis_menten_reaction_declares_no_polynomial():
+    """The two classes differ by whether the polynomial can be written out."""
+    assert not MichaelisMenten().is_allosteric()
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        MichaelisMenten(  # pyright: ignore
+            dead_end_states_expression=dead_end("fdp_c", "g3p_c")
         )

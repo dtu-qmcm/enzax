@@ -53,9 +53,8 @@ from enzax.binding import ONE, dead_end, site
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    IrreversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
+    MichaelisMenten,
+    SaturableRateEquation,
 )
 
 stoichiometry = {
@@ -152,21 +151,21 @@ compound_to_species = {
     "lac": ["lac_c", "lac_e"],
 }
 rate_equations = {
-    "GLUT4": ReversibleMichaelisMenten(),
-    "HEX1": ReversibleMichaelisMenten(
-        extra_states_expression=dead_end("g6p_c", "glc_c"),
+    "GLUT4": MichaelisMenten(),
+    "HEX1": SaturableRateEquation(
+        dead_end_states_expression=dead_end("g6p_c", "glc_c"),
     ),
-    "HEX2": AllostericReversibleMichaelisMenten(
+    "HEX2": SaturableRateEquation(
         # A constant factor 1/(1 + L0 * alpha**2): both states are the empty
         # one, and `tc` is the whole of `L0 * alpha**2`.
-        extra_states_expression=(
+        dead_end_states_expression=(
             dead_end("g6p_c", "glc_c") + dead_end("gdp_c", "glc_c")
         ),
         tense_state_expression=ONE,
         relaxed_state_expression=ONE,
     ),
-    "PGI": ReversibleMichaelisMenten(),
-    "PFKM": AllostericReversibleMichaelisMenten(
+    "PGI": MichaelisMenten(),
+    "PFKM": SaturableRateEquation(
         subunits=4,
         tense_state_expression=(
             # (1 + 0.7/0.2)(1 + 3) = 18, a constant carried over from the SBML
@@ -177,7 +176,7 @@ rate_equations = {
             * site("f26bp_c")
         ),
     ),
-    "PFKL": AllostericReversibleMichaelisMenten(
+    "PFKL": SaturableRateEquation(
         subunits=4,
         tense_state_expression=(
             18.0 * site({"atp_c": "km|PFKL|atp_c"}) * site("lac_c")
@@ -186,21 +185,21 @@ rate_equations = {
             {"f6p_c": "km|PFKL|f6p_c", "fdp_c": "km|PFKL|fdp_c"}
         ),
     ),
-    "FBA": ReversibleMichaelisMenten(
-        extra_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
+    "FBA": SaturableRateEquation(
+        dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
     ),
-    "TPI": ReversibleMichaelisMenten(),
-    "GAPD": ReversibleMichaelisMenten(),
-    "PGK": ReversibleMichaelisMenten(),
-    "PGM": ReversibleMichaelisMenten(),
+    "TPI": MichaelisMenten(),
+    "GAPD": MichaelisMenten(),
+    "PGK": MichaelisMenten(),
+    "PGM": MichaelisMenten(),
     # water_dgf is the SBML's own value, not enzax's equilibrator default.
     # The SBML's driving force for ENO uses 3-phosphoglycerate's formation
     # energy where phosphoenolpyruvate's belongs, which this does not follow.
-    "ENO": ReversibleMichaelisMenten(water_stoichiometry=1.0, water_dgf=-154.4),
-    "PKM1": ReversibleMichaelisMenten(),
-    "PKM2": ReversibleMichaelisMenten(),
-    "LDHA": ReversibleMichaelisMenten(),
-    "G6PDH": AllostericReversibleMichaelisMenten(
+    "ENO": MichaelisMenten(water_stoichiometry=1.0, water_dgf=-154.4),
+    "PKM1": MichaelisMenten(),
+    "PKM2": MichaelisMenten(),
+    "LDHA": MichaelisMenten(),
+    "G6PDH": SaturableRateEquation(
         subunits=2,
         # 1/(1 + L0 * (1/(1 + nadp/Km_nadp))**2): the tense state is the empty
         # enzyme and the relaxed one is the NADP site, so more NADP relieves
@@ -208,13 +207,11 @@ rate_equations = {
         tense_state_expression=ONE,
         relaxed_state_expression=site({"nadp_c": "km|G6PDH|nadp_c"}),
     ),
-    "PGL": ReversibleMichaelisMenten(
-        water_stoichiometry=-1.0, water_dgf=-154.4
-    ),
-    "GND": ReversibleMichaelisMenten(),
-    "RPI": ReversibleMichaelisMenten(),
-    "RPE": ReversibleMichaelisMenten(),
-    "TKT1": ReversibleMichaelisMenten(
+    "PGL": MichaelisMenten(water_stoichiometry=-1.0, water_dgf=-154.4),
+    "GND": MichaelisMenten(),
+    "RPI": MichaelisMenten(),
+    "RPE": MichaelisMenten(),
+    "TKT1": MichaelisMenten(
         # One transketolase catalyses both TKT reactions, with one set of
         # Michaelis constants and a turnover number each.
         enzyme="TKT",
@@ -225,7 +222,7 @@ rate_equations = {
             "g3p_c": "km|TKT|g3p_c",
         },
     ),
-    "TKT2": ReversibleMichaelisMenten(
+    "TKT2": MichaelisMenten(
         enzyme="TKT",
         michaelis_constants={
             "e4p_c": "km|TKT|e4p_c",
@@ -234,12 +231,12 @@ rate_equations = {
             "g3p_c": "km|TKT|g3p_c",
         },
     ),
-    "TALA": ReversibleMichaelisMenten(),
+    "TALA": MichaelisMenten(),
     # A drain `v * conc / (conc + eps)` is Michaelis Menten kinetics with one
     # substrate, `kcat * enzyme = v` and `km = eps`.
-    "r5p_drain": IrreversibleMichaelisMenten(),
-    "pyr_drain": IrreversibleMichaelisMenten(),
-    "lac_transport": ReversibleMichaelisMenten(),
+    "r5p_drain": MichaelisMenten(reversible=False),
+    "pyr_drain": MichaelisMenten(reversible=False),
+    "lac_transport": MichaelisMenten(),
 }
 model = RateEquationModel(
     stoichiometry=stoichiometry,

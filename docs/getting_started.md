@@ -27,10 +27,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters, unpack_parameters
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
+from enzax.rate_equations import MichaelisMenten
 
 ```
 
@@ -47,13 +44,13 @@ balanced_species = ["m1c", "m2c"]
 
 The model works out its own reactions and species from this: the reactions are the stoichiometry's keys, in order, and the species are what they consume and produce, in the order they first appear. A species that takes part in no reaction, like an allosteric effector, joins them when a rate equation names it.
 
-Next we specify the model's rate equations, one per reaction id. Species are referred to by id, so `allosteric_activators=["m2c"]` says that `r1` is allosterically activated by `m2c`.
+Next we specify the model's rate equations, one per reaction id. Species are referred to by id, so `allosteric_activators=["m2c"]` says that `r1` is allosterically activated by `m2c`, which is also what gives `r1` a Monod Wyman Changeux factor: a rate law is allosteric when it declares an effector, a transfer constant or one of its two states, so there is no separate flag to remember. Pass `reversible=False` for a rate law with no thermodynamic driving force, and use `SaturableRateEquation` instead when you want to write the binding polynomial out yourself.
 
 ```python
 rate_equations = {
-    "r1": AllostericReversibleMichaelisMenten(allosteric_activators=["m2c"], subunits=1),
-    "r2": AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
-    "r3": ReversibleMichaelisMenten(water_stoichiometry=0.0),
+    "r1": MichaelisMenten(allosteric_activators=["m2c"], subunits=1),
+    "r2": MichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
+    "r3": MichaelisMenten(water_stoichiometry=0.0),
 }
 ```
 
@@ -132,14 +129,14 @@ Two rate equations that use the same label use the same value --- one position i
 
 ```python
 shared_rate_equations = {
-    "r1": AllostericReversibleMichaelisMenten(
+    "r1": MichaelisMenten(
         allosteric_activators=["m2c"],
         subunits=1,
         enzyme="E1",
         michaelis_constants={"m1e": "km|E1|substrate"},
     ),
-    "r2": AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
-    "r3": ReversibleMichaelisMenten(
+    "r2": MichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
+    "r3": MichaelisMenten(
         water_stoichiometry=0.0,
         enzyme="E1",
         michaelis_constants={"m2c": "km|E1|substrate"},

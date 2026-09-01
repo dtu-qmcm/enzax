@@ -9,12 +9,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import (
-    AllostericIrreversibleMichaelisMenten,
-    Drain,
-    IrreversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
+from enzax.rate_equations import Drain, MichaelisMenten
 
 stoichiometry = {
     "the_drain": {"met-L": 1.0},
@@ -41,37 +36,43 @@ model = RateEquationModel(
     balanced_species=balanced_species,
     rate_equations={
         "the_drain": Drain(sign=1.0),  # met-L source
-        "MAT1": IrreversibleMichaelisMenten(
+        "MAT1": MichaelisMenten(
+            reversible=False,
             competitive_inhibitors=["amet"],
         ),
-        "MAT3": AllostericIrreversibleMichaelisMenten(
+        "MAT3": MichaelisMenten(
+            reversible=False,
             subunits=2,
             allosteric_activators=["met-L", "amet"],
         ),
-        "METH-Gen": IrreversibleMichaelisMenten(
+        "METH-Gen": MichaelisMenten(
+            reversible=False,
             competitive_inhibitors=["ahcys"],
         ),
-        "GNMT1": AllostericIrreversibleMichaelisMenten(
+        "GNMT1": MichaelisMenten(
+            reversible=False,
             subunits=4,
             competitive_inhibitors=["ahcys"],
             allosteric_inhibitors=["mlthf"],
             allosteric_activators=["amet"],
         ),
-        "AHC1": ReversibleMichaelisMenten(
+        "AHC1": MichaelisMenten(
             water_stoichiometry=-1.0,
         ),
-        "MS1": IrreversibleMichaelisMenten(),
-        "BHMT1": IrreversibleMichaelisMenten(),
-        "CBS1": AllostericIrreversibleMichaelisMenten(
+        "MS1": MichaelisMenten(reversible=False),
+        "BHMT1": MichaelisMenten(reversible=False),
+        "CBS1": MichaelisMenten(
+            reversible=False,
             subunits=2,
             allosteric_inhibitors=["amet"],
         ),
-        "MTHFR1": AllostericIrreversibleMichaelisMenten(
+        "MTHFR1": MichaelisMenten(
+            reversible=False,
             subunits=2,
             allosteric_inhibitors=["amet"],
             allosteric_activators=["ahcys"],
         ),
-        "PROT1": IrreversibleMichaelisMenten(),
+        "PROT1": MichaelisMenten(reversible=False),
     },
 )
 parameters = pack_parameters(

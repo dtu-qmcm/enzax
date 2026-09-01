@@ -29,10 +29,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
+from enzax.rate_equations import MichaelisMenten
 
 stoichiometry = {
     "transA": {"A_e": -1.0, "A_c": 1.0},
@@ -50,20 +47,20 @@ dependent_species = ["X2_c"]
 # Every other species is a compound of its own, so it needs no entry here.
 compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
 rate_equations = {
-    "transA": ReversibleMichaelisMenten(),
-    "r1": ReversibleMichaelisMenten(competitive_inhibitors=["D_c"]),
-    "r2A": AllostericReversibleMichaelisMenten(
+    "transA": MichaelisMenten(),
+    "r1": MichaelisMenten(competitive_inhibitors=["D_c"]),
+    "r2A": MichaelisMenten(
         allosteric_activators=["C_c"],
         subunits=1,
     ),
-    "r2B": AllostericReversibleMichaelisMenten(
+    "r2B": MichaelisMenten(
         allosteric_inhibitors=["C_c"],
         subunits=1,
     ),
-    "r3": ReversibleMichaelisMenten(),
-    "r4": ReversibleMichaelisMenten(),
-    "transD": ReversibleMichaelisMenten(),
-    "regX": ReversibleMichaelisMenten(),
+    "r3": MichaelisMenten(),
+    "r4": MichaelisMenten(),
+    "transD": MichaelisMenten(),
+    "regX": MichaelisMenten(),
 }
 model = RateEquationModel(
     stoichiometry=stoichiometry,

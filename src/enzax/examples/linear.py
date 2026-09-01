@@ -4,10 +4,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
+from enzax.rate_equations import MichaelisMenten
 
 stoichiometry = {
     "r1": {"m1e": -1.0, "m1c": 1.0},
@@ -16,13 +13,11 @@ stoichiometry = {
 }
 balanced_species = ["m1c", "m2c"]
 rate_equations = {
-    "r1": AllostericReversibleMichaelisMenten(
-        allosteric_activators=["m2c"], subunits=1
-    ),
-    "r2": AllostericReversibleMichaelisMenten(
+    "r1": MichaelisMenten(allosteric_activators=["m2c"], subunits=1),
+    "r2": MichaelisMenten(
         allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]
     ),
-    "r3": ReversibleMichaelisMenten(water_stoichiometry=0.0),
+    "r3": MichaelisMenten(water_stoichiometry=0.0),
 }
 model = RateEquationModel(
     stoichiometry=stoichiometry,
