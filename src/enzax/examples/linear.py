@@ -15,15 +15,15 @@ stoichiometry = {
     "r3": {"m2c": -1.0, "m2e": 1.0},
 }
 balanced_species = ["m1c", "m2c"]
-rate_equations = [
-    AllostericReversibleMichaelisMenten(
+rate_equations = {
+    "r1": AllostericReversibleMichaelisMenten(
         allosteric_activators=["m2c"], subunits=1
     ),
-    AllostericReversibleMichaelisMenten(
+    "r2": AllostericReversibleMichaelisMenten(
         allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]
     ),
-    ReversibleMichaelisMenten(water_stoichiometry=0.0),
-]
+    "r3": ReversibleMichaelisMenten(water_stoichiometry=0.0),
+}
 model = RateEquationModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,

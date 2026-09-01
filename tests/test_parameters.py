@@ -38,7 +38,7 @@ def get_model(rate_equations, **kwargs):
     return RateEquationModel(
         stoichiometry=STOICHIOMETRY,
         balanced_species=SPECIES,
-        rate_equations=rate_equations,
+        rate_equations=dict(zip(STOICHIOMETRY, rate_equations)),
         **kwargs,
     )
 
@@ -256,7 +256,7 @@ def test_separator_is_rejected_in_an_id():
         RateEquationModel(
             stoichiometry={"r1": {"a|b": -1.0, "c": 1.0}},
             balanced_species=["a|b", "c"],
-            rate_equations=[ReversibleMichaelisMenten()],
+            rate_equations={"r1": ReversibleMichaelisMenten()},
         )
 
 

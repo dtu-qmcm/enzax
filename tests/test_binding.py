@@ -48,7 +48,7 @@ def get_model(species, stoichiometry, reactions, rate_equations):
         stoichiometry=stoichiometry,
         balanced_species=species,
         extra_species=species,
-        rate_equations=rate_equations,
+        rate_equations=dict(zip(reactions, rate_equations)),
     )
 
 
@@ -85,7 +85,7 @@ def test_default_expression_is_the_old_hard_coded_one():
         ["HEX1"],
         [ReversibleMichaelisMenten(competitive_inhibitors=["gdp_c"])],
     )
-    expression = model.rate_equations[0].get_expression(model._scopes()[0])
+    expression = model.rate_equations["HEX1"].get_expression(model._scopes()[0])
     assert expression == BindingPolynomialExpression(
         (
             NamedTerm(-1.0, ()),
@@ -259,11 +259,11 @@ def test_an_expression_can_name_a_species_no_reaction_touches():
     model = RateEquationModel(
         stoichiometry=FBA_STOICHIOMETRY,
         balanced_species=FBA_SPECIES,
-        rate_equations=[
-            ReversibleMichaelisMenten(
+        rate_equations={
+            "FBA": ReversibleMichaelisMenten(
                 extra_states_expression=dead_end("fdp_c", "gdp_c"),
             )
-        ],
+        },
     )
     assert model.species == [*FBA_SPECIES, "gdp_c"]
     assert "gdp_c" in model.unbalanced_species

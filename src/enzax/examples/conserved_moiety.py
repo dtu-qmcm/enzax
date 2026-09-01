@@ -49,24 +49,22 @@ dependent_species = ["X2_c"]
 # A and D each live in two compartments, so they share a formation energy.
 # Every other species is a compound of its own, so it needs no entry here.
 compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
-rate_equations = [
-    ReversibleMichaelisMenten(),  # transA
-    ReversibleMichaelisMenten(
-        competitive_inhibitors=["D_c"]
-    ),  # r1, inhibited competitively
-    AllostericReversibleMichaelisMenten(  # r2A, activated by C_c
+rate_equations = {
+    "transA": ReversibleMichaelisMenten(),
+    "r1": ReversibleMichaelisMenten(competitive_inhibitors=["D_c"]),
+    "r2A": AllostericReversibleMichaelisMenten(
         allosteric_activators=["C_c"],
         subunits=1,
     ),
-    AllostericReversibleMichaelisMenten(  # r2B, inhibited by C_c
+    "r2B": AllostericReversibleMichaelisMenten(
         allosteric_inhibitors=["C_c"],
         subunits=1,
     ),
-    ReversibleMichaelisMenten(),  # r3
-    ReversibleMichaelisMenten(),  # r4
-    ReversibleMichaelisMenten(),  # transD
-    ReversibleMichaelisMenten(),  # regX
-]
+    "r3": ReversibleMichaelisMenten(),
+    "r4": ReversibleMichaelisMenten(),
+    "transD": ReversibleMichaelisMenten(),
+    "regX": ReversibleMichaelisMenten(),
+}
 model = RateEquationModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,

@@ -112,6 +112,29 @@ def get_species_to_compound(
     return {s: species_to_compound.get(s, s) for s in species}
 
 
+def check_rate_equations_cover_reactions(
+    reactions: Sequence[str],
+    rate_equations: Mapping[str, RateEquation],
+) -> None:
+    """Raise unless there is exactly one rate equation per reaction.
+
+    A reaction with no rate equation has no flux, and a rate equation keyed by
+    something that is not a reaction is a typo, so both are errors rather than
+    something to work around.
+    """
+    missing = [r for r in reactions if r not in rate_equations]
+    if missing:
+        msg = f"Reactions {missing} have no rate equation."
+        raise ValueError(msg)
+    unknown = [r for r in rate_equations if r not in reactions]
+    if unknown:
+        msg = (
+            f"rate_equations names {unknown}, which the stoichiometry does "
+            f"not: its reactions are {list(reactions)}."
+        )
+        raise ValueError(msg)
+
+
 def validate_kinetic_model(model: "KineticModel") -> None:
     """Raise a ValueError if a kinetic model is not well formed.
 
@@ -415,19 +438,22 @@ class KineticModel(eqx.Module):
 class RateEquationModel(KineticModel):
     """A kinetic model that specifies its fluxes using RateEquation objects.
 
+    `rate_equations` maps each reaction id to the rate equation that gives its
+    flux, and must cover exactly the reactions the stoichiometry names.
+
     The model owns the parameter labelling built from its rate equations'
     labels, plus the labels implied by its own structure. Each rate equation's
     labels are resolved to positions in the flat parameter arrays once, here,
-    and stored in `rate_equation_ix`.
+    and stored in `rate_equation_ix`, in reaction order.
     """
 
-    rate_equations: Sequence[RateEquation] = eqx.field(
-        static=True, default_factory=list
+    rate_equations: Mapping[str, RateEquation] = eqx.field(
+        static=True, default_factory=dict
     )
     rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
 
     def _declared_species(self) -> list[str]:
-        """Get the species the rate equations name, in declaration order.
+        """Get the species the rate equations name, in reaction order.
 
         An allosteric effector or a dead-end binder takes part in no reaction,
         so the stoichiometry does not mention it, but it is a species of the
@@ -435,15 +461,20 @@ class RateEquationModel(KineticModel):
         """
         return [
             species_id
-            for rate_equation in self.rate_equations
-            for species_id in rate_equation.get_species()
+            for reaction in self.reactions
+            for species_id in self.rate_equations[reaction].get_species()
         ]
 
     def __post_init__(self):
+        check_rate_equations_cover_reactions(
+            list(self.stoichiometry), self.rate_equations
+        )
         super().__post_init__()
         self.rate_equation_ix = [
-            rate_equation.resolve(scope, self.parameter_labelling)
-            for rate_equation, scope in zip(self.rate_equations, self._scopes())
+            self.rate_equations[scope.reaction_id].resolve(
+                scope, self.parameter_labelling
+            )
+            for scope in self._scopes()
         ]
 
     def _build_parameter_labelling(self) -> ParamLabelling:
@@ -457,8 +488,8 @@ class RateEquationModel(KineticModel):
         piece.
         """
         from_rate_equations = [
-            rate_equation.get_parameter_labels(scope)
-            for rate_equation, scope in zip(self.rate_equations, self._scopes())
+            self.rate_equations[scope.reaction_id].get_parameter_labels(scope)
+            for scope in self._scopes()
         ]
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
         if self.unbalanced_species:
@@ -480,9 +511,8 @@ class RateEquationModel(KineticModel):
             conc_balanced, self.get_log_conc_unbalanced(parameters)
         )
         flux_list = []
-        for rate_equation, ix in zip(
-            self.rate_equations, self.rate_equation_ix
-        ):
+        for reaction, ix in zip(self.reactions, self.rate_equation_ix):
+            rate_equation = self.rate_equations[reaction]
             ipt = rate_equation.get_input(parameters, ix)
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)

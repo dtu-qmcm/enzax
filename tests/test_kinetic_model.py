@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from enzax.kinetic_model import RateEquationModel, validate_kinetic_model
+from enzax.rate_equations import ReversibleMichaelisMenten
 
 
 def get_model(
@@ -15,6 +16,9 @@ def get_model(
         balanced_species=balanced_species,
         dependent_species=dependent_species,
         extra_species=list(extra_species),
+        rate_equations={
+            reaction: ReversibleMichaelisMenten() for reaction in stoichiometry
+        },
     )
 
 
@@ -119,3 +123,25 @@ def test_link_matrix(structure, dependent_species, expected_L0):
     model = get_model(**structure, dependent_species=dependent_species)
     assert model.L0.shape == expected_L0.shape
     assert np.allclose(model.L0, expected_L0)
+
+
+def test_every_reaction_needs_a_rate_equation():
+    with pytest.raises(ValueError, match="have no rate equation"):
+        RateEquationModel(
+            stoichiometry=CYCLE["stoichiometry"],
+            balanced_species=["A", "B"],
+            rate_equations={"f": ReversibleMichaelisMenten()},
+        )
+
+
+def test_a_rate_equation_needs_a_reaction():
+    with pytest.raises(ValueError, match="which the stoichiometry does not"):
+        RateEquationModel(
+            stoichiometry=CYCLE["stoichiometry"],
+            balanced_species=["A", "B"],
+            rate_equations={
+                "f": ReversibleMichaelisMenten(),
+                "b": ReversibleMichaelisMenten(),
+                "not_a_reaction": ReversibleMichaelisMenten(),
+            },
+        )

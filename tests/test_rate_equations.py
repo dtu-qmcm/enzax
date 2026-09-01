@@ -45,7 +45,7 @@ def get_flux(rate_equation, enzyme_label="r1"):
         # whether or not the rate equation under test wants it.
         extra_species=EXAMPLE_SPECIES,
         compound_to_species=EXAMPLE_COMPOUND_TO_SPECIES,
-        rate_equations=[rate_equation],
+        rate_equations={"r1": rate_equation},
     )
     labelling = model.parameter_labelling
     spec = {

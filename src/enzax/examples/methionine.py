@@ -39,40 +39,40 @@ balanced_species = [
 model = RateEquationModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,
-    rate_equations=[
-        Drain(sign=1.0),  # met-L source
-        IrreversibleMichaelisMenten(  # MAT1
+    rate_equations={
+        "the_drain": Drain(sign=1.0),  # met-L source
+        "MAT1": IrreversibleMichaelisMenten(
             competitive_inhibitors=["amet"],
         ),
-        AllostericIrreversibleMichaelisMenten(  # MAT3
+        "MAT3": AllostericIrreversibleMichaelisMenten(
             subunits=2,
             allosteric_activators=["met-L", "amet"],
         ),
-        IrreversibleMichaelisMenten(  # METH
+        "METH-Gen": IrreversibleMichaelisMenten(
             competitive_inhibitors=["ahcys"],
         ),
-        AllostericIrreversibleMichaelisMenten(  # GNMT1
+        "GNMT1": AllostericIrreversibleMichaelisMenten(
             subunits=4,
             competitive_inhibitors=["ahcys"],
             allosteric_inhibitors=["mlthf"],
             allosteric_activators=["amet"],
         ),
-        ReversibleMichaelisMenten(  # AHC
+        "AHC1": ReversibleMichaelisMenten(
             water_stoichiometry=-1.0,
         ),
-        IrreversibleMichaelisMenten(),  # MS
-        IrreversibleMichaelisMenten(),  # BHMT
-        AllostericIrreversibleMichaelisMenten(  # CBS1
+        "MS1": IrreversibleMichaelisMenten(),
+        "BHMT1": IrreversibleMichaelisMenten(),
+        "CBS1": AllostericIrreversibleMichaelisMenten(
             subunits=2,
             allosteric_inhibitors=["amet"],
         ),
-        AllostericIrreversibleMichaelisMenten(  # MTHFR
+        "MTHFR1": AllostericIrreversibleMichaelisMenten(
             subunits=2,
             allosteric_inhibitors=["amet"],
             allosteric_activators=["ahcys"],
         ),
-        IrreversibleMichaelisMenten(),  # PROT
-    ],
+        "PROT1": IrreversibleMichaelisMenten(),
+    },
 )
 parameters = pack_parameters(
     model.parameter_labelling,

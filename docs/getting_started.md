@@ -47,15 +47,17 @@ balanced_species = ["m1c", "m2c"]
 
 The model works out its own reactions and species from this: the reactions are the stoichiometry's keys, in order, and the species are what they consume and produce, in the order they first appear. A species that takes part in no reaction, like an allosteric effector, joins them when a rate equation names it.
 
-Next we specify the model's rate equations. The order of the equations should match the stoichiometry's keys. Species are referred to by id, so `allosteric_activators=["m2c"]` says that `r1` is allosterically activated by `m2c`.
+Next we specify the model's rate equations, one per reaction id. Species are referred to by id, so `allosteric_activators=["m2c"]` says that `r1` is allosterically activated by `m2c`.
 
 ```python
-rate_equations = [
-    AllostericReversibleMichaelisMenten(allosteric_activators=["m2c"], subunits=1),
-    AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
-    ReversibleMichaelisMenten(water_stoichiometry=0.0),
-]
+rate_equations = {
+    "r1": AllostericReversibleMichaelisMenten(allosteric_activators=["m2c"], subunits=1),
+    "r2": AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
+    "r3": ReversibleMichaelisMenten(water_stoichiometry=0.0),
+}
 ```
+
+A reaction with no rate equation, or a rate equation whose key is not one of the stoichiometry's reactions, is an error when the model is built.
 
 Now we can make a RateEquationModel object. Note the `compound_to_species` argument, which says that `m1e` and `m1c` are the same compound `m1`, as are `m2c` and `m2e`: the model has four species but only two compounds, and formation energies belong to compounds. It is partial, so only compounds with more than one species need mentioning; any species no compound claims is a compound of its own, labelled by its own id.
 
@@ -129,20 +131,20 @@ Note that the parameters use `jnp` whereas the structure uses `np`. This is beca
 Two rate equations that use the same label use the same value --- one position in one array, one thing to infer. Say `r1` and `r3` were catalysed by the same enzyme and had the same Michaelis constant for their substrates:
 
 ```python
-shared_rate_equations = [
-    AllostericReversibleMichaelisMenten(
+shared_rate_equations = {
+    "r1": AllostericReversibleMichaelisMenten(
         allosteric_activators=["m2c"],
         subunits=1,
         enzyme="E1",
         michaelis_constants={"m1e": "km|E1|substrate"},
     ),
-    AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
-    ReversibleMichaelisMenten(
+    "r2": AllostericReversibleMichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
+    "r3": ReversibleMichaelisMenten(
         water_stoichiometry=0.0,
         enzyme="E1",
         michaelis_constants={"m2c": "km|E1|substrate"},
     ),
-]
+}
 ```
 
 Now `log_enzyme` has one entry labelled `E1` instead of two, and `km|E1|substrate` is one position that both reactions gather from. Gradients with respect to it accumulate contributions from both reactions, as they should.
