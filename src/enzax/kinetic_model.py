@@ -417,7 +417,7 @@ class KineticModel(eqx.Module):
     def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndRateArr:
         """Get the rate of change of balanced species concentrations.
 
-        :param conc: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
+        :param conc_ind: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
 
         :param parameters: A PyTree of parameters.
 
