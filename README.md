@@ -21,10 +21,10 @@ pip install enzax
 
 ```python
 from enzax.examples import methionine
-from enzax.steady_state import get_kinetic_model_steady_state
+from enzax.steady_state import get_steady_state
 from jax import numpy as jnp
 
-guess = jnp.full((5,), 0.01)
+guess = jnp.full((len(model.balanced_species),), 0.01)
 
 steady_state = get_steady_state(methionine.model, guess, methionine.parameters)
 ```
@@ -38,13 +38,13 @@ from enzax.parameters import get_parameter_position
 from enzax.steady_state import get_steady_state
 from jax import numpy as jnp
 
-guess = jnp.full((5,), 0.01)
+guess = jnp.full((len(model.balanced_species),), 0.01)
 
 jacobian = jax.jacrev(get_steady_state, argnums=2)(model, guess, parameters)
 # Each parameter is one flat array, so ask the model's labels which column
 # belongs to GNMT1's turnover number.
-ix = get_parameter_position(model.parameter_labelling, "log_kcat", "GNMT1")
-jacobian["log_kcat"][:, ix]
+pos = get_parameter_position(model.parameter_labelling, "log_kcat", "GNMT1")
+jacobian["log_kcat"][:, pos]
 ```
 ```
 Array([-3.83561719e-07, -9.66801513e-06,  3.38183091e-10,  3.15564888e-09,
