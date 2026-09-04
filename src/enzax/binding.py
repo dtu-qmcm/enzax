@@ -1,39 +1,71 @@
-"""Binding polynomials: which states an enzyme's active site can be in.
+"""Module for constructing enzymes' binding polynomials.
 
-A rate law's saturation term is `1 / Z`, where the binding polynomial `Z` sums
-over every state the enzyme can occupy. Each state contributes the product of
-`conc / k` over the species bound in it, and the empty state contributes 1.
+A saturable enzyme has a rate law with a saturation term `1 / Z`, where `Z` is
+the binding polynomial. The saturation term represents the fraction of enzyme
+molecules that are unbound. In its expanded form, each term of `Z` represents
+the number of enzyme molecules in a particular state, normalised so that the
+unbound state's abundance is 1. Each ligand bound in a state contributes a
+factor `conc / k`, where `conc` is the ligand's concentration and `k` is the
+corresponding saturation constant.
 
-`Z` is written in factored rather than expanded form, because the expanded
-form is exponential in the number of independent sites. Two kinds of factor
-cover every rate law enzax needs:
+Since enzymes often consist of independent subsystems, it is usually more
+convenient to express `Z` in factored form rather than write out its expanded
+form. In the factored form, the state distributions of independent binding
+sites are gathered together as products.
+
+Enzax currently represents two kinds of factor:
 
     site        (1 + sum(conc / k)) ** exponent
     dead end    prod(conc / k)
 
-A site may be empty, so it contributes the 1; more than one species in one
-site means those species compete for it. A dead end is a state whose species
-are definitely bound, which is what a competitive inhibitor is, and also what
-an abortive complex is with more than one species.
+A site factor describes the state distribution of one site, normalised so that
+the site's unbound state has abundance 1; the term in brackets is therefore 1
+for the unbound state plus a sum of `conc / k` for each competing ligand. The
+exponent is the number of equivalent copies of that site.
 
-There are two layers here. A *declaration* is a `BindingPolynomialExpression`,
-built with `site`, `dead_end` and the `*`, `+` and scalar `*` operators, and it
-refers to species and parameters by name:
+A dead end factor is the abundance of a single state whose ligands are all
+definitely bound, so it has no empty term; one ligand makes it a competitive
+inhibitor and more than one an abortive complex.
 
-    site("f6p_c", "fdp_c") * site("f26bp_c")
-    dead_end("glc_c", "g6p_c") + dead_end("glc_c", "gdp_c")
+This module provides the `BindingPolynomialExpression` class, with which a user
+can represent their desired enzyme behaviour. The functions `site` and
+`dead_end` are used to create primitive `BindingPolynomialExpression`s, which
+can be combined using the `*` and `+` operators, and also multiplied by scalars,
+to represent binding polynomials.
 
-`resolve_expression` compiles a declaration into a `BindingPolynomial`, whose
-factors hold positions rather than names, once when the model is built. All the
-algebra happens on declarations, before compiling.
+The function `resolve_expression` compiles a `BindingPolynomialExpression` into
+a `BindingPolynomial`, whose factors hold positions rather than names, once
+when the model is built. All the algebra happens on expressions, before
+compiling. For example, this `BindingPolynomialExpression`:
+
+    (site("a") + dead_end("b")) * site("c")
+
+compiles to a `BindingPolynomial` representing
+
+    (1 + a/k_a)(1 + c/k_c) + (b/k_b)(1 + c/k_c)
 
 Terms are accumulated in the order they are written, and a term's factors are
 multiplied in the order they are written, because float addition and
-multiplication are not associative. The default polynomial built here therefore
-puts its empty-state correction first, matching the order enzax used before
-binding polynomials existed. The one place that order is not reproduced is a
-reaction with two or more competitive inhibitors: enzax used to add
-`sum(conc / ki)` as a single term, and each dead end is now its own term.
+multiplication are not associative.
+
+As a final example, consider an enzyme-catalysed reaction `a + b <-> p` with
+competitive inhibitor `i`, where saturation is described by standard
+Michaelis-Menten kinetics. The `BindingPolynomialExpression` in this case is
+
+    -1.0 * ONE + site("a") * site("b") + site("p") + dead_end("i")
+
+This expression is the sum of four terms: `-1.0 * ONE`, `site("a") * site("b")`,
+`site("p")` and `dead_end("i")`. The first term `-1.0 * ONE` creates a
+correction term of -1. The other three terms represent mutually exclusive
+states of the enzyme: bound (or not) to substrates "a" and "b", bound to the
+product "p" and bound to the competitive inhibitor "i". The substrate term
+indicates that "a" and "b" bind independently at different sites. The
+correction factor is needed because the substrate and product terms both start
+with a 1 representing the unbound enzyme. The compiled binding polynomial is
+then
+
+    1 + a/k_a + b/k_b + ab/(k_a k_b) + p/k_p + i/k_i
+
 """
 
 from collections.abc import Mapping, Sequence
@@ -186,7 +218,7 @@ class BindingPolynomialExpression:
 
 
 # The polynomial of an enzyme with nowhere to bind anything: just the empty
-# state. Also what a rate law with no allosteric effector uses for its tense
+# state. A rate law with no allosteric effector uses this for its tense
 # and relaxed states.
 ONE = BindingPolynomialExpression((NamedTerm(1.0, ()),))
 

@@ -61,7 +61,7 @@ model.parameter_labelling
 {'log_kcat': ('r1', 'r2', 'r3'), 'log_enzyme': ('r1', 'r2', 'r3'), 'log_saturation_constant': ('km|r1|m1e', 'km|r1|m1c', 'dc|r1|m2c', 'km|r2|m1c', 'km|r2|m2c', 'ki|r2|m1c', 'dc|r2|m1c', 'km|r3|m2c', 'km|r3|m2e'), 'log_tc': ('r1', 'r2'), 'dgf': ('m1', 'm2'), 'log_conc_unbalanced': ('m1e', 'm2e'), 'temperature': ()}
 ```
 
-`log_saturation_constant` holds every constant that a concentration is divided by, whatever it does. The prefix says which kind it is: `km` for a Michaelis constant, `ki` for a competitive inhibition constant and `dc` for an allosteric dissociation constant. Keeping them in one array lets reactions share constants and allows a reaction to reuse the same constant in two different roles if required.
+The field `log_saturation_constant` holds every constant that divides a concentration, including Michaelis constants (`km`), competitive inhibition constants `ki` and allosteric dissociation constants `dc`. Keeping them in one array lets reactions share constants and allows a reaction to reuse the same constant in two different roles if required.
 
 We build a parameter set by giving a value for every label:
 
