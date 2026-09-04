@@ -1,15 +1,14 @@
 import operator
 
-from enzax.kinetic_model import RateEquationModel
-from enzax.steady_state import get_steady_state
 import jax
 from jax import numpy as jnp
-from jax.flatten_util import ravel_pytree
 from jax.scipy.stats import multivariate_normal, norm
 from jaxtyping import PyTree, Scalar
-import equinox as eqx
 
-from enzax.array_types import ParamDict, IndConcArr
+from enzax.array_types import IndConcArr, ParamDict
+from enzax.kinetic_model import RateEquationModel
+from enzax.parameter_split import ParameterSplit, combine_parameters
+from enzax.steady_state import get_steady_state
 
 
 def prior_from_truth(
@@ -52,30 +51,30 @@ def prior_from_truth(
 def pack_locs_and_scales(loc: PyTree, scale: PyTree) -> PyTree:
     """Get a Pytree whose leaves are tuples of loc and scale.
 
-     Note that loc and scale must have the same tree structure.
+    Note that loc and scale must have the same tree structure.
 
-     Params:
-     -------
-     loc: PyTree
-         A PyTree representing location parameters.
-     scale: PyTree
-         A PyTree representing scale parameters.
+    Params:
+    -------
+    loc: PyTree
+        A PyTree representing location parameters.
+    scale: PyTree
+        A PyTree representing scale parameters.
 
-     Returns:
-     --------
-     PyTree
-         A PyTree whose leaves are tuples of loc and scale.
+    Returns:
+    --------
+    PyTree
+        A PyTree whose leaves are tuples of loc and scale.
 
-     Examples:
-     ---------
-     >>> loc = {"a": jnp.array([1.0, -1.0]), "b": {"c": jnp.array(0.1)}}
-     >>> scale = {"a": jnp.array([[1.0, 2.0], [3.0, 4.0]]), "b": {"c": jnp.array(5.0)}}
-     >>> get_prior(loc, scale)
-     {'a': (Array([ 1., -1.], dtype=float64),
-     Array([[1., 2.],
-            [3., 4.]], dtype=float64)),
-    'b': {'c': (Array(0.1, dtype=float64, weak_type=True),
-      Array(5., dtype=float64, weak_type=True))}}
+    Examples:
+    ---------
+    >>> loc = {"dgf": jnp.array([1.0, -1.0]), "temperature": jnp.array(310.0)}
+    >>> scale = {"dgf": jnp.array([[1.0, 2.0], [3.0, 4.0]]), "temperature": jnp.array(5.0)}
+    >>> pack_locs_and_scales(loc, scale)
+    {'dgf': (Array([ 1., -1.], dtype=float64),
+    Array([[1., 2.],
+           [3., 4.]], dtype=float64)),
+    'temperature': (Array(310., dtype=float64),
+     Array(5., dtype=float64))}
 
     """  # noqa: E501
     if not jax.tree.structure(loc) == jax.tree.structure(scale):
@@ -168,13 +167,29 @@ def enzax_log_density(
     model: RateEquationModel,
     measurements: PyTree,
     prior: PyTree,
-    fixed_parameters: PyTree | None = None,
+    split: ParameterSplit | None = None,
     guess: IndConcArr | None = None,
 ) -> Scalar:
+    """Get the log posterior density of a kinetic model's parameters.
+
+    :param free_parameters: the parameters being inferred. With a `split`,
+        this is the short form that `get_free_parameters` returns; without
+        one, it is a complete parameter set.
+
+    :param split: which parameters are free, and the values of the rest. Leave
+        it out to infer every parameter.
+
+    :param measurements: a 3-tuple of `(observations, errors)` pairs, for
+        concentrations, enzymes and fluxes in that order. Concentrations are
+        in the model's `species` order, fluxes in its `reactions` order, and
+        enzymes in `model.parameter_labelling["log_enzyme"]` order, which is
+        the order the enzymes are first labelled in by the model's rate
+        equations.
+    """
     if guess is None:
         guess = jnp.full((len(model.independent_species_ix)), 0.01)
-    if fixed_parameters is not None:
-        parameters = eqx.combine(free_parameters, fixed_parameters)
+    if split is not None:
+        parameters = combine_parameters(split, free_parameters)
     else:
         parameters = free_parameters
 
@@ -182,9 +197,10 @@ def enzax_log_density(
     conc_balanced = model.get_balanced_conc(
         steady, model.get_moiety_totals(parameters)
     )
-    conc_hat = model.get_conc(conc_balanced, parameters["log_conc_unbalanced"])
-    flat_log_enzyme, _ = ravel_pytree(parameters["log_enzyme"])
-    enz_hat = jnp.exp(jnp.array(flat_log_enzyme))
+    conc_hat = model.get_conc(
+        conc_balanced, model.get_log_conc_unbalanced(parameters)
+    )
+    enz_hat = jnp.exp(parameters["log_enzyme"])
     flux_hat = model.flux(conc_balanced, parameters)
     conc_msts, enz_msts, flux_msts = measurements
     log_prior = enzax_prior_logdensity(free_parameters, prior)

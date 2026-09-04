@@ -1,18 +1,7 @@
-from enzax.rate_equations.michaelis_menten import (
-    ReversibleMichaelisMenten,
-    IrreversibleMichaelisMenten,
-)
-
-from enzax.rate_equations.generalised_mwc import (
-    AllostericReversibleMichaelisMenten,
-    AllostericIrreversibleMichaelisMenten,
-)
 from enzax.rate_equations.drain import Drain
+from enzax.rate_equations.saturable import (
+    MichaelisMenten,
+    SaturableRateEquation,
+)
 
-AVAILABLE_RATE_EQUATIONS = [
-    ReversibleMichaelisMenten,
-    IrreversibleMichaelisMenten,
-    AllostericReversibleMichaelisMenten,
-    AllostericIrreversibleMichaelisMenten,
-    Drain,
-]
+__all__ = ["Drain", "MichaelisMenten", "SaturableRateEquation"]

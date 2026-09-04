@@ -40,7 +40,11 @@ nav:
   - Contributing: 'contributing.md'
   - Accessibility: 'accessibility.md'
   - API:
+    - 'api/binding.md'
     - 'api/kinetic_model.md'
+    - 'api/parameters.md'
+    - 'api/parameter_split.md'
+    - 'api/rate_equation.md'
     - 'api/rate_equations.md'
     - 'api/steady_state.md'
     - 'api/mcmc.md'

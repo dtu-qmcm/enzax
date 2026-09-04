@@ -1,33 +1,39 @@
 """Module containing enzax's definition of a kinetic model."""
 
-import sympy
-
 from abc import abstractmethod
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
+import sympy
 import sympy2jax
 from jaxtyping import PyTree, ScalarLike
 
-from enzax.rate_equation import RateEquation
 from enzax.array_types import (
     BalancedConcArr,
+    BalancedSpeciesIx,
     ConcArray,
+    DepSpeciesIx,
     Flux,
     IndConcArr,
     IndRateArr,
-    MoietyTotalsArr,
-    UnbalancedConcArr,
-    StoichiometricMatrix,
     IndSpeciesIx,
-    DepSpeciesIx,
     LinkMatrix,
+    MoietyTotalsArr,
+    ParamLabelling,
     SpeciesIx,
-    BalancedSpeciesIx,
+    StoichiometricMatrix,
+    UnbalancedConcArr,
     UnbalancedSpeciesIx,
 )
+from enzax.parameters import (
+    check_id_has_no_separator,
+    check_parameter_labelling,
+    merge_labels,
+)
+from enzax.rate_equation import RateEquation, ReactionScope
 
 
 def get_ix_from_list(s: str, list_of_strings: list[str]):
@@ -60,6 +66,73 @@ def get_link_matrix(
     # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
     L0_T = S_ind.T.solve_least_squares(S_dep.T)
     return np.array(L0_T.T, dtype=np.float64)
+
+
+def get_species_to_compound(
+    species: Sequence[str],
+    compound_to_species: Mapping[str, Sequence[str]] | None,
+) -> dict[str, str]:
+    """Work out which compound each species represents.
+
+    `compound_to_species` says which species share a compound, as in
+    `{"m1": ["m1_e", "m1_c"]}`. It is partial: a species no compound claims is
+    a compound of its own, with the same id.
+    """
+    declared = compound_to_species or {}
+    species_to_compound: dict[str, str] = {}
+    for compound, species_ids in declared.items():
+        if isinstance(species_ids, str):
+            msg = (
+                f"compound_to_species maps compound {compound!r} to the "
+                f"string {species_ids!r}. Use a list of species ids."
+            )
+            raise ValueError(msg)
+        if compound in species and compound not in species_ids:
+            msg = (
+                f"compound_to_species declares a compound {compound!r}, but "
+                "that is also the id of a species it does not claim, which "
+                "would give two compounds the same label."
+            )
+            raise ValueError(msg)
+        for species_id in species_ids:
+            if species_id not in species:
+                msg = (
+                    f"compound_to_species gives compound {compound!r} a "
+                    f"species {species_id!r}, which is not one of the model's "
+                    "species."
+                )
+                raise ValueError(msg)
+            if species_id in species_to_compound:
+                msg = (
+                    f"Species {species_id!r} is claimed by two compounds, "
+                    f"{species_to_compound[species_id]!r} and {compound!r}."
+                )
+                raise ValueError(msg)
+            species_to_compound[species_id] = compound
+    return {s: species_to_compound.get(s, s) for s in species}
+
+
+def check_rate_equations_cover_reactions(
+    reactions: Sequence[str],
+    rate_equations: Mapping[str, RateEquation],
+) -> None:
+    """Raise unless there is exactly one rate equation per reaction.
+
+    A reaction with no rate equation has no flux, and a rate equation keyed by
+    something that is not a reaction is a typo, so both are errors rather than
+    something to work around.
+    """
+    missing = [r for r in reactions if r not in rate_equations]
+    if missing:
+        msg = f"Reactions {missing} have no rate equation."
+        raise ValueError(msg)
+    unknown = [r for r in rate_equations if r not in reactions]
+    if unknown:
+        msg = (
+            f"rate_equations names {unknown}, which the stoichiometry does "
+            f"not: its reactions are {list(reactions)}."
+        )
+        raise ValueError(msg)
 
 
 def validate_kinetic_model(model: "KineticModel") -> None:
@@ -128,16 +201,35 @@ class KineticModel(eqx.Module):
     `independent_species` is the rest of `balanced_species`. Instantiating a
     model checks this, along with the other conditions listed in
     `validate_kinetic_model`.
+
+    The reactions and species come from the stoichiometry: the reactions are
+    its keys, in order, and the species are what they consume and produce, in
+    the order they first appear. A species that takes part in no reaction, as
+    an allosteric effector does, joins them if a rate equation names it, or
+    via `extra_species` for a model whose fluxes do not come from rate
+    equations.
+
+    Formation energies belong to compounds rather than species, so species
+    that represent the same compound in different compartments share one. Use
+    `compound_to_species` to say which species a compound has, as in
+    `{"m1": ["m1_e", "m1_c"]}`. It is partial: a species that no compound
+    claims is a compound of its own, so only compounds with more than one
+    species need mentioning.
     """
 
     stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
-    species: list[str] = eqx.field(static=True)
-    reactions: list[str] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
+    compound_to_species: dict[str, list[str]] | None = eqx.field(
+        static=True, default=None
+    )
+    extra_species: list[str] = eqx.field(static=True, default_factory=list)
+    species: list[str] = eqx.field(static=True, init=False)
+    reactions: list[str] = eqx.field(static=True, init=False)
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
-    species_to_dgf_ix: SpeciesIx | None = eqx.field(static=True, default=None)
+    species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
+    species_to_dgf_ix: SpeciesIx = eqx.field(static=True, init=False)
     balanced_species_ix: BalancedSpeciesIx = eqx.field(static=True, init=False)
     unbalanced_species_ix: UnbalancedSpeciesIx = eqx.field(
         static=True, init=False
@@ -149,13 +241,28 @@ class KineticModel(eqx.Module):
     dependent_species_ix: DepSpeciesIx = eqx.field(static=True, init=False)
     S: StoichiometricMatrix = eqx.field(static=True, init=False)
     L0: LinkMatrix = eqx.field(static=True, init=False)
+    parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
 
     def __post_init__(self):
-        if self.species_to_dgf_ix is None:
-            # by default every species has its own formation energy
-            self.species_to_dgf_ix = np.arange(
-                len(self.species), dtype=np.int16
+        self.reactions = list(self.stoichiometry)
+        self.species = self._build_species()
+        named = dict.fromkeys(self.balanced_species + self.dependent_species)
+        not_species = [s for s in named if s not in self.species]
+        if not_species:
+            msg = (
+                f"Species {not_species} take part in no reaction, and nothing "
+                "else names them either, so the model has no such species. A "
+                "balanced species needs a reaction that changes it."
             )
+            raise ValueError(msg)
+        self.species_to_compound = get_species_to_compound(
+            self.species, self.compound_to_species
+        )
+        compounds = self._dgf_labels()
+        self.species_to_dgf_ix = np.array(
+            [compounds.index(c) for c in self.species_to_compound.values()],
+            dtype=np.int16,
+        )
         self.unbalanced_species = [
             s for s in self.species if s not in self.balanced_species
         ]
@@ -194,6 +301,71 @@ class KineticModel(eqx.Module):
         self.L0 = get_link_matrix(
             self.S, self.independent_species_ix, self.dependent_species_ix
         )
+        for species_i in self.species:
+            check_id_has_no_separator(species_i, "Species")
+        for reaction in self.reactions:
+            check_id_has_no_separator(reaction, "Reaction")
+        for compound in self._dgf_labels():
+            check_id_has_no_separator(compound, "Compound")
+        self.parameter_labelling = self._build_parameter_labelling()
+        check_parameter_labelling(self.parameter_labelling)
+
+    def _build_species(self) -> list[str]:
+        """Work out the model's species, in the order they are first named.
+
+        The stoichiometry names most of them. A species that takes part in no
+        reaction is named by whatever does use it -- a rate equation, via
+        `_declared_species`, or `extra_species` when there is no rate equation
+        to ask.
+        """
+        from_reactions = [
+            species_id
+            for reaction in self.reactions
+            for species_id in self.stoichiometry[reaction]
+        ]
+        return list(
+            dict.fromkeys(
+                from_reactions
+                + list(self.extra_species)
+                + list(self._declared_species())
+            )
+        )
+
+    def _declared_species(self) -> list[str]:
+        """Get the species the model's flux definition names.
+
+        The base implementation has no flux definition to ask. Subclasses that
+        have one override it.
+        """
+        return []
+
+    def _build_parameter_labelling(self) -> ParamLabelling:
+        """Get the model's parameter labelling.
+
+        The base implementation has no parameters to label. Subclasses that
+        know where their parameters come from override it.
+        """
+        return {}
+
+    def _scopes(self) -> list[ReactionScope]:
+        """Get one static description per reaction, in reaction order."""
+        return [
+            ReactionScope(
+                reaction_id=reaction,
+                species=tuple(self.species),
+                stoichiometry=self.S[:, ix_reaction],
+                species_to_dgf_ix=self.species_to_dgf_ix,
+            )
+            for ix_reaction, reaction in enumerate(self.reactions)
+        ]
+
+    def _dgf_labels(self) -> list[str]:
+        """Label each formation energy after the compound it belongs to.
+
+        Species that represent the same compound share a formation energy.
+        The labels come in the order the compounds first appear in `species`.
+        """
+        return list(dict.fromkeys(self.species_to_compound.values()))
 
     def get_conc(
         self,
@@ -209,6 +381,17 @@ class KineticModel(eqx.Module):
     def flux(
         self, conc_balanced: BalancedConcArr, parameters: PyTree
     ) -> Flux: ...
+
+    def get_log_conc_unbalanced(self, parameters: PyTree) -> UnbalancedConcArr:
+        """Get the log unbalanced concentrations from a PyTree of parameters.
+
+        Models where every species is balanced have no unbalanced
+        concentrations, so in that case the parameters do not need a
+        "log_conc_unbalanced" entry.
+        """
+        if not self.unbalanced_species:
+            return jnp.zeros(0)
+        return parameters["log_conc_unbalanced"]
 
     def get_moiety_totals(self, parameters: PyTree) -> MoietyTotalsArr:
         """Get the conserved moiety totals from a PyTree of parameters.
@@ -234,7 +417,7 @@ class KineticModel(eqx.Module):
     def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndRateArr:
         """Get the rate of change of balanced species concentrations.
 
-        :param conc: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
+        :param conc_ind: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
 
         :param parameters: A PyTree of parameters.
 
@@ -253,11 +436,68 @@ class KineticModel(eqx.Module):
 
 
 class RateEquationModel(KineticModel):
-    """A kinetic model that specifies its fluxes using RateEquation objects."""
+    """A kinetic model that specifies its fluxes using RateEquation objects.
 
-    rate_equations: list[RateEquation] = eqx.field(
-        static=True, default_factory=list
+    `rate_equations` maps each reaction id to the rate equation that gives its
+    flux, and must cover exactly the reactions the stoichiometry names.
+
+    The model owns the parameter labelling built from its rate equations'
+    labels, plus the labels implied by its own structure. Each rate equation's
+    labels are resolved to positions in the flat parameter arrays once, here,
+    and stored in `rate_equation_ix`, in reaction order.
+    """
+
+    rate_equations: Mapping[str, RateEquation] = eqx.field(
+        static=True, default_factory=dict
     )
+    rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
+
+    def _declared_species(self) -> list[str]:
+        """Get the species the rate equations name, in reaction order.
+
+        An allosteric effector or a dead-end binder takes part in no reaction,
+        so the stoichiometry does not mention it, but it is a species of the
+        model all the same.
+        """
+        return [
+            species_id
+            for reaction in self.reactions
+            for species_id in self.rate_equations[reaction].get_species()
+        ]
+
+    def __post_init__(self):
+        check_rate_equations_cover_reactions(
+            list(self.stoichiometry), self.rate_equations
+        )
+        super().__post_init__()
+        self.rate_equation_ix = [
+            self.rate_equations[scope.reaction_id].resolve(
+                scope, self.parameter_labelling
+            )
+            for scope in self._scopes()
+        ]
+
+    def _build_parameter_labelling(self) -> ParamLabelling:
+        """Collect parameter labels from the rate equations and the structure.
+
+        Labels are added in first-seen order: reaction by reaction, and within
+        a reaction group by group. A label that no rate equation refers to
+        cannot end up here, so there are no orphan parameters. A structural
+        parameter with nothing to label is left out, whereas `temperature` is
+        present with no labels at all, because it is one parameter in one
+        piece.
+        """
+        from_rate_equations = [
+            self.rate_equations[scope.reaction_id].get_parameter_labels(scope)
+            for scope in self._scopes()
+        ]
+        from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
+        if self.unbalanced_species:
+            from_structure["log_conc_unbalanced"] = self.unbalanced_species
+        if self.dependent_species:
+            from_structure["conserved_pools"] = self.dependent_species
+        from_structure["temperature"] = ()
+        return merge_labels(*from_rate_equations, from_structure)
 
     def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
         """Get fluxes from balanced species concentrations.
@@ -267,17 +507,13 @@ class RateEquationModel(KineticModel):
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
         """  # Noqa: E501
-        conc = self.get_conc(conc_balanced, parameters["log_conc_unbalanced"])
+        conc = self.get_conc(
+            conc_balanced, self.get_log_conc_unbalanced(parameters)
+        )
         flux_list = []
-        for reaction_ix, (reaction_id, rate_equation) in enumerate(
-            zip(self.reactions, self.rate_equations)
-        ):
-            ipt = rate_equation.get_input(
-                parameters=parameters,
-                reaction_id=reaction_id,
-                reaction_stoichiometry=self.S[:, reaction_ix],
-                species_to_dgf_ix=self.species_to_dgf_ix,
-            )
+        for reaction, ix in zip(self.reactions, self.rate_equation_ix):
+            rate_equation = self.rate_equations[reaction]
+            ipt = rate_equation.get_input(parameters, ix)
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)
 
