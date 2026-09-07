@@ -23,8 +23,10 @@ class ReactionScope:
     """What a rate equation needs to know about the reaction it belongs to.
 
     Built once per reaction at model construction and handed to
-    `RateEquation.get_labels` and `RateEquation.resolve`. It is not part of any
-    PyTree.
+    `RateEquation.get_labels` and `RateEquation.resolve`.
+
+    Note that `species`, `stoichiometry` and `species_to_dgf_ix` have length
+    n_species, where n_species is the model's total number of species.
     """
 
     reaction_id: str
@@ -34,7 +36,8 @@ class ReactionScope:
 
 
 def get_species_positions(
-    scope: ReactionScope, species_ids: Iterable[str]
+    scope: ReactionScope,
+    species_ids: Iterable[str],
 ) -> Int[np.ndarray, " _"]:
     """Get the positions of some species in the model's species list."""
     ids = list(species_ids)
@@ -49,7 +52,8 @@ def get_species_positions(
 
 
 def select_species(
-    species: tuple[str, ...], mask: Bool[np.ndarray, " n_species"]
+    species: tuple[str, ...],
+    mask: Bool[np.ndarray, " n_species"],
 ) -> tuple[str, ...]:
     """Pick out the species that a boolean mask selects, in species order."""
     return tuple(s for s, keep in zip(species, mask) if keep)
@@ -80,7 +84,11 @@ def get_reaction_label(declared: str | None, reaction_id: str) -> str:
 
 
 def get_species_label(prefix: str, reaction_id: str, species_id: str) -> str:
-    """Get the default label of a value a reaction has one of per species."""
+    """Get the default label of a value a reaction has one of per species.
+
+    For example, the label for g6p's Michaelis constant in the PGI reaction
+    could be `get_species_label("km", "PGI", "g6p")`, i.e. `"km|PGI|g6p"`.
+    """
     return f"{prefix}{SEP}{reaction_id}{SEP}{species_id}"
 
 
@@ -133,7 +141,7 @@ def check_species_labels_are_distinct(
 
 
 class RateEquationLabels(ABC):
-    """The parameter labels one rate equation refers to, grouped by what they are.
+    """The parameter labels a rate equation refers to, grouped by what they are.
 
     A rate equation defines its own subclass, with one field per group of
     labels it declares, and `by_parameter` says which flat array each group is
@@ -157,14 +165,15 @@ class RateEquation(Module, ABC):
     A rate equation is an equinox [Module](https://docs.kidger.site/equinox/api/module/module/) with a `__call__` method that takes in a 1 dimensional array of concentrations and an arbitrary PyTree of other inputs, returning a scalar value representing a single flux.
 
     A rate equation refers to its parameters by label. Two rate equations that
-    use the same label share a value, which is how a Michaelis constant can be
-    shared between reactions, or an allosteric constant made equal to a
-    catalytic one. Labels are resolved to positions in the model's flat
-    parameter arrays once, when the model is constructed:
+    use the same label share a value, allowing sharing of parameter values
+    between reactions, or for the same parameter value to be used in different
+    roles in the same rate equation. Labels are resolved to positions in the
+    model's flat parameter arrays once, when the model is constructed:
 
     1. `get_labels` reports every label the rate equation refers to, grouped by
        what the labels are. The model collects these from all its rate
-       equations, via `get_parameter_labels`, to work out its parameter labels.
+       equations, via `get_labels_by_parameter`, to work out its parameter
+       labels.
     2. `resolve` turns those labels into index arrays, given the finished
        labels. The result is static and is stored on the model.
     3. `get_input` gathers the actual values, once per flux evaluation.
@@ -189,13 +198,15 @@ class RateEquation(Module, ABC):
         """Get the parameter labels this rate equation refers to."""
         ...
 
-    def get_parameter_labels(self, scope: ReactionScope) -> ParamLabelling:
+    def get_labels_by_parameter(self, scope: ReactionScope) -> ParamLabelling:
         """Get the labels this rate equation refers to, keyed by parameter."""
         return self.get_labels(scope).by_parameter()
 
     @abstractmethod
     def resolve(
-        self, scope: ReactionScope, labelling: ParamLabelling
+        self,
+        scope: ReactionScope,
+        labelling: ParamLabelling,
     ) -> PyTree: ...
 
     @abstractmethod
@@ -203,5 +214,7 @@ class RateEquation(Module, ABC):
 
     @abstractmethod
     def __call__(
-        self, conc: ConcArray, rate_equation_input: PyTree
+        self,
+        conc: ConcArray,
+        rate_equation_input: PyTree,
     ) -> Scalar: ...

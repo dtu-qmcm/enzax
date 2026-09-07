@@ -488,7 +488,9 @@ class RateEquationModel(KineticModel):
         piece.
         """
         from_rate_equations = [
-            self.rate_equations[scope.reaction_id].get_parameter_labels(scope)
+            self.rate_equations[scope.reaction_id].get_labels_by_parameter(
+                scope
+            )
             for scope in self._scopes()
         ]
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
