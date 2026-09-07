@@ -37,6 +37,7 @@ markdown_extensions:
 nav:
   - Home: 'index.md'
   - Getting started: 'getting_started.md'
+  - How to make your own rate equation: 'custom_rate_equations.md'
   - Contributing: 'contributing.md'
   - Accessibility: 'accessibility.md'
   - API:
