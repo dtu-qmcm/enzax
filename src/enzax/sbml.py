@@ -147,19 +147,20 @@ def get_kinetic_model_from_sbml(
         for b in libsbml_model.getListOfSpecies()
         if not b.boundary_condition
     ]
-    reactions = [
-        reaction.getId() for reaction in libsbml_model.getListOfReactions()
-    ]
     stoichiometry = {
         reaction.getId(): get_reaction_stoichiometry(reaction)
         for reaction in libsbml_model.getListOfReactions()
     }
+    # A model whose fluxes come from the file's own kinetic laws has no rate
+    # equations to name the species that take part in no reaction, so the
+    # file's species list says which those are.
+    in_a_reaction = {s for r in stoichiometry.values() for s in r}
+    extra_species = [s for s in species if s not in in_a_reaction]
     sym_module = get_sbml_sym_module(libsbml_model)
     return KineticModelSbml(
         stoichiometry=stoichiometry,
-        species=species,
-        reactions=reactions,
         balanced_species=balanced_species,
+        extra_species=extra_species,
         sym_module=sym_module,
     )
 

@@ -1,0 +1,5183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created by COPASI version 4.45 (Build 298) on 2025-10-04 13:06 with libSBML version 5.20.4. -->
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model metaid="COPASI0" id="mammalian_glycolysis" name="mammalian_glycolysis">
+    <annotation>
+      <copasi:COPASI xmlns:copasi="http://www.copasi.org/static/sbml">
+        <rdf:RDF xmlns:dcterms="http://purl.org/dc/terms/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+          <rdf:Description rdf:about="#COPASI0">
+            <dcterms:created>
+              <rdf:Description>
+                <dcterms:W3CDTF>2024-11-24T11:21:32Z</dcterms:W3CDTF>
+              </rdf:Description>
+            </dcterms:created>
+            <dcterms:modified>
+              <rdf:Description>
+                <dcterms:W3CDTF>2024-11-24T11:21:32Z</dcterms:W3CDTF>
+              </rdf:Description>
+            </dcterms:modified>
+          </rdf:Description>
+        </rdf:RDF>
+      </copasi:COPASI>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:vCard="http://www.w3.org/2001/vcard-rdf/3.0#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/" xmlns:bqmodel="http://biomodels.net/model-qualifiers/">
+        <rdf:Description rdf:about="#COPASI0">
+          <dcterms:created rdf:parseType="Resource">
+            <dcterms:W3CDTF>2024-11-24T11:21:32Z</dcterms:W3CDTF>
+          </dcterms:created>
+          <dcterms:modified rdf:parseType="Resource">
+            <dcterms:W3CDTF>2024-11-24T11:21:32Z</dcterms:W3CDTF>
+          </dcterms:modified>
+        </rdf:Description>
+      </rdf:RDF>
+    </annotation>
+    <listOfFunctionDefinitions>
+      <functionDefinition id="Glut4_1" name="Glut4_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_GLUT4 </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GLUT4_glc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GLUT4_glc_e </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_glc </ci>
+            </bvar>
+            <bvar>
+              <ci> glc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> glc_e </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_GLUT4 </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_GLUT4 </ci>
+                  <ci> kcat_GLUT4 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> glc_e </ci>
+                    <ci> Km_GLUT4_glc_e </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> glc_e </ci>
+                      <ci> Km_GLUT4_glc_e </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> glc_c </ci>
+                      <ci> Km_GLUT4_glc_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <ci> dgf_glc </ci>
+                        <ci> dgf_glc </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> glc_c </ci>
+                            <ci> glc_e </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="HEX1_1" name="HEX1_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_HEX1 </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX1_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX1_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX1_g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_glc </ci>
+            </bvar>
+            <bvar>
+              <ci> g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> gdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> glc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_HEX1 </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_HEX1 </ci>
+                  <ci> kcat_HEX1 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> glc_c </ci>
+                    <ci> Km_HEX1_atp_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> atp_c </ci>
+                    <ci> Km_HEX1_atp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <apply>
+                    <minus/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <times/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> glc_c </ci>
+                            <ci> Km_HEX1_atp_c </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> atp_c </ci>
+                            <ci> Km_HEX1_atp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> g6p_c </ci>
+                            <ci> Km_HEX1_g6p_c </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> adp_c </ci>
+                            <ci> Km_HEX1_adp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <cn> 1 </cn>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> g6p_c </ci>
+                      <ci> glc_c </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Km_HEX1_g6p_c </ci>
+                      <ci> Km_HEX1_atp_c </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_g6p </ci>
+                            <ci> dgf_adp </ci>
+                          </apply>
+                          <ci> dgf_glc </ci>
+                        </apply>
+                        <ci> dgf_atp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> g6p_c </ci>
+                              <ci> adp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> glc_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="HEX2_1" name="HEX2_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_HEX2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX2_gdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX2_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX2_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX2_g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_HEX2_glc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> L_0_HEX2 </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> allo_HEX2 </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_glc </ci>
+            </bvar>
+            <bvar>
+              <ci> g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> gdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> glc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_HEX2 </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_HEX2 </ci>
+                  <ci> kcat_HEX2 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> glc_c </ci>
+                    <ci> Km_HEX2_glc_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> atp_c </ci>
+                    <ci> Km_HEX2_atp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <apply>
+                    <minus/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <times/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> glc_c </ci>
+                            <ci> Km_HEX2_glc_c </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> atp_c </ci>
+                            <ci> Km_HEX2_atp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> g6p_c </ci>
+                            <ci> Km_HEX2_g6p_c </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> adp_c </ci>
+                            <ci> Km_HEX2_adp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <cn> 1 </cn>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> g6p_c </ci>
+                      <ci> glc_c </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Km_HEX2_g6p_c </ci>
+                      <ci> Km_HEX2_glc_c </ci>
+                    </apply>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> gdp_c </ci>
+                      <ci> glc_c </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Km_HEX2_gdp_c </ci>
+                      <ci> Km_HEX2_glc_c </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_g6p </ci>
+                            <ci> dgf_adp </ci>
+                          </apply>
+                          <ci> dgf_glc </ci>
+                        </apply>
+                        <ci> dgf_atp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> g6p_c </ci>
+                              <ci> adp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> glc_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <divide/>
+                <cn> 1 </cn>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <times/>
+                    <ci> L_0_HEX2 </ci>
+                    <apply>
+                      <power/>
+                      <ci> allo_HEX2 </ci>
+                      <cn> 2 </cn>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PGI_1" name="PGI_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PGI </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGI_f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGI_g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_f6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g6p </ci>
+            </bvar>
+            <bvar>
+              <ci> f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PGI </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PGI </ci>
+                  <ci> kcat_PGI </ci>
+                  <apply>
+                    <divide/>
+                    <ci> g6p_c </ci>
+                    <ci> Km_PGI_g6p_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> g6p_c </ci>
+                      <ci> Km_PGI_g6p_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> f6p_c </ci>
+                      <ci> Km_PGI_f6p_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <ci> dgf_f6p </ci>
+                        <ci> dgf_g6p </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> f6p_c </ci>
+                            <ci> g6p_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PFKM_1" name="PFKM_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PFKM </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKM_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKM_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKM_f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKM_fdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> L_0_PFKM </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_f6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_fdp </ci>
+            </bvar>
+            <bvar>
+              <ci> e_PFKM_f26bp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> e_PFKM_lac_c </ci>
+            </bvar>
+            <bvar>
+              <ci> f26bp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> fdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PFKM </ci>
+            </bvar>
+            <bvar>
+              <ci> lac_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PFKM </ci>
+                  <ci> kcat_PFKM </ci>
+                  <apply>
+                    <divide/>
+                    <ci> f6p_c </ci>
+                    <ci> Km_PFKM_f6p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> atp_c </ci>
+                    <ci> Km_PFKM_atp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> f6p_c </ci>
+                          <ci> Km_PFKM_f6p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> atp_c </ci>
+                          <ci> Km_PFKM_atp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> fdp_c </ci>
+                          <ci> Km_PFKM_fdp_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> adp_c </ci>
+                          <ci> Km_PFKM_adp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_fdp </ci>
+                            <ci> dgf_adp </ci>
+                          </apply>
+                          <ci> dgf_f6p </ci>
+                        </apply>
+                        <ci> dgf_atp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> fdp_c </ci>
+                              <ci> adp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> f6p_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <divide/>
+                <cn> 1 </cn>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <times/>
+                    <ci> L_0_PFKM </ci>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <divide/>
+                        <apply>
+                          <times/>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <ci> atp_c </ci>
+                              <ci> Km_PFKM_atp_c </ci>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <ci> lac_c </ci>
+                              <ci> e_PFKM_lac_c </ci>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <cn> 0.7 </cn>
+                              <cn> 0.2 </cn>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <cn> 3 </cn>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <times/>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <ci> f6p_c </ci>
+                              <ci> Km_PFKM_f6p_c </ci>
+                            </apply>
+                            <apply>
+                              <divide/>
+                              <ci> fdp_c </ci>
+                              <ci> Km_PFKM_fdp_c </ci>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <ci> f26bp_c </ci>
+                              <ci> e_PFKM_f26bp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <cn> 4 </cn>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PFKL_1" name="PFKL_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PFKL </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKL_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKL_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKL_fdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PFKM_f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> L_0_PFKL </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_f6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_fdp </ci>
+            </bvar>
+            <bvar>
+              <ci> e_PFKL_lac_l </ci>
+            </bvar>
+            <bvar>
+              <ci> f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> fdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PFKL </ci>
+            </bvar>
+            <bvar>
+              <ci> lac_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PFKL </ci>
+                  <ci> kcat_PFKL </ci>
+                  <apply>
+                    <divide/>
+                    <ci> f6p_c </ci>
+                    <ci> Km_PFKM_f6p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> atp_c </ci>
+                    <ci> Km_PFKL_atp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> f6p_c </ci>
+                          <ci> Km_PFKM_f6p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> atp_c </ci>
+                          <ci> Km_PFKL_atp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> fdp_c </ci>
+                          <ci> Km_PFKL_fdp_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> adp_c </ci>
+                          <ci> Km_PFKL_adp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_fdp </ci>
+                            <ci> dgf_adp </ci>
+                          </apply>
+                          <ci> dgf_f6p </ci>
+                        </apply>
+                        <ci> dgf_atp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> fdp_c </ci>
+                              <ci> adp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> f6p_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <divide/>
+                <cn> 1 </cn>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <times/>
+                    <ci> L_0_PFKL </ci>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <divide/>
+                        <apply>
+                          <times/>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <ci> atp_c </ci>
+                              <ci> Km_PFKL_atp_c </ci>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <ci> lac_c </ci>
+                              <ci> e_PFKL_lac_l </ci>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <apply>
+                              <divide/>
+                              <cn> 0.7 </cn>
+                              <cn> 0.2 </cn>
+                            </apply>
+                          </apply>
+                          <apply>
+                            <plus/>
+                            <cn> 1 </cn>
+                            <cn> 3 </cn>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> f6p_c </ci>
+                            <ci> Km_PFKM_f6p_c </ci>
+                          </apply>
+                          <apply>
+                            <divide/>
+                            <ci> fdp_c </ci>
+                            <ci> Km_PFKL_fdp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <cn> 4 </cn>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="FBA_1" name="FBA_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_FBA </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_FBA_dhap_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_FBA_fdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_FBA_g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_dhap </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_fdp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g3p </ci>
+            </bvar>
+            <bvar>
+              <ci> dhap_c </ci>
+            </bvar>
+            <bvar>
+              <ci> fdp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_FBA </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_FBA </ci>
+                  <ci> kcat_FBA </ci>
+                  <apply>
+                    <divide/>
+                    <ci> fdp_c </ci>
+                    <ci> Km_FBA_fdp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <plus/>
+                  <apply>
+                    <minus/>
+                    <apply>
+                      <plus/>
+                      <cn> 1 </cn>
+                      <apply>
+                        <divide/>
+                        <ci> fdp_c </ci>
+                        <ci> Km_FBA_fdp_c </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> g3p_c </ci>
+                            <ci> Km_FBA_g3p_c </ci>
+                          </apply>
+                        </apply>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> dhap_c </ci>
+                            <ci> Km_FBA_dhap_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <cn> 1 </cn>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> fdp_c </ci>
+                      <ci> g3p_c </ci>
+                      <ci> dhap_c </ci>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> Km_FBA_fdp_c </ci>
+                      <ci> Km_FBA_g3p_c </ci>
+                      <ci> Km_FBA_dhap_c </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <plus/>
+                          <ci> dgf_dhap </ci>
+                          <ci> dgf_g3p </ci>
+                        </apply>
+                        <ci> dgf_fdp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> g3p_c </ci>
+                              <ci> dhap_c </ci>
+                            </apply>
+                            <ci> fdp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="TPI_1" name="TPI_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_TPI </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TPI_dhap_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TPI_g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_dhap </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g3p </ci>
+            </bvar>
+            <bvar>
+              <ci> dhap_c </ci>
+            </bvar>
+            <bvar>
+              <ci> g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_TPI </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_TPI </ci>
+                  <ci> kcat_TPI </ci>
+                  <apply>
+                    <divide/>
+                    <ci> dhap_c </ci>
+                    <ci> Km_TPI_dhap_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> dhap_c </ci>
+                      <ci> Km_TPI_dhap_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> g3p_c </ci>
+                      <ci> Km_TPI_g3p_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <ci> dgf_g3p </ci>
+                        <ci> dgf_dhap </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> g3p_c </ci>
+                            <ci> dhap_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="GAPD_1" name="GAPD_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_GAPD </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GAPD_dpg_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GAPD_g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GAPD_nad_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GAPD_nadh_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GAPD_pi_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_dpg </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g3p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nad </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nadh </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pi </ci>
+            </bvar>
+            <bvar>
+              <ci> dpg_c </ci>
+            </bvar>
+            <bvar>
+              <ci> g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_GAPD </ci>
+            </bvar>
+            <bvar>
+              <ci> nad_c </ci>
+            </bvar>
+            <bvar>
+              <ci> nadh_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pi_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_GAPD </ci>
+                  <ci> kcat_GAPD </ci>
+                  <apply>
+                    <divide/>
+                    <ci> g3p_c </ci>
+                    <ci> Km_GAPD_g3p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> pi_c </ci>
+                    <ci> Km_GAPD_pi_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> nad_c </ci>
+                    <ci> Km_GAPD_nad_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> g3p_c </ci>
+                          <ci> Km_GAPD_g3p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pi_c </ci>
+                          <ci> Km_GAPD_pi_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nad_c </ci>
+                          <ci> Km_GAPD_nad_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nadh_c </ci>
+                          <ci> Km_GAPD_nadh_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> dpg_c </ci>
+                          <ci> Km_GAPD_dpg_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <minus/>
+                            <apply>
+                              <plus/>
+                              <ci> dgf_dpg </ci>
+                              <ci> dgf_nadh </ci>
+                            </apply>
+                            <ci> dgf_g3p </ci>
+                          </apply>
+                          <ci> dgf_nad </ci>
+                        </apply>
+                        <ci> dgf_pi </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> dpg_c </ci>
+                              <ci> nadh_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> pi_c </ci>
+                              <ci> g3p_c </ci>
+                              <ci> nad_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PGK_1" name="PGK_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PGK </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGK_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGK_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGK_dpg_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGK_p3g_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_dpg </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_p3g </ci>
+            </bvar>
+            <bvar>
+              <ci> dpg_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PGK </ci>
+            </bvar>
+            <bvar>
+              <ci> p3g_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PGK </ci>
+                  <ci> kcat_PGK </ci>
+                  <apply>
+                    <divide/>
+                    <ci> dpg_c </ci>
+                    <ci> Km_PGK_dpg_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> adp_c </ci>
+                    <ci> Km_PGK_adp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> dpg_c </ci>
+                          <ci> Km_PGK_dpg_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> adp_c </ci>
+                          <ci> Km_PGK_adp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> p3g_c </ci>
+                          <ci> Km_PGK_p3g_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> atp_c </ci>
+                          <ci> Km_PGK_atp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_p3g </ci>
+                            <ci> dgf_atp </ci>
+                          </apply>
+                          <ci> dgf_dpg </ci>
+                        </apply>
+                        <ci> dgf_adp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> p3g_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> adp_c </ci>
+                              <ci> dpg_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PGM_1" name="PGM_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PGM </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGM_p2g_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGM_p3g_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_p2g </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_p3g </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PGM </ci>
+            </bvar>
+            <bvar>
+              <ci> p2g_c </ci>
+            </bvar>
+            <bvar>
+              <ci> p3g_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PGM </ci>
+                  <ci> kcat_PGM </ci>
+                  <apply>
+                    <divide/>
+                    <ci> p3g_c </ci>
+                    <ci> Km_PGM_p3g_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> p3g_c </ci>
+                      <ci> Km_PGM_p3g_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> p2g_c </ci>
+                      <ci> Km_PGM_p2g_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <ci> dgf_p2g </ci>
+                        <ci> dgf_p3g </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> p2g_c </ci>
+                            <ci> p3g_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="ENO_1" name="ENO_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_ENO </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_ENO_p2g_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_ENO_pep_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_h2o </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_p2g </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_p3g </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_ENO </ci>
+            </bvar>
+            <bvar>
+              <ci> p2g_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pep_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_ENO </ci>
+                  <ci> kcat_ENO </ci>
+                  <apply>
+                    <divide/>
+                    <ci> p2g_c </ci>
+                    <ci> Km_ENO_p2g_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> p2g_c </ci>
+                      <ci> Km_ENO_p2g_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> pep_c </ci>
+                      <ci> Km_ENO_pep_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <plus/>
+                          <ci> dgf_p3g </ci>
+                          <ci> dgf_h2o </ci>
+                        </apply>
+                        <ci> dgf_p2g </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> pep_c </ci>
+                            <ci> p2g_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PKM1_1" name="PKM1_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PKM1 </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM1_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM1_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM1_pep_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM1_pyr_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pep </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pyr </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PKM1 </ci>
+            </bvar>
+            <bvar>
+              <ci> pep_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pyr_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PKM1 </ci>
+                  <ci> kcat_PKM1 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> pep_c </ci>
+                    <ci> Km_PKM1_pep_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> adp_c </ci>
+                    <ci> Km_PKM1_adp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pep_c </ci>
+                          <ci> Km_PKM1_pep_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> adp_c </ci>
+                          <ci> Km_PKM1_adp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pyr_c </ci>
+                          <ci> Km_PKM1_pyr_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> atp_c </ci>
+                          <ci> Km_PKM1_atp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_pyr </ci>
+                            <ci> dgf_atp </ci>
+                          </apply>
+                          <ci> dgf_pep </ci>
+                        </apply>
+                        <ci> dgf_adp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> pyr_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> pep_c </ci>
+                              <ci> adp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PKM2_1" name="PKM2_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PKM2 </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM2_adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM2_atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM2_pep_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PKM2_pyr_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> adp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> atp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_adp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_atp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pep </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pyr </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PKM2 </ci>
+            </bvar>
+            <bvar>
+              <ci> pep_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pyr_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PKM2 </ci>
+                  <ci> kcat_PKM2 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> pep_c </ci>
+                    <ci> Km_PKM2_pep_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> adp_c </ci>
+                    <ci> Km_PKM2_adp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pep_c </ci>
+                          <ci> Km_PKM2_pep_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> adp_c </ci>
+                          <ci> Km_PKM2_adp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pyr_c </ci>
+                          <ci> Km_PKM2_pyr_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> atp_c </ci>
+                          <ci> Km_PKM2_atp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_pyr </ci>
+                            <ci> dgf_atp </ci>
+                          </apply>
+                          <ci> dgf_pep </ci>
+                        </apply>
+                        <ci> dgf_adp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> pyr_c </ci>
+                              <ci> atp_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> pep_c </ci>
+                              <ci> adp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="LDHA_1" name="LDHA_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_LDHA </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_LDHA_lac_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_LDHA_nad_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_LDHA_nadh_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_LDHA_pyr_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_lac </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nad </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nadh </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pyr </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_LDHA </ci>
+            </bvar>
+            <bvar>
+              <ci> lac_c </ci>
+            </bvar>
+            <bvar>
+              <ci> nad_c </ci>
+            </bvar>
+            <bvar>
+              <ci> nadh_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pyr_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_LDHA </ci>
+                  <ci> kcat_LDHA </ci>
+                  <apply>
+                    <divide/>
+                    <ci> pyr_c </ci>
+                    <ci> Km_LDHA_pyr_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> nadh_c </ci>
+                    <ci> Km_LDHA_nadh_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pyr_c </ci>
+                          <ci> Km_LDHA_pyr_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nadh_c </ci>
+                          <ci> Km_LDHA_nadh_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> lac_c </ci>
+                          <ci> Km_LDHA_lac_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nad_c </ci>
+                          <ci> Km_LDHA_nad_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_lac </ci>
+                            <ci> dgf_nad </ci>
+                          </apply>
+                          <ci> dgf_pyr </ci>
+                        </apply>
+                        <ci> dgf_nadh </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> lac_c </ci>
+                              <ci> nad_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> pyr_c </ci>
+                              <ci> nadh_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="G6PDH_1" name="G6PDH_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_G6PDH </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_G6PDH_g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_G6PDH_nadp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_G6PDH_nadph_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_G6PDH_pgl_c </ci>
+            </bvar>
+            <bvar>
+              <ci> L_0_G6PDH </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nadp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nadph </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pgl6 </ci>
+            </bvar>
+            <bvar>
+              <ci> g6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_G6PDH </ci>
+            </bvar>
+            <bvar>
+              <ci> nadp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> nadph_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pgl6_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_G6PDH </ci>
+                  <ci> kcat_G6PDH </ci>
+                  <apply>
+                    <divide/>
+                    <ci> g6p_c </ci>
+                    <ci> Km_G6PDH_g6p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> nadp_c </ci>
+                    <ci> Km_G6PDH_nadp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> g6p_c </ci>
+                          <ci> Km_G6PDH_g6p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nadp_c </ci>
+                          <ci> Km_G6PDH_nadp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nadph_c </ci>
+                          <ci> Km_G6PDH_nadph_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pgl6_c </ci>
+                          <ci> Km_G6PDH_pgl_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_pgl6 </ci>
+                            <ci> dgf_nadph </ci>
+                          </apply>
+                          <ci> dgf_g6p </ci>
+                        </apply>
+                        <ci> dgf_nadp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> pgl6_c </ci>
+                              <ci> nadph_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> g6p_c </ci>
+                              <ci> nadp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+              <apply>
+                <divide/>
+                <cn> 1 </cn>
+                <apply>
+                  <plus/>
+                  <cn> 1 </cn>
+                  <apply>
+                    <times/>
+                    <ci> L_0_G6PDH </ci>
+                    <apply>
+                      <power/>
+                      <apply>
+                        <divide/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <plus/>
+                          <cn> 1 </cn>
+                          <apply>
+                            <divide/>
+                            <ci> nadp_c </ci>
+                            <ci> Km_G6PDH_nadp_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                      <cn> 2 </cn>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="PGL_1" name="PGL_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_PGL </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGL_pgc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_PGL_pgl_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_h2o </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pgc6 </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pgl6 </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_PGL </ci>
+            </bvar>
+            <bvar>
+              <ci> pgc6_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pgl6_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_PGL </ci>
+                  <ci> kcat_PGL </ci>
+                  <apply>
+                    <divide/>
+                    <ci> pgl6_c </ci>
+                    <ci> Km_PGL_pgl_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> pgl6_c </ci>
+                      <ci> Km_PGL_pgl_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> pgc6_c </ci>
+                      <ci> Km_PGL_pgc_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <ci> dgf_pgc6 </ci>
+                          <ci> dgf_pgl6 </ci>
+                        </apply>
+                        <ci> dgf_h2o </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> pgc6_c </ci>
+                            <ci> pgl6_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="RPI_1" name="RPI_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_RPI </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_RPI_r5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_RPI_ru5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_r5p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_ru5p </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_RPI </ci>
+            </bvar>
+            <bvar>
+              <ci> r5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> ru5p_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_RPI </ci>
+                  <ci> kcat_RPI </ci>
+                  <apply>
+                    <divide/>
+                    <ci> ru5p_c </ci>
+                    <ci> Km_RPI_ru5p_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> ru5p_c </ci>
+                      <ci> Km_RPI_ru5p_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> r5p_c </ci>
+                      <ci> Km_RPI_r5p_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <ci> dgf_r5p </ci>
+                        <ci> dgf_ru5p </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> r5p_c </ci>
+                            <ci> ru5p_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="GND_1" name="GND_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_GND </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GND_co2_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GND_nadp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GND_nadph_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GND_pgc_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_GND_ru5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> co2_c </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_co2 </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nadp </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_nadph </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_pgc6 </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_ru5p </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_GND </ci>
+            </bvar>
+            <bvar>
+              <ci> nadp_c </ci>
+            </bvar>
+            <bvar>
+              <ci> nadph_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pgc6_c </ci>
+            </bvar>
+            <bvar>
+              <ci> ru5p_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_GND </ci>
+                  <ci> kcat_GND </ci>
+                  <apply>
+                    <divide/>
+                    <ci> pgc6_c </ci>
+                    <ci> Km_GND_pgc_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> nadp_c </ci>
+                    <ci> Km_GND_nadp_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> pgc6_c </ci>
+                          <ci> Km_GND_pgc_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nadp_c </ci>
+                          <ci> Km_GND_nadp_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> nadph_c </ci>
+                          <ci> Km_GND_nadph_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> ru5p_c </ci>
+                          <ci> Km_GND_ru5p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> co2_c </ci>
+                          <ci> Km_GND_co2_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_ru5p </ci>
+                            <ci> dgf_nadph </ci>
+                            <ci> dgf_co2 </ci>
+                          </apply>
+                          <ci> dgf_pgc6 </ci>
+                        </apply>
+                        <ci> dgf_nadp </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> co2_c </ci>
+                              <ci> ru5p_c </ci>
+                              <ci> nadph_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> pgc6_c </ci>
+                              <ci> nadp_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="RPE_1" name="RPE_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_RPE </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_RPE_ru5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_RPE_xu5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_ru5p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_xu5p </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_RPE </ci>
+            </bvar>
+            <bvar>
+              <ci> ru5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> xu5p_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_RPE </ci>
+                  <ci> kcat_RPE </ci>
+                  <apply>
+                    <divide/>
+                    <ci> ru5p_c </ci>
+                    <ci> Km_RPE_ru5p_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> ru5p_c </ci>
+                      <ci> Km_RPE_ru5p_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> xu5p_c </ci>
+                      <ci> Km_RPE_xu5p_c </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <ci> dgf_xu5p </ci>
+                        <ci> dgf_ru5p </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <ci> xu5p_c </ci>
+                            <ci> ru5p_c </ci>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="TKT1_1" name="TKT1_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_TKT </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_r5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_s7p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_xu5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g3p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_r5p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_s7p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_xu5p </ci>
+            </bvar>
+            <bvar>
+              <ci> g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_TKT1 </ci>
+            </bvar>
+            <bvar>
+              <ci> r5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> s7p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> xu5p_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_TKT </ci>
+                  <ci> kcat_TKT1 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> r5p_c </ci>
+                    <ci> Km_TKT_r5p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> xu5p_c </ci>
+                    <ci> Km_TKT_xu5p_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> r5p_c </ci>
+                          <ci> Km_TKT_r5p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> xu5p_c </ci>
+                          <ci> Km_TKT_xu5p_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> s7p_c </ci>
+                          <ci> Km_TKT_s7p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> g3p_c </ci>
+                          <ci> Km_TKT_g3p_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_s7p </ci>
+                            <ci> dgf_g3p </ci>
+                          </apply>
+                          <ci> dgf_r5p </ci>
+                        </apply>
+                        <ci> dgf_xu5p </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> s7p_c </ci>
+                              <ci> g3p_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> r5p_c </ci>
+                              <ci> xu5p_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="TKT2_1" name="TKT2_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_TKT </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_e4p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TKT_xu5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_e4p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_f6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g3p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_xu5p </ci>
+            </bvar>
+            <bvar>
+              <ci> e4p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_TKT2 </ci>
+            </bvar>
+            <bvar>
+              <ci> xu5p_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_TKT </ci>
+                  <ci> kcat_TKT2 </ci>
+                  <apply>
+                    <divide/>
+                    <ci> e4p_c </ci>
+                    <ci> Km_TKT_e4p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> xu5p_c </ci>
+                    <ci> Km_TKT_xu5p_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> e4p_c </ci>
+                          <ci> Km_TKT_e4p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> xu5p_c </ci>
+                          <ci> Km_TKT_xu5p_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> f6p_c </ci>
+                          <ci> Km_TKT_f6p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> g3p_c </ci>
+                          <ci> Km_TKT_g3p_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_f6p </ci>
+                            <ci> dgf_g3p </ci>
+                          </apply>
+                          <ci> dgf_e4p </ci>
+                        </apply>
+                        <ci> dgf_xu5p </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> f6p_c </ci>
+                              <ci> g3p_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> e4p_c </ci>
+                              <ci> xu5p_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="r5p_drain_1" name="r5p_drain_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> r5p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> r5p_drain_r5p_drain </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <ci> r5p_drain_r5p_drain </ci>
+              <apply>
+                <divide/>
+                <ci> r5p_c </ci>
+                <apply>
+                  <plus/>
+                  <ci> r5p_c </ci>
+                  <cn type="e-notation"> 1 <sep/> -12 </cn>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="TALA_1" name="TALA_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_TALA </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TALA_e4p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TALA_f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TALA_g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_TALA_s7p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_e4p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_f6p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_g3p </ci>
+            </bvar>
+            <bvar>
+              <ci> dgf_s7p </ci>
+            </bvar>
+            <bvar>
+              <ci> e4p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> f6p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> g3p_c </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_TALA </ci>
+            </bvar>
+            <bvar>
+              <ci> s7p_c </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_TALA </ci>
+                  <ci> kcat_TALA </ci>
+                  <apply>
+                    <divide/>
+                    <ci> e4p_c </ci>
+                    <ci> Km_TALA_e4p_c </ci>
+                  </apply>
+                  <apply>
+                    <divide/>
+                    <ci> f6p_c </ci>
+                    <ci> Km_TALA_f6p_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> e4p_c </ci>
+                          <ci> Km_TALA_e4p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> f6p_c </ci>
+                          <ci> Km_TALA_f6p_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> s7p_c </ci>
+                          <ci> Km_TALA_s7p_c </ci>
+                        </apply>
+                      </apply>
+                      <apply>
+                        <plus/>
+                        <cn> 1 </cn>
+                        <apply>
+                          <divide/>
+                          <ci> g3p_c </ci>
+                          <ci> Km_TALA_g3p_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <plus/>
+                      <apply>
+                        <minus/>
+                        <apply>
+                          <minus/>
+                          <apply>
+                            <plus/>
+                            <ci> dgf_s7p </ci>
+                            <ci> dgf_g3p </ci>
+                          </apply>
+                          <ci> dgf_e4p </ci>
+                        </apply>
+                        <ci> dgf_f6p </ci>
+                      </apply>
+                      <apply>
+                        <times/>
+                        <ci> R </ci>
+                        <ci> T </ci>
+                        <apply>
+                          <ln/>
+                          <apply>
+                            <divide/>
+                            <apply>
+                              <times/>
+                              <ci> s7p_c </ci>
+                              <ci> g3p_c </ci>
+                            </apply>
+                            <apply>
+                              <times/>
+                              <ci> e4p_c </ci>
+                              <ci> f6p_c </ci>
+                            </apply>
+                          </apply>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="pyr_drain_1" name="pyr_drain_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> pyr_c </ci>
+            </bvar>
+            <bvar>
+              <ci> pyr_drain_pyr_drain </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <ci> pyr_drain_pyr_drain </ci>
+              <apply>
+                <divide/>
+                <ci> pyr_c </ci>
+                <apply>
+                  <plus/>
+                  <ci> pyr_c </ci>
+                  <cn type="e-notation"> 1 <sep/> -6 </cn>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+      <functionDefinition id="LACT_1" name="LACT_1">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar>
+              <ci> E_LACT </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_LACT_lac_c </ci>
+            </bvar>
+            <bvar>
+              <ci> Km_LACT_lac_e </ci>
+            </bvar>
+            <bvar>
+              <ci> R </ci>
+            </bvar>
+            <bvar>
+              <ci> T </ci>
+            </bvar>
+            <bvar>
+              <ci> kcat_LACT </ci>
+            </bvar>
+            <bvar>
+              <ci> lac_c </ci>
+            </bvar>
+            <bvar>
+              <ci> lac_e </ci>
+            </bvar>
+            <apply>
+              <times/>
+              <apply>
+                <divide/>
+                <apply>
+                  <times/>
+                  <ci> E_LACT </ci>
+                  <ci> kcat_LACT </ci>
+                  <apply>
+                    <divide/>
+                    <ci> lac_c </ci>
+                    <ci> Km_LACT_lac_c </ci>
+                  </apply>
+                </apply>
+                <apply>
+                  <minus/>
+                  <apply>
+                    <plus/>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> lac_c </ci>
+                      <ci> Km_LACT_lac_c </ci>
+                    </apply>
+                    <cn> 1 </cn>
+                    <apply>
+                      <divide/>
+                      <ci> lac_e </ci>
+                      <ci> Km_LACT_lac_e </ci>
+                    </apply>
+                  </apply>
+                  <cn> 1 </cn>
+                </apply>
+              </apply>
+              <apply>
+                <minus/>
+                <cn> 1 </cn>
+                <apply>
+                  <exp/>
+                  <apply>
+                    <divide/>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                      <apply>
+                        <ln/>
+                        <apply>
+                          <divide/>
+                          <ci> lac_e </ci>
+                          <ci> lac_c </ci>
+                        </apply>
+                      </apply>
+                    </apply>
+                    <apply>
+                      <times/>
+                      <ci> R </ci>
+                      <ci> T </ci>
+                    </apply>
+                  </apply>
+                </apply>
+              </apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+    </listOfFunctionDefinitions>
+    <listOfUnitDefinitions>
+      <unitDefinition id="unit_0" name="kJ/(K*mol)">
+        <listOfUnits>
+          <unit kind="mole" exponent="-1" scale="0" multiplier="1"/>
+          <unit kind="joule" exponent="1" scale="3" multiplier="1"/>
+          <unit kind="kelvin" exponent="-1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="unit_1" name="K">
+        <listOfUnits>
+          <unit kind="kelvin" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="unit_2" name="h^-1">
+        <listOfUnits>
+          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="length" name="length">
+        <listOfUnits>
+          <unit kind="metre" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="area" name="area">
+        <listOfUnits>
+          <unit kind="metre" exponent="2" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="volume" name="volume">
+        <listOfUnits>
+          <unit kind="litre" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="time" name="time">
+        <listOfUnits>
+          <unit kind="second" exponent="1" scale="0" multiplier="3600"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="substance" name="substance">
+        <listOfUnits>
+          <unit kind="mole" exponent="1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="unit_3" name="kJ/(mol*K)">
+        <listOfUnits>
+          <unit kind="mole" exponent="-1" scale="0" multiplier="1"/>
+          <unit kind="joule" exponent="1" scale="3" multiplier="1"/>
+          <unit kind="kelvin" exponent="-1" scale="0" multiplier="1"/>
+        </listOfUnits>
+      </unitDefinition>
+      <unitDefinition id="unit_4" name="1/h">
+        <listOfUnits>
+          <unit kind="second" exponent="-1" scale="0" multiplier="3600"/>
+        </listOfUnits>
+      </unitDefinition>
+    </listOfUnitDefinitions>
+    <listOfCompartments>
+      <compartment id="e" name="e" spatialDimensions="3" size="1" constant="true"/>
+      <compartment id="c" name="c" spatialDimensions="3" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="glc_e" name="glc_e" compartment="e" initialConcentration="0.03" boundaryCondition="true" constant="true"/>
+      <species id="glc_c" name="glc_c" compartment="c" initialConcentration="0.0284469100017317" boundaryCondition="false" constant="false"/>
+      <species id="atp_c" name="atp_c" compartment="c" initialConcentration="0.0026" boundaryCondition="true" constant="true"/>
+      <species id="adp_c" name="adp_c" compartment="c" initialConcentration="0.00098" boundaryCondition="true" constant="true"/>
+      <species id="g6p_c" name="g6p_c" compartment="c" initialConcentration="200.096924785766" boundaryCondition="false" constant="false"/>
+      <species id="f6p_c" name="f6p_c" compartment="c" initialConcentration="67.0215929798079" boundaryCondition="false" constant="false"/>
+      <species id="fdp_c" name="fdp_c" compartment="c" initialConcentration="8051.79903108304" boundaryCondition="false" constant="false"/>
+      <species id="dhap_c" name="dhap_c" compartment="c" initialConcentration="0.000339978508661183" boundaryCondition="false" constant="false"/>
+      <species id="g3p_c" name="g3p_c" compartment="c" initialConcentration="3.50003686451504e-05" boundaryCondition="false" constant="false"/>
+      <species id="pi_c" name="pi_c" compartment="c" initialConcentration="0.0025" boundaryCondition="true" constant="true"/>
+      <species id="nad_c" name="nad_c" compartment="c" initialConcentration="0.0078" boundaryCondition="true" constant="true"/>
+      <species id="nadh_c" name="nadh_c" compartment="c" initialConcentration="9.99999999999993e-06" boundaryCondition="true" constant="true"/>
+      <species id="dpg_c" name="dpg_c" compartment="c" initialConcentration="2.28913202568432e-05" boundaryCondition="false" constant="false"/>
+      <species id="p3g_c" name="p3g_c" compartment="c" initialConcentration="0.0172720641214675" boundaryCondition="false" constant="false"/>
+      <species id="p2g_c" name="p2g_c" compartment="c" initialConcentration="0.00240716598577989" boundaryCondition="false" constant="false"/>
+      <species id="f26bp_c" name="f26bp_c" compartment="c" initialConcentration="4.99999999999994e-05" boundaryCondition="true" constant="true"/>
+      <species id="pep_c" name="pep_c" compartment="c" initialConcentration="0.00503188144173525" boundaryCondition="false" constant="false"/>
+      <species id="pyr_c" name="pyr_c" compartment="c" initialConcentration="14.0157730697688" boundaryCondition="false" constant="false"/>
+      <species id="lac_c" name="lac_c" compartment="c" initialConcentration="0.0010553871737449" boundaryCondition="false" constant="false"/>
+      <species id="lac_e" name="lac_e" compartment="e" initialConcentration="0.001" boundaryCondition="true" constant="true"/>
+      <species id="nadp_c" name="nadp_c" compartment="c" initialConcentration="4.81999999999998e-06" boundaryCondition="true" constant="true"/>
+      <species id="nadph_c" name="nadph_c" compartment="c" initialConcentration="1.1e-06" boundaryCondition="true" constant="true"/>
+      <species id="pgl6_c" name="pgl6_c" compartment="c" initialConcentration="8.34698629125539e-07" boundaryCondition="false" constant="false"/>
+      <species id="pgc6_c" name="pgc6_c" compartment="c" initialConcentration="0.000251617910688901" boundaryCondition="false" constant="false"/>
+      <species id="ru5p_c" name="ru5p_c" compartment="c" initialConcentration="0.0171616612242276" boundaryCondition="false" constant="false"/>
+      <species id="r5p_c" name="r5p_c" compartment="c" initialConcentration="0.0594174846680177" boundaryCondition="false" constant="false"/>
+      <species id="co2_c" name="co2_c" compartment="c" initialConcentration="0.001" boundaryCondition="true" constant="true"/>
+      <species id="xu5p_c" name="xu5p_c" compartment="c" initialConcentration="0.120623545055601" boundaryCondition="false" constant="false"/>
+      <species id="e4p_c" name="e4p_c" compartment="c" initialConcentration="0.000310406857016863" boundaryCondition="false" constant="false"/>
+      <species id="s7p_c" name="s7p_c" compartment="c" initialConcentration="378.520558281485" boundaryCondition="false" constant="false"/>
+      <species id="gdp_c" name="gdp_c" compartment="c" initialConcentration="0.001" boundaryCondition="true" constant="true"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="R" name="R" value="0.008314" units="unit_3" constant="true"/>
+      <parameter id="T" name="T" value="298.15" units="unit_1" constant="true"/>
+      <parameter id="dgf_glc" name="dgf_glc" value="-406.64" constant="true"/>
+      <parameter id="dgf_atp" name="dgf_atp" value="-2278.02" constant="true"/>
+      <parameter id="dgf_adp" name="dgf_adp" value="-1403.42" constant="true"/>
+      <parameter id="dgf_g6p" name="dgf_g6p" value="-1300.96" constant="true"/>
+      <parameter id="dgf_f6p" name="dgf_f6p" value="-1298.283" constant="true"/>
+      <parameter id="dgf_fdp" name="dgf_fdp" value="-2189.85" constant="true"/>
+      <parameter id="dgf_dhap" name="dgf_dhap" value="-1086.25" constant="true"/>
+      <parameter id="dgf_g3p" name="dgf_g3p" value="-1080.65" constant="true"/>
+      <parameter id="dgf_pi" name="dgf_pi" value="-1056.92" constant="true"/>
+      <parameter id="dgf_nad" name="dgf_nad" value="-1160.05" constant="true"/>
+      <parameter id="dgf_nadh" name="dgf_nadh" value="-1095.14" constant="true"/>
+      <parameter id="dgf_dpg" name="dgf_dpg" value="-2200.13" constant="true"/>
+      <parameter id="dgf_p3g" name="dgf_p3g" value="-1344.82" constant="true"/>
+      <parameter id="dgf_p2g" name="dgf_p2g" value="-1340.28" constant="true"/>
+      <parameter id="dgf_f26dp" name="dgf_f26dp" value="-2166.96" constant="true"/>
+      <parameter id="dgf_pep" name="dgf_pep" value="-1190.74" constant="true"/>
+      <parameter id="dgf_pyr" name="dgf_pyr" value="-341.75" constant="true"/>
+      <parameter id="dgf_lac" name="dgf_lac" value="-301.67" constant="true"/>
+      <parameter id="dgf_nadp" name="dgf_nadp" value="-2046.83" constant="true"/>
+      <parameter id="dgf_nadph" name="dgf_nadph" value="-1982.11" constant="true"/>
+      <parameter id="dgf_pgl6" name="dgf_pgl6" value="-1371.59" constant="true"/>
+      <parameter id="dgf_pgc6" name="dgf_pgc6" value="-1549.34" constant="true"/>
+      <parameter id="dgf_ru5p" name="dgf_ru5p" value="-1217.79" constant="true"/>
+      <parameter id="dgf_co2" name="dgf_co2" value="-386" constant="true"/>
+      <parameter id="dgf_r5p" name="dgf_r5p" value="-1222.24" constant="true"/>
+      <parameter id="dgf_xu5p" name="dgf_xu5p" value="-1221.18" constant="true"/>
+      <parameter id="dgf_e4p" name="dgf_e4p" value="-1147.53" constant="true"/>
+      <parameter id="dgf_s7p" name="dgf_s7p" value="-1364.28" constant="true"/>
+      <parameter id="kcat_GLUT4" name="kcat_GLUT4" value="1e-05" units="unit_4" constant="true"/>
+      <parameter id="kcat_HEX1" name="kcat_HEX1" value="93.5" units="unit_4" constant="true"/>
+      <parameter id="kcat_HEX2" name="kcat_HEX2" value="739.1" constant="true"/>
+      <parameter id="kcat_PGI" name="kcat_PGI" value="3300.1" constant="true"/>
+      <parameter id="kcat_PFKL" name="kcat_PFKL" value="127.1" constant="true"/>
+      <parameter id="kcat_PFKM" name="kcat_PFKM" value="822.1" constant="true"/>
+      <parameter id="kcat_FBA" name="kcat_FBA" value="60.1" constant="true"/>
+      <parameter id="kcat_TPI" name="kcat_TPI" value="3800.1" constant="true"/>
+      <parameter id="kcat_GAPD" name="kcat_GAPD" value="161.1" constant="true"/>
+      <parameter id="kcat_PGK" name="kcat_PGK" value="430.1" constant="true"/>
+      <parameter id="kcat_PGM" name="kcat_PGM" value="795.1" constant="true"/>
+      <parameter id="kcat_ENO" name="kcat_ENO" value="57.1" units="unit_4" constant="true"/>
+      <parameter id="kcat_PKM1" name="kcat_PKM1" value="627.1" constant="true"/>
+      <parameter id="kcat_PKM2" name="kcat_PKM2" value="450.1" constant="true"/>
+      <parameter id="kcat_LDHA" name="kcat_LDHA" value="27.1" constant="true"/>
+      <parameter id="kcat_G6PDH" name="kcat_G6PDH" value="10.1" constant="true"/>
+      <parameter id="kcat_PGL" name="kcat_PGL" value="20.1" constant="true"/>
+      <parameter id="kcat_GND" name="kcat_GND" value="25.1" constant="true"/>
+      <parameter id="kcat_RPI" name="kcat_RPI" value="37.5" constant="true"/>
+      <parameter id="kcat_RPE" name="kcat_RPE" value="120.1" constant="true"/>
+      <parameter id="kcat_TKT1" name="kcat_TKT1" value="10.1" constant="true"/>
+      <parameter id="kcat_TKT2" name="kcat_TKT2" value="69.1" constant="true"/>
+      <parameter id="kcat_TALA" name="kcat_TALA" value="18.1" constant="true"/>
+      <parameter id="Km_GLUT4_glc_e" name="Km_GLUT4_glc_e" value="0.0015" constant="true"/>
+      <parameter id="Km_GLUT4_glc_c" name="Km_GLUT4_glc_c" value="0.005" constant="true"/>
+      <parameter id="Km_HEX1_glc_c" name="Km_HEX1_glc_c" value="6e-05" constant="true"/>
+      <parameter id="Km_HEX1_atp_c" name="Km_HEX1_atp_c" value="0.00088" constant="true"/>
+      <parameter id="Km_HEX1_g6p_c" name="Km_HEX1_g6p_c" value="0.00047" constant="true"/>
+      <parameter id="Km_HEX1_adp_c" name="Km_HEX1_adp_c" value="0.001" constant="true"/>
+      <parameter id="Km_HEX2_glc_c" name="Km_HEX2_glc_c" value="0.00037" constant="true"/>
+      <parameter id="Km_HEX2_atp_c" name="Km_HEX2_atp_c" value="0.00081" constant="true"/>
+      <parameter id="Km_HEX2_g6p_c" name="Km_HEX2_g6p_c" value="0.00047" constant="true"/>
+      <parameter id="Km_HEX2_adp_c" name="Km_HEX2_adp_c" value="0.001" constant="true"/>
+      <parameter id="Km_PGI_g6p_c" name="Km_PGI_g6p_c" value="0.000105" constant="true"/>
+      <parameter id="Km_PGI_f6p_c" name="Km_PGI_f6p_c" value="3e-05" constant="true"/>
+      <parameter id="Km_PFKL_f6p_c" name="Km_PFKL_f6p_c" value="7e-05" constant="true"/>
+      <parameter id="Km_PFKL_atp_c" name="Km_PFKL_atp_c" value="1e-05" constant="true"/>
+      <parameter id="Km_PFKL_adp_c" name="Km_PFKL_adp_c" value="0.00014" constant="true"/>
+      <parameter id="Km_PFKL_fdp_c" name="Km_PFKL_fdp_c" value="0.00043" constant="true"/>
+      <parameter id="Km_PFKM_f6p_c" name="Km_PFKM_f6p_c" value="7e-05" constant="true"/>
+      <parameter id="Km_PFKM_atp_c" name="Km_PFKM_atp_c" value="3e-06" constant="true"/>
+      <parameter id="Km_PFKM_adp_c" name="Km_PFKM_adp_c" value="0.0014" constant="true"/>
+      <parameter id="Km_PFKM_fdp_c" name="Km_PFKM_fdp_c" value="0.0033" constant="true"/>
+      <parameter id="Km_FBA_fdp_c" name="Km_FBA_fdp_c" value="5.2e-05" constant="true"/>
+      <parameter id="Km_FBA_dhap_c" name="Km_FBA_dhap_c" value="3.5e-05" constant="true"/>
+      <parameter id="Km_FBA_g3p_c" name="Km_FBA_g3p_c" value="0.00019" constant="true"/>
+      <parameter id="Km_TPI_dhap_c" name="Km_TPI_dhap_c" value="0.00018" constant="true"/>
+      <parameter id="Km_TPI_g3p_c" name="Km_TPI_g3p_c" value="1.3e-05" constant="true"/>
+      <parameter id="Km_GAPD_g3p_c" name="Km_GAPD_g3p_c" value="9.5e-05" constant="true"/>
+      <parameter id="Km_GAPD_pi_c" name="Km_GAPD_pi_c" value="7.8e-05" constant="true"/>
+      <parameter id="Km_GAPD_nad_c" name="Km_GAPD_nad_c" value="4.5e-05" constant="true"/>
+      <parameter id="Km_GAPD_nadh_c" name="Km_GAPD_nadh_c" value="3.3e-06" constant="true"/>
+      <parameter id="Km_GAPD_dpg_c" name="Km_GAPD_dpg_c" value="8e-07" constant="true"/>
+      <parameter id="Km_PGK_dpg_c" name="Km_PGK_dpg_c" value="1.9e-06" constant="true"/>
+      <parameter id="Km_PGK_adp_c" name="Km_PGK_adp_c" value="0.00015" constant="true"/>
+      <parameter id="Km_PGK_atp_c" name="Km_PGK_atp_c" value="0.00042" constant="true"/>
+      <parameter id="Km_PGK_p3g_c" name="Km_PGK_p3g_c" value="0.00132" constant="true"/>
+      <parameter id="Km_PGM_p3g_c" name="Km_PGM_p3g_c" value="0.000168" constant="true"/>
+      <parameter id="Km_PGM_p2g_c" name="Km_PGM_p2g_c" value="1.4e-05" constant="true"/>
+      <parameter id="Km_ENO_p2g_c" name="Km_ENO_p2g_c" value="0.00013" constant="true"/>
+      <parameter id="Km_ENO_pep_c" name="Km_ENO_pep_c" value="3.4e-05" constant="true"/>
+      <parameter id="Km_PKM1_pep_c" name="Km_PKM1_pep_c" value="5.8e-05" constant="true"/>
+      <parameter id="Km_PKM1_adp_c" name="Km_PKM1_adp_c" value="0.00056" constant="true"/>
+      <parameter id="Km_PKM1_atp_c" name="Km_PKM1_atp_c" value="0.003" constant="true"/>
+      <parameter id="Km_PKM1_pyr_c" name="Km_PKM1_pyr_c" value="0.004" constant="true"/>
+      <parameter id="Km_PKM2_pep_c" name="Km_PKM2_pep_c" value="0.0001" constant="true"/>
+      <parameter id="Km_PKM2_adp_c" name="Km_PKM2_adp_c" value="0.00032" constant="true"/>
+      <parameter id="Km_PKM2_atp_c" name="Km_PKM2_atp_c" value="0.003" constant="true"/>
+      <parameter id="Km_PKM2_pyr_c" name="Km_PKM2_pyr_c" value="0.004" constant="true"/>
+      <parameter id="Km_LDHA_pyr_c" name="Km_LDHA_pyr_c" value="0.00021" constant="true"/>
+      <parameter id="Km_LDHA_nadh_c" name="Km_LDHA_nadh_c" value="7.4e-06" constant="true"/>
+      <parameter id="Km_LDHA_nad_c" name="Km_LDHA_nad_c" value="0.0003" constant="true"/>
+      <parameter id="Km_LDHA_lac_c" name="Km_LDHA_lac_c" value="0.0108" constant="true"/>
+      <parameter id="Km_G6PDH_g6p_c" name="Km_G6PDH_g6p_c" value="3.6e-05" constant="true"/>
+      <parameter id="Km_G6PDH_nadp_c" name="Km_G6PDH_nadp_c" value="6e-06" constant="true"/>
+      <parameter id="Km_G6PDH_nadph_c" name="Km_G6PDH_nadph_c" value="3e-07" constant="true"/>
+      <parameter id="Km_G6PDH_pgl_c" name="Km_G6PDH_pgl_c" value="2e-05" constant="true"/>
+      <parameter id="Km_PGL_pgl_c" name="Km_PGL_pgl_c" value="8e-05" constant="true"/>
+      <parameter id="Km_PGL_pgc_c" name="Km_PGL_pgc_c" value="2e-05" constant="true"/>
+      <parameter id="Km_GND_pgc_c" name="Km_GND_pgc_c" value="2e-05" constant="true"/>
+      <parameter id="Km_GND_nadp_c" name="Km_GND_nadp_c" value="2.9e-06" constant="true"/>
+      <parameter id="Km_GND_nadph_c" name="Km_GND_nadph_c" value="3e-07" constant="true"/>
+      <parameter id="Km_GND_ru5p_c" name="Km_GND_ru5p_c" value="3e-05" constant="true"/>
+      <parameter id="Km_GND_co2_c" name="Km_GND_co2_c" value="0.015" constant="true"/>
+      <parameter id="Km_RPI_ru5p_c" name="Km_RPI_ru5p_c" value="0.005" constant="true"/>
+      <parameter id="Km_RPI_r5p_c" name="Km_RPI_r5p_c" value="0.0012" constant="true"/>
+      <parameter id="Km_RPE_ru5p_c" name="Km_RPE_ru5p_c" value="0.00019" constant="true"/>
+      <parameter id="Km_RPE_xu5p_c" name="Km_RPE_xu5p_c" value="0.00014" constant="true"/>
+      <parameter id="Km_TKT_r5p_c" name="Km_TKT_r5p_c" value="0.00015" constant="true"/>
+      <parameter id="Km_TKT_xu5p_c" name="Km_TKT_xu5p_c" value="0.0001" constant="true"/>
+      <parameter id="Km_TKT_s7p_c" name="Km_TKT_s7p_c" value="0.004" constant="true"/>
+      <parameter id="Km_TKT_g3p_c" name="Km_TKT_g3p_c" value="0.003" constant="true"/>
+      <parameter id="Km_TKT_e4p_c" name="Km_TKT_e4p_c" value="0.00036" constant="true"/>
+      <parameter id="Km_TKT_f6p_c" name="Km_TKT_f6p_c" value="0.0034" constant="true"/>
+      <parameter id="Km_TALA_f6p_c" name="Km_TALA_f6p_c" value="0.00023" constant="true"/>
+      <parameter id="Km_TALA_g3p_c" name="Km_TALA_g3p_c" value="0.0001" constant="true"/>
+      <parameter id="Km_TALA_s7p_c" name="Km_TALA_s7p_c" value="0.0001" constant="true"/>
+      <parameter id="Km_TALA_e4p_c" name="Km_TALA_e4p_c" value="0.0001" constant="true"/>
+      <parameter id="dgf_h2o" name="dgf_h2o" value="-154.4" constant="true"/>
+      <parameter id="e_PFKM_lac_c" name="e_PFKM_lac_c" value="0.03" constant="true"/>
+      <parameter id="e_PFKM_f26bp_c" name="e_PFKM_f26bp_c" value="5.5e-06" constant="true"/>
+      <parameter id="L_0_PFKM" name="L_0_PFKM" value="10.1" constant="true"/>
+      <parameter id="L_0_PFKL" name="L_0_PFKL" value="10.1" constant="true"/>
+      <parameter id="e_PFKL_lac_l" name="e_PFKL_lac_l" value="0.03" constant="true"/>
+      <parameter id="Km_HEX2_gdp_c" name="Km_HEX2_gdp_c" value="0.03" constant="true"/>
+      <parameter id="L_0_HEX2" name="L_0_HEX2" value="10.1" constant="true"/>
+      <parameter id="L_0_G6PDH" name="L_0_G6PDH" value="1" constant="true"/>
+      <parameter id="allo_HEX2" name="allo_HEX2" value="0.1" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="GLUT4" name="GLUT4" reversible="true">
+        <listOfReactants>
+          <speciesReference species="glc_e" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="glc_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <ci> Glut4_1 </ci>
+              <ci> E_GLUT4 </ci>
+              <ci> Km_GLUT4_glc_c </ci>
+              <ci> Km_GLUT4_glc_e </ci>
+              <ci> R </ci>
+              <ci> T </ci>
+              <ci> dgf_glc </ci>
+              <ci> glc_c </ci>
+              <ci> glc_e </ci>
+              <ci> kcat_GLUT4 </ci>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_GLUT4" name="E_GLUT4" value="100.1"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="HEX1" name="HEX1" reversible="true">
+        <listOfReactants>
+          <speciesReference species="glc_c" stoichiometry="1"/>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="g6p_c" stoichiometry="1"/>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="gdp_c"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> HEX1_1 </ci>
+                <ci> E_HEX1 </ci>
+                <ci> Km_HEX1_adp_c </ci>
+                <ci> Km_HEX1_atp_c </ci>
+                <ci> Km_HEX1_g6p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_g6p </ci>
+                <ci> dgf_glc </ci>
+                <ci> g6p_c </ci>
+                <ci> gdp_c </ci>
+                <ci> glc_c </ci>
+                <ci> kcat_HEX1 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_HEX1" name="E_HEX1" value="0.1"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="HEX2" name="HEX2" reversible="true">
+        <listOfReactants>
+          <speciesReference species="glc_c" stoichiometry="1"/>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="g6p_c" stoichiometry="1"/>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="gdp_c"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> HEX2_1 </ci>
+                <ci> E_HEX2 </ci>
+                <ci> Km_HEX2_gdp_c </ci>
+                <ci> Km_HEX2_adp_c </ci>
+                <ci> Km_HEX2_atp_c </ci>
+                <ci> Km_HEX2_g6p_c </ci>
+                <ci> Km_HEX2_glc_c </ci>
+                <ci> L_0_HEX2 </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> allo_HEX2 </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_g6p </ci>
+                <ci> dgf_glc </ci>
+                <ci> g6p_c </ci>
+                <ci> gdp_c </ci>
+                <ci> glc_c </ci>
+                <ci> kcat_HEX2 </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_HEX2" name="E_HEX2" value="0.1"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PGI" name="PGI" reversible="true">
+        <listOfReactants>
+          <speciesReference species="g6p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="f6p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PGI_1 </ci>
+                <ci> E_PGI </ci>
+                <ci> Km_PGI_f6p_c </ci>
+                <ci> Km_PGI_g6p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_f6p </ci>
+                <ci> dgf_g6p </ci>
+                <ci> f6p_c </ci>
+                <ci> g6p_c </ci>
+                <ci> kcat_PGI </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PGI" name="E_PGI" value="1.86e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PFKM" name="PFKM" reversible="true">
+        <listOfReactants>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+          <speciesReference species="f6p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+          <speciesReference species="fdp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="lac_c"/>
+          <modifierSpeciesReference species="f26bp_c"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PFKM_1 </ci>
+                <ci> E_PFKM </ci>
+                <ci> Km_PFKM_adp_c </ci>
+                <ci> Km_PFKM_atp_c </ci>
+                <ci> Km_PFKM_f6p_c </ci>
+                <ci> Km_PFKM_fdp_c </ci>
+                <ci> L_0_PFKM </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_f6p </ci>
+                <ci> dgf_fdp </ci>
+                <ci> e_PFKM_f26bp_c </ci>
+                <ci> e_PFKM_lac_c </ci>
+                <ci> f26bp_c </ci>
+                <ci> f6p_c </ci>
+                <ci> fdp_c </ci>
+                <ci> kcat_PFKM </ci>
+                <ci> lac_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PFKM" name="E_PFKM" value="4.38e-08"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PFKL" name="PFKL" reversible="true">
+        <listOfReactants>
+          <speciesReference species="f6p_c" stoichiometry="1"/>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="fdp_c" stoichiometry="1"/>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="lac_c"/>
+          <modifierSpeciesReference species="f26bp_c"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PFKL_1 </ci>
+                <ci> E_PFKL </ci>
+                <ci> Km_PFKL_adp_c </ci>
+                <ci> Km_PFKL_atp_c </ci>
+                <ci> Km_PFKL_fdp_c </ci>
+                <ci> Km_PFKM_f6p_c </ci>
+                <ci> L_0_PFKL </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_f6p </ci>
+                <ci> dgf_fdp </ci>
+                <ci> e_PFKL_lac_l </ci>
+                <ci> f6p_c </ci>
+                <ci> fdp_c </ci>
+                <ci> kcat_PFKL </ci>
+                <ci> lac_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PFKL" name="E_PFKL" value="5.98e-08"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="FBA" name="FBA" reversible="true">
+        <listOfReactants>
+          <speciesReference species="fdp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="g3p_c" stoichiometry="1"/>
+          <speciesReference species="dhap_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> FBA_1 </ci>
+                <ci> E_FBA </ci>
+                <ci> Km_FBA_dhap_c </ci>
+                <ci> Km_FBA_fdp_c </ci>
+                <ci> Km_FBA_g3p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_dhap </ci>
+                <ci> dgf_fdp </ci>
+                <ci> dgf_g3p </ci>
+                <ci> dhap_c </ci>
+                <ci> fdp_c </ci>
+                <ci> g3p_c </ci>
+                <ci> kcat_FBA </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_FBA" name="E_FBA" value="1.79e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="TPI" name="TPI" reversible="true">
+        <listOfReactants>
+          <speciesReference species="dhap_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="g3p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> TPI_1 </ci>
+                <ci> E_TPI </ci>
+                <ci> Km_TPI_dhap_c </ci>
+                <ci> Km_TPI_g3p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_dhap </ci>
+                <ci> dgf_g3p </ci>
+                <ci> dhap_c </ci>
+                <ci> g3p_c </ci>
+                <ci> kcat_TPI </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_TPI" name="E_TPI" value="2.1e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="GAPD" name="GAPD" reversible="true">
+        <listOfReactants>
+          <speciesReference species="g3p_c" stoichiometry="1"/>
+          <speciesReference species="pi_c" stoichiometry="1"/>
+          <speciesReference species="nad_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="nadh_c" stoichiometry="1"/>
+          <speciesReference species="dpg_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> GAPD_1 </ci>
+                <ci> E_GAPD </ci>
+                <ci> Km_GAPD_dpg_c </ci>
+                <ci> Km_GAPD_g3p_c </ci>
+                <ci> Km_GAPD_nad_c </ci>
+                <ci> Km_GAPD_nadh_c </ci>
+                <ci> Km_GAPD_pi_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_dpg </ci>
+                <ci> dgf_g3p </ci>
+                <ci> dgf_nad </ci>
+                <ci> dgf_nadh </ci>
+                <ci> dgf_pi </ci>
+                <ci> dpg_c </ci>
+                <ci> g3p_c </ci>
+                <ci> kcat_GAPD </ci>
+                <ci> nad_c </ci>
+                <ci> nadh_c </ci>
+                <ci> pi_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_GAPD" name="E_GAPD" value="1.39e-05"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PGK" name="PGK" reversible="true">
+        <listOfReactants>
+          <speciesReference species="dpg_c" stoichiometry="1"/>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="p3g_c" stoichiometry="1"/>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PGK_1 </ci>
+                <ci> E_PGK </ci>
+                <ci> Km_PGK_adp_c </ci>
+                <ci> Km_PGK_atp_c </ci>
+                <ci> Km_PGK_dpg_c </ci>
+                <ci> Km_PGK_p3g_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_dpg </ci>
+                <ci> dgf_p3g </ci>
+                <ci> dpg_c </ci>
+                <ci> kcat_PGK </ci>
+                <ci> p3g_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PGK" name="E_PGK" value="2.74e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PGM" name="PGM" reversible="true">
+        <listOfReactants>
+          <speciesReference species="p3g_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="p2g_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PGM_1 </ci>
+                <ci> E_PGM </ci>
+                <ci> Km_PGM_p2g_c </ci>
+                <ci> Km_PGM_p3g_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_p2g </ci>
+                <ci> dgf_p3g </ci>
+                <ci> kcat_PGM </ci>
+                <ci> p2g_c </ci>
+                <ci> p3g_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PGM" name="E_PGM" value="2e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="ENO" name="ENO" reversible="true">
+        <listOfReactants>
+          <speciesReference species="p2g_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="pep_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> ENO_1 </ci>
+                <ci> E_ENO </ci>
+                <ci> Km_ENO_p2g_c </ci>
+                <ci> Km_ENO_pep_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_h2o </ci>
+                <ci> dgf_p2g </ci>
+                <ci> dgf_p3g </ci>
+                <ci> kcat_ENO </ci>
+                <ci> p2g_c </ci>
+                <ci> pep_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_ENO" name="E_ENO" value="1.22e-05"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PKM1" name="PKM1" reversible="true">
+        <listOfReactants>
+          <speciesReference species="pep_c" stoichiometry="1"/>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="pyr_c" stoichiometry="1"/>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PKM1_1 </ci>
+                <ci> E_PKM1 </ci>
+                <ci> Km_PKM1_adp_c </ci>
+                <ci> Km_PKM1_atp_c </ci>
+                <ci> Km_PKM1_pep_c </ci>
+                <ci> Km_PKM1_pyr_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_pep </ci>
+                <ci> dgf_pyr </ci>
+                <ci> kcat_PKM1 </ci>
+                <ci> pep_c </ci>
+                <ci> pyr_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PKM1" name="E_PKM1" value="7.12e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PKM2" name="PKM2" reversible="true">
+        <listOfReactants>
+          <speciesReference species="pep_c" stoichiometry="1"/>
+          <speciesReference species="adp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="pyr_c" stoichiometry="1"/>
+          <speciesReference species="atp_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PKM2_1 </ci>
+                <ci> E_PKM2 </ci>
+                <ci> Km_PKM2_adp_c </ci>
+                <ci> Km_PKM2_atp_c </ci>
+                <ci> Km_PKM2_pep_c </ci>
+                <ci> Km_PKM2_pyr_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> adp_c </ci>
+                <ci> atp_c </ci>
+                <ci> dgf_adp </ci>
+                <ci> dgf_atp </ci>
+                <ci> dgf_pep </ci>
+                <ci> dgf_pyr </ci>
+                <ci> kcat_PKM2 </ci>
+                <ci> pep_c </ci>
+                <ci> pyr_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PKM2" name="E_PKM2" value="1.45e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="LDHA" name="LDHA" reversible="true">
+        <listOfReactants>
+          <speciesReference species="pyr_c" stoichiometry="1"/>
+          <speciesReference species="nadh_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="lac_c" stoichiometry="1"/>
+          <speciesReference species="nad_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> LDHA_1 </ci>
+                <ci> E_LDHA </ci>
+                <ci> Km_LDHA_lac_c </ci>
+                <ci> Km_LDHA_nad_c </ci>
+                <ci> Km_LDHA_nadh_c </ci>
+                <ci> Km_LDHA_pyr_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_lac </ci>
+                <ci> dgf_nad </ci>
+                <ci> dgf_nadh </ci>
+                <ci> dgf_pyr </ci>
+                <ci> kcat_LDHA </ci>
+                <ci> lac_c </ci>
+                <ci> nad_c </ci>
+                <ci> nadh_c </ci>
+                <ci> pyr_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_LDHA" name="E_LDHA" value="2.98e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="G6PDH" name="G6PDH" reversible="true">
+        <listOfReactants>
+          <speciesReference species="g6p_c" stoichiometry="1"/>
+          <speciesReference species="nadp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="pgl6_c" stoichiometry="1"/>
+          <speciesReference species="nadph_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> G6PDH_1 </ci>
+                <ci> E_G6PDH </ci>
+                <ci> Km_G6PDH_g6p_c </ci>
+                <ci> Km_G6PDH_nadp_c </ci>
+                <ci> Km_G6PDH_nadph_c </ci>
+                <ci> Km_G6PDH_pgl_c </ci>
+                <ci> L_0_G6PDH </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_g6p </ci>
+                <ci> dgf_nadp </ci>
+                <ci> dgf_nadph </ci>
+                <ci> dgf_pgl6 </ci>
+                <ci> g6p_c </ci>
+                <ci> kcat_G6PDH </ci>
+                <ci> nadp_c </ci>
+                <ci> nadph_c </ci>
+                <ci> pgl6_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_G6PDH" name="E_G6PDH" value="1.42e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="PGL" name="PGL" reversible="true">
+        <listOfReactants>
+          <speciesReference species="pgl6_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="pgc6_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> PGL_1 </ci>
+                <ci> E_PGL </ci>
+                <ci> Km_PGL_pgc_c </ci>
+                <ci> Km_PGL_pgl_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_h2o </ci>
+                <ci> dgf_pgc6 </ci>
+                <ci> dgf_pgl6 </ci>
+                <ci> kcat_PGL </ci>
+                <ci> pgc6_c </ci>
+                <ci> pgl6_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_PGL" name="E_PGL" value="1.94e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="GND" name="GND" reversible="true">
+        <listOfReactants>
+          <speciesReference species="pgc6_c" stoichiometry="1"/>
+          <speciesReference species="nadp_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="nadph_c" stoichiometry="1"/>
+          <speciesReference species="ru5p_c" stoichiometry="1"/>
+          <speciesReference species="co2_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> GND_1 </ci>
+                <ci> E_GND </ci>
+                <ci> Km_GND_co2_c </ci>
+                <ci> Km_GND_nadp_c </ci>
+                <ci> Km_GND_nadph_c </ci>
+                <ci> Km_GND_pgc_c </ci>
+                <ci> Km_GND_ru5p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> co2_c </ci>
+                <ci> dgf_co2 </ci>
+                <ci> dgf_nadp </ci>
+                <ci> dgf_nadph </ci>
+                <ci> dgf_pgc6 </ci>
+                <ci> dgf_ru5p </ci>
+                <ci> kcat_GND </ci>
+                <ci> nadp_c </ci>
+                <ci> nadph_c </ci>
+                <ci> pgc6_c </ci>
+                <ci> ru5p_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_GND" name="E_GND" value="8.28e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="RPI" name="RPI" reversible="true">
+        <listOfReactants>
+          <speciesReference species="ru5p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="r5p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> RPI_1 </ci>
+                <ci> E_RPI </ci>
+                <ci> Km_RPI_r5p_c </ci>
+                <ci> Km_RPI_ru5p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_r5p </ci>
+                <ci> dgf_ru5p </ci>
+                <ci> kcat_RPI </ci>
+                <ci> r5p_c </ci>
+                <ci> ru5p_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_RPI" name="E_RPI" value="2.62e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="RPE" name="RPE" reversible="true">
+        <listOfReactants>
+          <speciesReference species="ru5p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="xu5p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> RPE_1 </ci>
+                <ci> E_RPE </ci>
+                <ci> Km_RPE_ru5p_c </ci>
+                <ci> Km_RPE_xu5p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_ru5p </ci>
+                <ci> dgf_xu5p </ci>
+                <ci> kcat_RPE </ci>
+                <ci> ru5p_c </ci>
+                <ci> xu5p_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_RPE" name="E_RPE" value="2.92e-08"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="TKT1" name="TKT1" reversible="true">
+        <listOfReactants>
+          <speciesReference species="r5p_c" stoichiometry="1"/>
+          <speciesReference species="xu5p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="s7p_c" stoichiometry="1"/>
+          <speciesReference species="g3p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> TKT1_1 </ci>
+                <ci> E_TKT </ci>
+                <ci> Km_TKT_g3p_c </ci>
+                <ci> Km_TKT_r5p_c </ci>
+                <ci> Km_TKT_s7p_c </ci>
+                <ci> Km_TKT_xu5p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_g3p </ci>
+                <ci> dgf_r5p </ci>
+                <ci> dgf_s7p </ci>
+                <ci> dgf_xu5p </ci>
+                <ci> g3p_c </ci>
+                <ci> kcat_TKT1 </ci>
+                <ci> r5p_c </ci>
+                <ci> s7p_c </ci>
+                <ci> xu5p_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_TKT" name="E_TKT" value="3e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="TKT2" name="TKT2" reversible="true">
+        <listOfReactants>
+          <speciesReference species="e4p_c" stoichiometry="1"/>
+          <speciesReference species="xu5p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="f6p_c" stoichiometry="1"/>
+          <speciesReference species="g3p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> TKT2_1 </ci>
+                <ci> E_TKT </ci>
+                <ci> Km_TKT_e4p_c </ci>
+                <ci> Km_TKT_f6p_c </ci>
+                <ci> Km_TKT_g3p_c </ci>
+                <ci> Km_TKT_xu5p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_e4p </ci>
+                <ci> dgf_f6p </ci>
+                <ci> dgf_g3p </ci>
+                <ci> dgf_xu5p </ci>
+                <ci> e4p_c </ci>
+                <ci> f6p_c </ci>
+                <ci> g3p_c </ci>
+                <ci> kcat_TKT2 </ci>
+                <ci> xu5p_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_TKT" name="E_TKT" value="3e-06"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="TALA" name="TALA" reversible="true">
+        <listOfReactants>
+          <speciesReference species="e4p_c" stoichiometry="1"/>
+          <speciesReference species="f6p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="s7p_c" stoichiometry="1"/>
+          <speciesReference species="g3p_c" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> TALA_1 </ci>
+                <ci> E_TALA </ci>
+                <ci> Km_TALA_e4p_c </ci>
+                <ci> Km_TALA_f6p_c </ci>
+                <ci> Km_TALA_g3p_c </ci>
+                <ci> Km_TALA_s7p_c </ci>
+                <ci> R </ci>
+                <ci> T </ci>
+                <ci> dgf_e4p </ci>
+                <ci> dgf_f6p </ci>
+                <ci> dgf_g3p </ci>
+                <ci> dgf_s7p </ci>
+                <ci> e4p_c </ci>
+                <ci> f6p_c </ci>
+                <ci> g3p_c </ci>
+                <ci> kcat_TALA </ci>
+                <ci> s7p_c </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_TALA" name="E_TALA" value="5.58e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="r5p_drain" name="r5p_drain" reversible="false">
+        <listOfReactants>
+          <speciesReference species="r5p_c" stoichiometry="1"/>
+        </listOfReactants>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> r5p_drain_1 </ci>
+                <ci> r5p_c </ci>
+                <ci> r5p_drain_r5p_drain </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="r5p_drain_r5p_drain" name="r5p_drain_r5p_drain" value="3.97e-07"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="pyr_drain" name="pyr_drain" reversible="false">
+        <listOfReactants>
+          <speciesReference species="pyr_c" stoichiometry="1"/>
+        </listOfReactants>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <times/>
+              <ci> c </ci>
+              <apply>
+                <ci> pyr_drain_1 </ci>
+                <ci> pyr_c </ci>
+                <ci> pyr_drain_pyr_drain </ci>
+              </apply>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="pyr_drain_pyr_drain" name="pyr_drain_pyr_drain" value="3.06e-05"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+      <reaction id="lac_transport" name="lac_transport" reversible="true">
+        <listOfReactants>
+          <speciesReference species="lac_c" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="lac_e" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply>
+              <ci> LACT_1 </ci>
+              <ci> E_LACT </ci>
+              <ci> Km_LACT_lac_c </ci>
+              <ci> Km_LACT_lac_e </ci>
+              <ci> R </ci>
+              <ci> T </ci>
+              <ci> kcat_LACT </ci>
+              <ci> lac_c </ci>
+              <ci> lac_e </ci>
+            </apply>
+          </math>
+          <listOfParameters>
+            <parameter id="E_LACT" name="E_LACT" value="1.01"/>
+            <parameter id="Km_LACT_lac_c" name="Km_LACT_lac_c" value="0.01"/>
+            <parameter id="Km_LACT_lac_e" name="Km_LACT_lac_e" value="0.01"/>
+            <parameter id="kcat_LACT" name="kcat_LACT" value="0.01"/>
+          </listOfParameters>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

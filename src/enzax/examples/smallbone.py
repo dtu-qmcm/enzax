@@ -1,11 +1,10 @@
+import re
 from pathlib import Path
 
-import libsbml
-import re
 import equinox as eqx
-import sympy2jax
-
 import jax
+import libsbml
+import sympy2jax
 from jax import numpy as jnp
 from jax.scipy.stats import norm
 from jaxtyping import PyTree, Scalar
@@ -13,8 +12,8 @@ from jaxtyping import PyTree, Scalar
 from enzax.array_types import IndConcArr
 from enzax.kinetic_model import KineticModelSbml
 from enzax.sbml import load_libsbml_model_from_file, sbml_to_enzax
-from enzax.steady_state import get_steady_state
 from enzax.statistical_modelling import enzax_prior_logdensity
+from enzax.steady_state import get_steady_state
 
 jax.config.update("jax_enable_x64", True)
 

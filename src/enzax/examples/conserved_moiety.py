@@ -25,14 +25,11 @@ Two features of the model:
 
 """
 
-import numpy as np
 from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel
-from enzax.rate_equations import (
-    AllostericReversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
+from enzax.parameters import pack_parameters
+from enzax.rate_equations import MichaelisMenten
 
 stoichiometry = {
     "transA": {"A_e": -1.0, "A_c": 1.0},
@@ -44,124 +41,102 @@ stoichiometry = {
     "transD": {"D_c": -1.0, "D_e": 1.0},
     "regX": {"Z_c": -1.0, "X2_c": -1.0, "X1_c": 1.0},
 }
-reactions = ["transA", "r1", "r2A", "r2B", "r3", "r4", "transD", "regX"]
-species = ["A_c", "A_e", "B_c", "C_c", "D_c", "D_e", "X1_c", "X2_c", "Z_c"]
 balanced_species = ["A_c", "B_c", "C_c", "D_c", "X1_c", "X2_c"]
 dependent_species = ["X2_c"]
 # A and D each live in two compartments, so they share a formation energy.
-species_to_dgf_ix = np.array([0, 0, 1, 2, 3, 3, 4, 5, 6], dtype=np.int16)
-rate_equations = [
-    ReversibleMichaelisMenten(),  # transA
-    ReversibleMichaelisMenten(  # r1, inhibited competitively by D_c
-        ix_ki_species=np.array([4], dtype=np.int16),
-    ),
-    AllostericReversibleMichaelisMenten(  # r2A, activated by C_c
-        ix_allosteric_activators=np.array([3], dtype=np.int16),
+# Every other species is a compound of its own, so it needs no entry here.
+compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
+rate_equations = {
+    "transA": MichaelisMenten(),
+    "r1": MichaelisMenten(competitive_inhibitors=["D_c"]),
+    "r2A": MichaelisMenten(
+        allosteric_activators=["C_c"],
         subunits=1,
     ),
-    AllostericReversibleMichaelisMenten(  # r2B, inhibited by C_c
-        ix_allosteric_inhibitors=np.array([3], dtype=np.int16),
+    "r2B": MichaelisMenten(
+        allosteric_inhibitors=["C_c"],
         subunits=1,
     ),
-    ReversibleMichaelisMenten(),  # r3
-    ReversibleMichaelisMenten(),  # r4
-    ReversibleMichaelisMenten(),  # transD
-    ReversibleMichaelisMenten(),  # regX
-]
+    "r3": MichaelisMenten(),
+    "r4": MichaelisMenten(),
+    "transD": MichaelisMenten(),
+    "regX": MichaelisMenten(),
+}
 model = RateEquationModel(
     stoichiometry=stoichiometry,
-    species=species,
-    reactions=reactions,
     balanced_species=balanced_species,
     dependent_species=dependent_species,
-    species_to_dgf_ix=species_to_dgf_ix,
+    compound_to_species=compound_to_species,
     rate_equations=rate_equations,
 )
-parameters = dict(
-    log_kcat={
-        "transA": jnp.log(jnp.array(2.0)),
-        "r1": jnp.log(jnp.array(1.0)),
-        "r2A": jnp.log(jnp.array(0.5)),
-        "r2B": jnp.log(jnp.array(0.5)),
-        "r3": jnp.log(jnp.array(1.5)),
-        "r4": jnp.log(jnp.array(1.0)),
-        "transD": jnp.log(jnp.array(2.0)),
-        "regX": jnp.log(jnp.array(3.0)),
+parameters = pack_parameters(
+    model.parameter_labelling,
+    {
+        "log_saturation_constant": {
+            "km|transA|A_e": jnp.log(0.3),
+            "km|transA|A_c": jnp.log(0.3),
+            "km|r1|A_c": jnp.log(0.2),
+            "km|r1|B_c": jnp.log(0.4),
+            "ki|r1|D_c": jnp.log(0.3),
+            "km|r2A|A_c": jnp.log(0.25),
+            "km|r2A|C_c": jnp.log(0.5),
+            "dc|r2A|C_c": jnp.log(0.1),
+            "km|r2B|A_c": jnp.log(0.4),
+            "km|r2B|C_c": jnp.log(0.3),
+            "dc|r2B|C_c": jnp.log(0.1),
+            "km|r3|B_c": jnp.log(0.15),
+            "km|r3|X1_c": jnp.log(0.5),
+            "km|r3|D_c": jnp.log(0.3),
+            "km|r3|X2_c": jnp.log(0.4),
+            "km|r4|C_c": jnp.log(0.2),
+            "km|r4|D_c": jnp.log(0.35),
+            "km|transD|D_c": jnp.log(0.25),
+            "km|transD|D_e": jnp.log(0.25),
+            "km|regX|X2_c": jnp.log(0.4),
+            "km|regX|Z_c": jnp.log(0.1),
+            "km|regX|X1_c": jnp.log(0.5),
+        },
+        "log_kcat": {
+            "transA": jnp.log(2.0),
+            "r1": jnp.log(1.0),
+            "r2A": jnp.log(0.5),
+            "r2B": jnp.log(0.5),
+            "r3": jnp.log(1.5),
+            "r4": jnp.log(1.0),
+            "transD": jnp.log(2.0),
+            "regX": jnp.log(3.0),
+        },
+        "log_enzyme": {
+            "transA": jnp.log(0.2),
+            "r1": jnp.log(0.3),
+            "r2A": jnp.log(0.15),
+            "r2B": jnp.log(0.15),
+            "r3": jnp.log(0.25),
+            "r4": jnp.log(0.2),
+            "transD": jnp.log(0.2),
+            "regX": jnp.log(0.3),
+        },
+        "log_tc": {"r2A": jnp.log(0.5), "r2B": jnp.log(2.0)},
+        # Each formation energy is labelled by its compound. A and D each
+        # cover two compartments; the rest are compounds with one species, so
+        # they are labelled by that species' id.
+        "dgf": {
+            "A": 0.0,
+            "B_c": -5.0,
+            "C_c": -5.0,
+            "D": -15.0,
+            "X1_c": 0.0,
+            "X2_c": 5.0,
+            "Z_c": 5.0,
+        },
+        "log_conc_unbalanced": {
+            "A_e": jnp.log(0.5),
+            "D_e": jnp.log(0.05),
+            "Z_c": jnp.log(0.2),
+        },
+        "conserved_pools": {"X2_c": 1.0},  # X1_c + X2_c
+        "temperature": 298.15,
     },
-    log_enzyme={
-        "transA": jnp.log(jnp.array(0.2)),
-        "r1": jnp.log(jnp.array(0.3)),
-        "r2A": jnp.log(jnp.array(0.15)),
-        "r2B": jnp.log(jnp.array(0.15)),
-        "r3": jnp.log(jnp.array(0.25)),
-        "r4": jnp.log(jnp.array(0.2)),
-        "transD": jnp.log(jnp.array(0.2)),
-        "regX": jnp.log(jnp.array(0.3)),
-    },
-    log_substrate_km={
-        "transA": jnp.log(jnp.array([0.3])),  # A_e
-        "r1": jnp.log(jnp.array([0.2])),  # A_c
-        "r2A": jnp.log(jnp.array([0.25])),  # A_c
-        "r2B": jnp.log(jnp.array([0.4])),  # A_c
-        "r3": jnp.log(jnp.array([0.15, 0.5])),  # B_c, X1_c
-        "r4": jnp.log(jnp.array([0.2])),  # C_c
-        "transD": jnp.log(jnp.array([0.25])),  # D_c
-        "regX": jnp.log(jnp.array([0.4, 0.1])),  # X2_c, Z_c
-    },
-    log_product_km={
-        "transA": jnp.log(jnp.array([0.3])),  # A_c
-        "r1": jnp.log(jnp.array([0.4])),  # B_c
-        "r2A": jnp.log(jnp.array([0.5])),  # C_c
-        "r2B": jnp.log(jnp.array([0.3])),  # C_c
-        "r3": jnp.log(jnp.array([0.3, 0.4])),  # D_c, X2_c
-        "r4": jnp.log(jnp.array([0.35])),  # D_c
-        "transD": jnp.log(jnp.array([0.25])),  # D_e
-        "regX": jnp.log(jnp.array([0.5])),  # X1_c
-    },
-    log_ki={
-        "transA": jnp.array([]),
-        "r1": jnp.log(jnp.array([0.3])),  # D_c
-        "r2A": jnp.array([]),
-        "r2B": jnp.array([]),
-        "r3": jnp.array([]),
-        "r4": jnp.array([]),
-        "transD": jnp.array([]),
-        "regX": jnp.array([]),
-    },
-    log_tc={
-        "r2A": jnp.log(jnp.array(0.5)),
-        "r2B": jnp.log(jnp.array(2.0)),
-    },
-    log_dc_activator={
-        "r2A": jnp.log(jnp.array([0.1])),  # C_c
-        "r2B": jnp.array([]),
-    },
-    log_dc_inhibitor={
-        "r2A": jnp.array([]),
-        "r2B": jnp.log(jnp.array([0.1])),  # C_c
-    },
-    dgf=jnp.array(
-        [
-            0.0,  # A
-            -5.0,  # B
-            -5.0,  # C
-            -15.0,  # D
-            0.0,  # X1
-            5.0,  # X2
-            5.0,  # Z
-        ]
-    ),
-    temperature=jnp.array(298.15),
-    log_conc_unbalanced=jnp.log(
-        jnp.array(
-            [
-                0.5,  # A_e
-                0.05,  # D_e
-                0.2,  # Z_c
-            ]
-        )
-    ),
-    conserved_pools=jnp.array([1.0]),  # X1_c + X2_c
 )
 # Concentrations of the independent balanced species at steady state. X2_c's
 # concentration follows from X1_c's and the conserved pool total.

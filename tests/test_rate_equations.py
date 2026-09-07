@@ -1,144 +1,162 @@
-"""Unit tests for rate equations."""
+"""Unit tests for rate equations.
 
-import numpy as np
+Each test builds a one-reaction model so that the rate equation's parameter
+labels can be resolved to positions, then evaluates the model's only flux.
+The reaction turns species `a` into species `b`; species `c` takes no part in
+it, and is there to be an allosteric activator.
+"""
+
+import pytest
 from jax import numpy as jnp
-from enzax.rate_equations import (
-    AllostericIrreversibleMichaelisMenten,
-    AllostericReversibleMichaelisMenten,
-    IrreversibleMichaelisMenten,
-    ReversibleMichaelisMenten,
-)
 
+from enzax.kinetic_model import RateEquationModel
+from enzax.parameters import pack_parameters
+from enzax.rate_equations import MichaelisMenten
 
-EXAMPLE_S = np.array([[-1], [1], [0]], dtype=np.float64)
+EXAMPLE_SPECIES = ["a", "b", "c"]
+EXAMPLE_STOICHIOMETRY = {"r1": {"a": -1.0, "b": 1.0}}
 EXAMPLE_CONC = jnp.array([0.5, 0.2, 0.1])
-EXAMPLE_PARAMETERS = dict(
-    log_substrate_km={"r1": jnp.array([0.1])},
-    log_product_km={"r1": jnp.array([-0.2])},
-    log_kcat={"r1": jnp.array(-0.1)},
-    dgf=jnp.array([-3.0, 1.0]),
-    log_ki={"r1": jnp.array([])},
-    temperature=jnp.array(310.0),
-    log_enzyme={"r1": jnp.log(jnp.array(0.3)), "e1": jnp.log(jnp.array(0.2))},
-    log_conc_unbalanced=jnp.array([]),
-    log_tc={"r1": jnp.array(-0.2)},
-    log_dc_activator={"r1": jnp.array([-0.1])},
-    log_dc_inhibitor={"r1": jnp.array([])},
-)
-EXAMPLE_SPECIES_TO_DGF_IX = np.array([0, 0, 1])
+# a and b are the same compound, so they share a formation energy
+EXAMPLE_COMPOUND_TO_SPECIES = {"a": ["a", "b"]}
+EXAMPLE_K = {
+    "km|r1|a": 0.1,
+    "km|r1|b": -0.2,
+    "dc|r1|c": -0.1,
+}
+EXAMPLE_ENZYME = {"r1": jnp.log(0.3), "e1": jnp.log(0.2)}
+
+
+def get_flux(rate_equation, enzyme_label="r1"):
+    """Build a one-reaction model and evaluate its flux.
+
+    The parameter values come from `EXAMPLE_K` and friends, but which of them
+    are needed is decided by the rate equation, via the model's labels.
+    """
+    model = RateEquationModel(
+        stoichiometry=EXAMPLE_STOICHIOMETRY,
+        balanced_species=EXAMPLE_SPECIES,
+        # `c` takes part in no reaction, so only a rate equation that names it
+        # as an effector would put it in the model. It is a species here
+        # whether or not the rate equation under test wants it.
+        extra_species=EXAMPLE_SPECIES,
+        compound_to_species=EXAMPLE_COMPOUND_TO_SPECIES,
+        rate_equations={"r1": rate_equation},
+    )
+    labelling = model.parameter_labelling
+    spec = {
+        "log_saturation_constant": {
+            label: EXAMPLE_K[label]
+            for label in labelling["log_saturation_constant"]
+        },
+        "log_kcat": {"r1": -0.1},
+        "log_enzyme": {enzyme_label: EXAMPLE_ENZYME[enzyme_label]},
+        "dgf": {"a": -3.0, "c": 1.0},
+        "temperature": 310.0,
+    }
+    if "log_tc" in labelling:
+        spec["log_tc"] = {"r1": -0.2}
+    parameters = pack_parameters(labelling, spec)
+    return model.flux(EXAMPLE_CONC, parameters)[0]
 
 
 def test_irreversible_michaelis_menten():
     expected_rate = 0.08455524
-    f = IrreversibleMichaelisMenten()
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
+    rate = get_flux(MichaelisMenten(reversible=False))
     assert jnp.isclose(rate, expected_rate)
 
 
 def test_reversible_michaelis_menten():
     expected_rate = 0.04342889
-    f = ReversibleMichaelisMenten(
-        ix_ki_species=np.array([], dtype=np.int16),
-        water_stoichiometry=0.0,
-    )
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
+    rate = get_flux(MichaelisMenten(water_stoichiometry=0.0))
     assert jnp.isclose(rate, expected_rate)
 
 
-def test_reversible_michaelis_menten_with_enzyme_id():
+def test_reversible_michaelis_menten_with_enzyme_name():
     expected_rate = 0.02895259
-    f = ReversibleMichaelisMenten(
-        ix_ki_species=np.array([], dtype=np.int16),
-        water_stoichiometry=0.0,
-        enzyme_id="e1",
+    rate = get_flux(
+        MichaelisMenten(water_stoichiometry=0.0, enzyme="e1"),
+        enzyme_label="e1",
     )
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
     assert jnp.isclose(rate, expected_rate)
 
 
 def test_allosteric_irreversible_michaelis_menten():
     expected_rate = 0.05608589
-    f = AllostericIrreversibleMichaelisMenten(
-        ix_ki_species=np.array([], dtype=np.int16),
-        ix_allosteric_activators=np.array([2], dtype=np.int16),
-        subunits=1,
+    rate = get_flux(
+        MichaelisMenten(
+            reversible=False,
+            allosteric_activators=["c"],
+            subunits=1,
+        )
     )
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
     assert jnp.isclose(rate, expected_rate)
 
 
-def test_allosteric_irreversible_michaelis_menten_with_enzyme_id():
+def test_allosteric_irreversible_michaelis_menten_with_enzyme_name():
     expected_rate = 0.03739059
-    f = AllostericIrreversibleMichaelisMenten(
-        ix_ki_species=np.array([], dtype=np.int16),
-        ix_allosteric_activators=np.array([2], dtype=np.int16),
-        subunits=1,
-        enzyme_id="e1",
+    rate = get_flux(
+        MichaelisMenten(
+            reversible=False,
+            allosteric_activators=["c"],
+            subunits=1,
+            enzyme="e1",
+        ),
+        enzyme_label="e1",
     )
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
     assert jnp.isclose(rate, expected_rate)
 
 
 def test_allosteric_reversible_michaelis_menten():
     expected_rate = 0.03027414
-    f = AllostericReversibleMichaelisMenten(
-        ix_ki_species=np.array([], dtype=np.int16),
-        ix_allosteric_activators=np.array([2], dtype=np.int16),
-        subunits=1,
+    rate = get_flux(
+        MichaelisMenten(
+            allosteric_activators=["c"],
+            subunits=1,
+        )
     )
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
     assert jnp.isclose(rate, expected_rate)
 
 
-def test_allosteric_reversible_michaelis_menten_with_enzyme_id():
+def test_allosteric_reversible_michaelis_menten_with_enzyme_name():
     expected_rate = 0.02018276
-    f = AllostericReversibleMichaelisMenten(
-        ix_ki_species=np.array([], dtype=np.int16),
-        ix_allosteric_activators=np.array([2], dtype=np.int16),
-        subunits=1,
-        enzyme_id="e1",
+    rate = get_flux(
+        MichaelisMenten(
+            allosteric_activators=["c"],
+            subunits=1,
+            enzyme="e1",
+        ),
+        enzyme_label="e1",
     )
-    f_input = f.get_input(
-        parameters=EXAMPLE_PARAMETERS,
-        reaction_id="r1",
-        reaction_stoichiometry=EXAMPLE_S[:, 0],
-        species_to_dgf_ix=EXAMPLE_SPECIES_TO_DGF_IX,
-    )
-    rate = f(EXAMPLE_CONC, f_input)
     assert jnp.isclose(rate, expected_rate)
+
+
+def test_michaelis_constants_can_be_declared_in_any_order():
+    """The k declaration is keyed by species, so its order cannot matter."""
+    forwards = get_flux(
+        MichaelisMenten(
+            michaelis_constants={"a": "km|r1|a", "b": "km|r1|b"},
+            water_stoichiometry=0.0,
+        )
+    )
+    backwards = get_flux(
+        MichaelisMenten(
+            michaelis_constants={"b": "km|r1|b", "a": "km|r1|a"},
+            water_stoichiometry=0.0,
+        )
+    )
+    assert forwards == backwards
+
+
+def test_k_declaration_rejects_a_non_reactant():
+    with pytest.raises(ValueError, match="not among its reactants"):
+        get_flux(MichaelisMenten(michaelis_constants={"c": "km|r1|c"}))
+
+
+def test_species_cannot_be_both_activator_and_inhibitor():
+    with pytest.raises(ValueError, match="both allosteric inhibitors"):
+        get_flux(
+            MichaelisMenten(
+                allosteric_inhibitors=["c"],
+                allosteric_activators=["c"],
+            )
+        )

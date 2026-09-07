@@ -37,10 +37,15 @@ markdown_extensions:
 nav:
   - Home: 'index.md'
   - Getting started: 'getting_started.md'
+  - How to make your own rate equation: 'custom_rate_equations.md'
   - Contributing: 'contributing.md'
   - Accessibility: 'accessibility.md'
   - API:
+    - 'api/binding.md'
     - 'api/kinetic_model.md'
+    - 'api/parameters.md'
+    - 'api/parameter_split.md'
+    - 'api/rate_equation.md'
     - 'api/rate_equations.md'
     - 'api/steady_state.md'
     - 'api/mcmc.md'

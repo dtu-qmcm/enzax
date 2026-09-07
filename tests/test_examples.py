@@ -1,9 +1,9 @@
-from enzax.array_types import ParamLeaf
-from enzax.steady_state import get_steady_state
-from jax import numpy as jnp
 import pytest
+from jax import numpy as jnp
 
-from enzax.examples import conserved_moiety, linear, methionine
+from enzax.array_types import ParamLeaf
+from enzax.examples import conserved_moiety, glycolysis, linear, methionine
+from enzax.steady_state import get_steady_state
 
 
 @pytest.mark.parametrize(
@@ -16,6 +16,11 @@ from enzax.examples import conserved_moiety, linear, methionine
             conserved_moiety.steady_state,
             conserved_moiety.parameters,
         ),
+        (
+            glycolysis.model,
+            glycolysis.steady_state,
+            glycolysis.parameters,
+        ),
     ],
 )
 def test_dcdt(model, steady_state, parameters):
@@ -27,10 +32,10 @@ def test_dcdt(model, steady_state, parameters):
 
 
 def test_conserved_moiety_is_conserved():
-    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]  # type: ignore
+    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]
     log_unbalanced: ParamLeaf = conserved_moiety.parameters[
         "log_conc_unbalanced"
-    ]  # type: ignore
+    ]
 
     def get_conc(ind):
         balanced = conserved_moiety.model.get_balanced_conc(ind, pool)
@@ -42,7 +47,8 @@ def test_conserved_moiety_is_conserved():
         guess,
         conserved_moiety.parameters,
     )
-    ix_conserved = jnp.array([6, 7])
+    species = conserved_moiety.model.species
+    ix_conserved = jnp.array([species.index("X1_c"), species.index("X2_c")])
     conc_steady = get_conc(steady)
     conserved_sum_steady = conc_steady[ix_conserved].sum()
     assert jnp.isclose(conserved_sum_steady, pool[0]).all()

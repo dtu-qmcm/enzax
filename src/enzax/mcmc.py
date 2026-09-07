@@ -1,14 +1,15 @@
 """Code for MCMC-based Bayesian inference on kinetic models."""
 
-from enzax.array_types import FloatArray1d
-
 import functools
-from typing import Callable, TypedDict, Unpack
+from collections.abc import Callable
+from typing import TypedDict, Unpack
 
 import blackjax
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PyTree, ScalarLike
+
+from enzax.array_types import FloatArray1d
 
 
 class AdaptationKwargs(TypedDict):

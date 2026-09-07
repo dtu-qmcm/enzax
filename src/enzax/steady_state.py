@@ -6,8 +6,8 @@ Given a structural kinetic model, a set of parameters and an initial guess, the 
 
 import diffrax
 import equinox as eqx
-from jaxtyping import PyTree
 from jax import numpy as jnp
+from jaxtyping import PyTree
 
 from enzax.array_types import IndConcArr
 

@@ -1,9 +1,11 @@
-from jax import numpy as jnp
-import pytest
 import importlib.resources
-from tests import data
+
+import pytest
+from jax import numpy as jnp
+
 from enzax import sbml
 from enzax.steady_state import get_steady_state
+from tests import data
 
 exampleode_file = importlib.resources.files(data) / "exampleode.xml"
 
