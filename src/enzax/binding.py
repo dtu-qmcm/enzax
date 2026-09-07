@@ -60,9 +60,9 @@ correction term of -1. The other three terms represent mutually exclusive
 states of the enzyme: bound (or not) to substrates "a" and "b", bound to the
 product "p" and bound to the competitive inhibitor "i". The substrate term
 indicates that "a" and "b" bind independently at different sites. The
-correction factor is needed because the substrate and product terms both start
-with a 1 representing the unbound enzyme. The compiled binding polynomial is
-then
+correction term is needed because the substrate and product terms both start
+with a 1 representing the unbound enzyme. Expanding this expression gives the
+following binding polynomial:
 
     1 + a/k_a + b/k_b + ab/(k_a k_b) + p/k_p + i/k_i
 
