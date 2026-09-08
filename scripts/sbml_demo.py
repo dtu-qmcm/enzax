@@ -7,16 +7,21 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PyTree
 
+import blackjax
+from blackjax_utils import run_nuts
+
 from enzax.examples.smallbone import (
     enzax_log_density_sbml,
     get_conc_assingment_species,
     load_smallbone,
 )
-from enzax.mcmc import run_nuts
 from enzax.statistical_modelling import prior_from_truth
 from enzax.steady_state import get_steady_state
 
 SEED = 1234
+N_CHAIN = 4
+N_WARMUP = 10
+N_SAMPLE = 10
 
 jax.config.update("jax_enable_x64", True)
 
@@ -115,17 +120,26 @@ def main():
         guess=guess,
     )
 
-    states, info = run_nuts(
-        logdensity_fn=posterior_log_density,
-        rng_key=key_nuts,
-        init_parameters=free_params_log,
-        num_warmup=10,
-        num_samples=10,
-        initial_step_size=0.0001,
-        max_num_doublings=10,
-        is_mass_matrix_diagonal=False,
-        target_acceptance_rate=0.95,
-    )
+    # blackjax-utils runs the sampler; enzax's job ends at the log density.
+    # `max_num_doublings` goes to both warmup and sampling; the contents of
+    # `warmup_options` reach `window_adaptation` alone. See mcmc_demo.py for
+    # why the initial step size is set where it is, and for what the progress
+    # bar needs in order to see the sampler's scan.
+    with blackjax.progress_bar("enzax NUTS"):
+        states, info = run_nuts(
+            key=key_nuts,
+            log_posterior=posterior_log_density,
+            init_params=free_params_log,
+            n_chain=N_CHAIN,
+            n_warmup=N_WARMUP,
+            n_sample=N_SAMPLE,
+            max_num_doublings=10,
+            warmup_options=dict(
+                initial_step_size=0.01,
+                is_mass_matrix_diagonal=False,
+                target_acceptance_rate=0.95,
+            ),
+        )
 
     if jnp.any(info.is_divergent):
         n_divergent = info.is_divergent.sum()
@@ -137,8 +151,11 @@ def main():
     for (path, leaf_true), leaf_model in zip(
         jax.tree.leaves_with_path(free_params), jax.tree.leaves(states.position)
     ):
-        model_low = jnp.quantile(leaf_model, 0.01, axis=0)
-        model_high = jnp.quantile(leaf_model, 0.99, axis=0)
+        # Leaves arrive with shape (n_chain, n_sample, ...): pool the draws
+        # from every chain before summarising them.
+        draws = leaf_model.reshape(-1, *leaf_model.shape[2:])
+        model_low = jnp.quantile(draws, 0.01, axis=0)
+        model_high = jnp.quantile(draws, 0.99, axis=0)
         print(f" {'|'.join(k.key for k in path)}:")
         print(f"  true value: {leaf_true}")
         print(f"  posterior 1%: {model_low}")

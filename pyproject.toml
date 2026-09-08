@@ -6,7 +6,6 @@ authors = [
     {name = "Teddy Groves", email = "tedgro@dtu.dk"},
 ]
 dependencies = [
-    "blackjax[progress]>=1.6.2",
     "diffrax>=0.7.0",
     "jaxtyping>=0.2.38",
     "arviz>=0.19.0",
@@ -63,6 +62,18 @@ extend-select = ["E501"]  # line length is checked
 known-first-party = ["enzax"]
 
 [dependency-groups]
+# MCMC is not part of enzax itself: enzax provides the differentiable model and
+# log density, and blackjax-utils runs the sampler. Install with
+# `uv sync --group mcmc`, or `uv run --group mcmc scripts/mcmc_demo.py`.
+# The marker is there because blackjax-utils requires Python >= 3.13 while
+# enzax itself still supports 3.12; without it the group makes the whole
+# project unresolvable on 3.12. blackjax arrives via blackjax-utils; the
+# `progress` extra is named here for its progress bar, which the demo scripts
+# wrap around sampling.
+mcmc = [
+    "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
+    "blackjax[progress]>=1.6.2",
+]
 dev = [
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",

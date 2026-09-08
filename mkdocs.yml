@@ -38,6 +38,7 @@ nav:
   - Home: 'index.md'
   - Getting started: 'getting_started.md'
   - How to make your own rate equation: 'custom_rate_equations.md'
+  - Statistical modelling: 'statistical_modelling.md'
   - Contributing: 'contributing.md'
   - Accessibility: 'accessibility.md'
   - API:
@@ -48,4 +49,3 @@ nav:
     - 'api/rate_equation.md'
     - 'api/rate_equations.md'
     - 'api/steady_state.md'
-    - 'api/mcmc.md'

@@ -135,8 +135,11 @@ def test_lp_grad():
 
 
 if __name__ == "__main__":
-    # Regenerate the expected gradient, e.g. after changing the model or the
-    # parameter labels. Inspect the diff before committing it.
+    # Regenerate the expected gradient, e.g. after changing the model, the
+    # parameter labels or the steady state solver's tolerance. Inspect the diff
+    # before committing it. The values here were last regenerated when
+    # `get_steady_state`'s default tolerance moved from 1e-11 to 1e-9, which
+    # shifted every gradient by about 1e-5 relative.
     with open(methionine_pldf_grad_file, "w") as f:
         f.write(serialize_jax_dict(get_methionine_gradient()))
     print(f"wrote {methionine_pldf_grad_file}")
