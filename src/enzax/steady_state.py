@@ -17,8 +17,10 @@ def get_steady_state(
     rhs,
     guess: IndConcArr,
     parameters: PyTree,
-    rtol: float = 1e-9,
-    atol: float = 1e-9,
+    ivp_rtol: float = 1e-9,
+    ivp_atol: float = 1e-9,
+    steady_state_rtol: float = 1e-9,
+    steady_state_atol: float = 1e-9,
 ) -> IndConcArr:
     """Get the steady state of a kinetic model, using diffrax.
 
@@ -32,19 +34,19 @@ def get_steady_state(
     :param guess: a JAX array of floats. Must have the same length as `rhs`'s
     `y` and return value.
 
-    :param rtol: relative tolerance, passed to the step size controller and,
-    through it, to the steady state event: the solve stops once
-    `norm(dcdt) < atol + rtol * norm(conc)`.
+    :param ivp_rtol: relative tolerance of the initial value problem, passed to
+    the step size controller.
 
-    :param atol: absolute tolerance, as `rtol`.
+    :param ivp_atol: absolute tolerance of the initial value problem.
 
-    The tolerance dominates the cost of a solve, and therefore the cost of any
-    gradient-based inference built on it. On the methionine example one solve
-    takes 1634 solver steps at 1e-11 and 638 at 1e-9, for a difference in the
-    steady state of 7e-7 relative -- so 1e-9 is the default. Tighten it if you
-    need the extra digits. It is the integration accuracy that costs: passing
-    a looser tolerance to `steady_state_event` alone, and leaving the
-    controller at 1e-11, saves 12 steps out of 1634.
+    :param steady_state_rtol: relative tolerance of the terminating event: the
+    solve stops once `norm(dcdt) < steady_state_atol + steady_state_rtol *
+    norm(conc)`.
+
+    :param steady_state_atol: absolute tolerance of the terminating event.
+
+    The two pairs are separate but default to the same value, so passing none
+    of them gives one tolerance for the whole solve.
 
     """
     term = diffrax.ODETerm(rhs)
@@ -59,10 +61,13 @@ def get_steady_state(
     controller = diffrax.PIDController(
         pcoeff=0.1,
         icoeff=0.3,
-        rtol=rtol,
-        atol=atol,
+        rtol=ivp_rtol,
+        atol=ivp_atol,
     )
-    cond_fn = diffrax.steady_state_event()
+    cond_fn = diffrax.steady_state_event(
+        rtol=steady_state_rtol,
+        atol=steady_state_atol,
+    )
     event = diffrax.Event(cond_fn)
     adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
