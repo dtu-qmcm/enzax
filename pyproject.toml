@@ -36,10 +36,10 @@ build-backend = "hatchling.build"
 distribution = true
 
 [tool.pytest.ini_options]
-# equinox warnings that enzax triggers on purpose, suppressed here rather than
-# test by test. src/enzax/__init__.py suppresses the same two for running enzax
-# outside pytest; pytest resets the warning filters for every test, so
-# import-time filters do not reach a test run.
+# equinox warnings that enzax triggers on purpose.
+# src/enzax/__init__.py suppresses the same two for running enzax outside
+# pytest; pytest resets the warning filters for every test, so import-time
+# filters do not reach a test run.
 filterwarnings = [
   # equinox counts a numpy array as a JAX array here. enzax's static fields
   # hold numpy arrays describing a model's structure, which is what static
@@ -62,14 +62,6 @@ extend-select = ["E501"]  # line length is checked
 known-first-party = ["enzax"]
 
 [dependency-groups]
-# MCMC is not part of enzax itself: enzax provides the differentiable model and
-# log density, and blackjax-utils runs the sampler. Install with
-# `uv sync --group mcmc`, or `uv run --group mcmc scripts/mcmc_demo.py`.
-# The marker is there because blackjax-utils requires Python >= 3.13 while
-# enzax itself still supports 3.12; without it the group makes the whole
-# project unresolvable on 3.12. blackjax arrives via blackjax-utils; the
-# `progress` extra is named here for its progress bar, which the demo scripts
-# wrap around sampling.
 mcmc = [
     "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
     "blackjax[progress]>=1.6.2",

@@ -119,12 +119,6 @@ def main():
         prior_log=prior_log,
         guess=guess,
     )
-
-    # blackjax-utils runs the sampler; enzax's job ends at the log density.
-    # `max_num_doublings` goes to both warmup and sampling; the contents of
-    # `warmup_options` reach `window_adaptation` alone. See mcmc_demo.py for
-    # why the initial step size is set where it is, and for what the progress
-    # bar needs in order to see the sampler's scan.
     with blackjax.progress_bar("enzax NUTS"):
         states, info = run_nuts(
             key=key_nuts,

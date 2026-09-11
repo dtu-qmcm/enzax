@@ -101,27 +101,6 @@ def main():
         prior=prior,
         guess=default_guess,
     )
-    # blackjax-utils runs the sampler; enzax's job ends at the log density.
-    #
-    # `init_sd` jitters each chain's starting point away from the true values.
-    # `max_num_doublings` goes to both warmup and sampling, while the contents
-    # of `warmup_options` reach `window_adaptation` alone.
-    #
-    # The initial step size is what sets this demo's runtime. Every leapfrog
-    # step costs one stiff ODE solve, so the bill is (leapfrog steps) x (one
-    # solve), and the step size decides the first factor: at 1e-4 the U-turn
-    # criterion never fires and every trajectory runs to the 1023-step cap set
-    # by `max_num_doublings`, which is ~4000 solves for two draws. At 1e-2
-    # trajectories end after ~30 steps, acceptance is still ~0.89 and nothing
-    # diverges. Do not raise it much further: at blackjax's default of 1.0 the
-    # first proposal leaves the region where this model has a steady state and
-    # enzax raises "Binding polynomial is not positive!".
-    #
-    # blackjax's progress bar finds the outermost `jax.lax.scan` by patching
-    # `jax.lax.scan` for the duration of the block, so it has to wrap the call
-    # that traces the sampler, and it reports once per step across all chains.
-    # Warmup and sampling are separate scans, so the bar fills up twice: once
-    # for the N_WARMUP steps and once for the N_SAMPLE ones.
     with blackjax.progress_bar("enzax NUTS"):
         states, info = run_nuts(
             key=key_nuts,
