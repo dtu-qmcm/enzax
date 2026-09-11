@@ -1,4 +1,5 @@
 import operator
+from functools import partial
 
 import jax
 from jax import numpy as jnp
@@ -161,7 +162,15 @@ def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     return llik_conc + llik_enz + llik_flux
 
 
-@jax.jit
+@partial(
+    jax.jit,
+    static_argnames=(
+        "ivp_rtol",
+        "ivp_atol",
+        "steady_state_rtol",
+        "steady_state_atol",
+    ),
+)
 def enzax_log_density(
     free_parameters: PyTree,
     model: RateEquationModel,
@@ -169,6 +178,10 @@ def enzax_log_density(
     prior: PyTree,
     split: ParameterSplit | None = None,
     guess: IndConcArr | None = None,
+    ivp_rtol: float = 1e-9,
+    ivp_atol: float = 1e-9,
+    steady_state_rtol: float = 1e-9,
+    steady_state_atol: float = 1e-9,
 ) -> Scalar:
     """Get the log posterior density of a kinetic model's parameters.
 
@@ -185,6 +198,16 @@ def enzax_log_density(
         enzymes in `model.parameter_labelling["log_enzyme"]` order, which is
         the order the enzymes are first labelled in by the model's rate
         equations.
+
+    :param ivp_rtol: relative tolerance of the steady state solve's initial
+        value problem, passed on to `get_steady_state`. Static, since a traced
+        tolerance would reach diffrax as an array rather than a float.
+
+    :param ivp_atol: absolute tolerance of the initial value problem.
+
+    :param steady_state_rtol: relative tolerance of the terminating event.
+
+    :param steady_state_atol: absolute tolerance of the terminating event.
     """
     if guess is None:
         guess = jnp.full((len(model.independent_species_ix)), 0.01)
@@ -193,7 +216,15 @@ def enzax_log_density(
     else:
         parameters = free_parameters
 
-    steady = get_steady_state(model, guess, parameters)
+    steady = get_steady_state(
+        model,
+        guess,
+        parameters,
+        ivp_rtol=ivp_rtol,
+        ivp_atol=ivp_atol,
+        steady_state_rtol=steady_state_rtol,
+        steady_state_atol=steady_state_atol,
+    )
     conc_balanced = model.get_balanced_conc(
         steady, model.get_moiety_totals(parameters)
     )
