@@ -6,7 +6,6 @@ authors = [
     {name = "Teddy Groves", email = "tedgro@dtu.dk"},
 ]
 dependencies = [
-    "blackjax[progress]>=1.6.2",
     "diffrax>=0.7.0",
     "jaxtyping>=0.2.38",
     "arviz>=0.19.0",
@@ -37,10 +36,10 @@ build-backend = "hatchling.build"
 distribution = true
 
 [tool.pytest.ini_options]
-# equinox warnings that enzax triggers on purpose, suppressed here rather than
-# test by test. src/enzax/__init__.py suppresses the same two for running enzax
-# outside pytest; pytest resets the warning filters for every test, so
-# import-time filters do not reach a test run.
+# equinox warnings that enzax triggers on purpose.
+# src/enzax/__init__.py suppresses the same two for running enzax outside
+# pytest; pytest resets the warning filters for every test, so import-time
+# filters do not reach a test run.
 filterwarnings = [
   # equinox counts a numpy array as a JAX array here. enzax's static fields
   # hold numpy arrays describing a model's structure, which is what static
@@ -63,6 +62,10 @@ extend-select = ["E501"]  # line length is checked
 known-first-party = ["enzax"]
 
 [dependency-groups]
+mcmc = [
+    "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
+    "blackjax[progress]>=1.6.2",
+]
 dev = [
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",

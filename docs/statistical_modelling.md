@@ -130,4 +130,72 @@ The last of these is not the same as the reaction order whenever a reaction has 
 
 ## Posterior sampling
 
+Enzax does not ship a sampler: it should work with any JAX-compatible MCMC
+library.
+
+The samplers in [blackjax](https://blackjax-devs.github.io/blackjax/) are a
+good fit, since they accept arbitrary differentiable log densities.
+[blackjax-utils](https://github.com/teddygroves/blackjax-utils) wraps blackjax's
+NUTS sampler behind a single function that handles warmup, multiple chains and
+the sampling loop. It is not on PyPI, so install it from GitHub:
+
+```bash
+uv add git+https://github.com/teddygroves/blackjax-utils.git
+```
+
+Sampling then looks like this:
+
+```python
+import blackjax
+import jax
+from blackjax_utils import run_nuts
+
+with blackjax.progress_bar("enzax NUTS"):
+    states, info = run_nuts(
+        key=jax.random.key(1234),
+        log_posterior=posterior_log_density,
+        init_params=free_parameters,
+        init_sd=0.01,
+        n_chain=4,
+        n_warmup=200,
+        n_sample=200,
+        warmup_options=dict(initial_step_size=0.01),
+    )
+```
+
+`init_params` gives the shape of the parameter set to sample, and `init_sd`
+jitters each chain's starting point away from it. `states.position` is a PyTree
+with the same structure as `free_parameters`, whose leaves have shape
+`(n_chain, n_sample, ...)`, and `info.is_divergent` has shape
+`(n_chain, n_sample)`, so `info.is_divergent.any()` tells you whether the
+sampler hit a divergence.
+
+`warmup_options` is passed to blackjax's `window_adaptation` and nothing else,
+which is where `initial_step_size` has to go. `target_acceptance_rate` and
+`is_mass_matrix_diagonal` belong there too. Any further keyword argument
+reaches both `window_adaptation` and the NUTS kernel, so it has to be one that
+both accept, such as `max_num_doublings`; use `sampling_options` for arguments
+meant for the sampling stage alone.
+
+Setting the initial step size is necessary for many kinetic models: if it is too high the sampler may fail at its first attempt to traverse the parameter space.
+
+## Watching a sampler run
+
+blackjax has a progress bar, which the example above wraps around the call. It
+works by patching `jax.lax.scan` for the duration of the `with` block, so it
+has to enclose the call that *traces* the sampler rather than merely one that
+runs an already-compiled one, and it reports once per step for all chains
+together. Warmup and sampling are separate scans, so the bar fills up twice. See [here](https://blackjax-devs.github.io/blackjax/examples/howto_progress_bar.html) for more about blackjax's progress bar.
+
+The progress bar needs blackjax's `progress` optional extra, which you can install with `pip install 'blackjax[progress]'`.
+
+`scripts/mcmc_demo.py` in the enzax repository is a complete worked example:
+it fixes all but a few of the methionine model's parameters, simulates
+measurements from the true model, builds the posterior log density and samples
+from it. Run it with
+
+```bash
+uv run --group mcmc python scripts/mcmc_demo.py
+```
+
 ## Optimised Hamiltonian Monte Carlo with grapevine

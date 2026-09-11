@@ -121,6 +121,13 @@ def get_methionine_gradient():
             measurements=measurements,
             prior=prior,
             guess=default_state_guess,
+            # Tighter than `get_steady_state`'s defaults, which are set for the
+            # speed of a sampling run. At those defaults this gradient varies
+            # between platforms by far more than the tolerance asserted below.
+            ivp_rtol=1e-11,
+            ivp_atol=1e-11,
+            steady_state_rtol=1e-11,
+            steady_state_atol=1e-11,
         )
     )
     return jax.jacrev(posterior_log_density)(true_parameters)
@@ -136,7 +143,9 @@ def test_lp_grad():
 
 if __name__ == "__main__":
     # Regenerate the expected gradient, e.g. after changing the model or the
-    # parameter labels. Inspect the diff before committing it.
+    # parameter labels. Inspect the diff before committing it. Do not
+    # regenerate it at looser tolerances than the ones set above: the values
+    # would then only reproduce on the machine that wrote them.
     with open(methionine_pldf_grad_file, "w") as f:
         f.write(serialize_jax_dict(get_methionine_gradient()))
     print(f"wrote {methionine_pldf_grad_file}")
