@@ -7,18 +7,30 @@ import warnings
 import equinox as eqx
 import jax
 from jax import numpy as jnp
+from jax.flatten_util import ravel_pytree
 
 import blackjax
-from blackjax_utils import run_nuts
+from blackjax_utils import NUTS, run_sampler
+from grapevine import (
+    grapenuts,
+    guess_implicit,
+    guess_implicit_cg,
+    guess_previous,
+)
 
 from enzax.examples import methionine
 from enzax.parameter_split import (
+    combine_parameters,
     count_free_parameters,
     get_free_labels,
     get_free_parameters,
     split_parameters_by_freeing,
 )
-from enzax.statistical_modelling import enzax_log_density, prior_from_truth
+from enzax.statistical_modelling import (
+    enzax_log_density,
+    enzax_log_density_grapevine,
+    prior_from_truth,
+)
 from enzax.steady_state import get_steady_state
 
 SEED = 1234
@@ -55,11 +67,46 @@ def simulate(key, truth, error):
     )
 
 
-def main():
-    """Demonstrate How to make a Bayesian kinetic model with enzax."""
+def get_guess_fns(model, split, init_params):
+    """Get the guessing heuristics grapevine can use for this model.
+
+    `guess_implicit` and `guess_implicit_cg` take an Euler step from the
+    previous steady state, so they need the residual whose root it is, as a
+    function of the concentrations and the parameters being inferred.
+
+    The position they are handed is the sampler's, which under blackjax-utils'
+    default `flatten=True` is `init_params` ravelled into one array, so it has
+    to be unravelled before it means anything to the model.
+    """
+    _, unflatten = ravel_pytree(init_params)
+
+    def target_function(conc_ind, position):
+        parameters = combine_parameters(split, unflatten(position))
+        return model.dcdt(conc_ind, parameters)
+
+    return {
+        "previous": guess_previous,
+        "implicit": functools.partial(
+            guess_implicit, target_function=target_function
+        ),
+        "implicit_cg": functools.partial(
+            guess_implicit_cg, target_function=target_function
+        ),
+    }
+
+
+def main(heuristic: str | None = "previous"):
+    """Demonstrate How to make a Bayesian kinetic model with enzax.
+
+    :param heuristic: which grapevine guessing heuristic to use, or None to
+        use plain NUTS, which starts every solve from `default_guess`.
+    """
     true_parameters = methionine.parameters
     model = methionine.model
-    default_guess = jnp.full((5,), 0.01)
+    # A guess in the right order of magnitude. Starting every solve from a
+    # flat 0.01 would be three to five orders of magnitude out for this
+    # model, which costs plain NUTS dearly and flatters grapevine.
+    default_guess = methionine.steady_state
     true_steady = get_steady_state(model, default_guess, true_parameters)
     split = split_parameters_by_freeing(
         model.parameter_labelling,
@@ -93,16 +140,27 @@ def main():
         error=measurement_errors,
     )
     measurements = tuple(zip(measurement_values, measurement_errors))
-    posterior_log_density = functools.partial(
-        enzax_log_density,
-        model=model,
-        split=split,
-        measurements=measurements,
-        prior=prior,
-        guess=default_guess,
+    model_kwargs = dict(
+        model=model, split=split, measurements=measurements, prior=prior
     )
+    if heuristic is None:
+        posterior_log_density = functools.partial(
+            enzax_log_density, guess=default_guess, **model_kwargs
+        )
+        sampler = NUTS
+    else:
+        # grapevine supplies the guess itself, from the steady state found at
+        # the previous point on the same Hamiltonian trajectory, so `guess` is
+        # deliberately not bound here.
+        posterior_log_density = functools.partial(
+            enzax_log_density_grapevine, **model_kwargs
+        )
+        sampler = grapenuts(
+            default_guess,
+            guess_fn=get_guess_fns(model, split, free_params)[heuristic],
+        )
     with blackjax.progress_bar("enzax NUTS"):
-        states, info = run_nuts(
+        states, info = run_sampler(
             key=key_nuts,
             log_posterior=posterior_log_density,
             init_params=free_params,
@@ -111,6 +169,7 @@ def main():
             n_warmup=N_WARMUP,
             n_sample=N_SAMPLE,
             max_num_doublings=10,
+            sampler=sampler,
             warmup_options=dict(
                 initial_step_size=0.01,
                 is_mass_matrix_diagonal=False,

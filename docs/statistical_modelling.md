@@ -199,3 +199,94 @@ uv run --group mcmc python scripts/mcmc_demo.py
 ```
 
 ## Optimised Hamiltonian Monte Carlo with grapevine
+
+Every leapfrog step above costs one steady state solve, and every one of them
+starts from the same fixed guess. The
+[grapevine](https://github.com/dtu-qmcm/grapevine) method instead starts each
+solve from the steady state found at the previous point on the same Hamiltonian
+trajectory. Adjacent points have nearly identical steady states, so the solver
+starts essentially converged. The guess resets to the default at the end of
+every MCMC iteration, so the reuse is within a trajectory only.
+
+grapevine is not on PyPI, so install it from GitHub:
+
+```bash
+uv add git+https://github.com/dtu-qmcm/grapevine.git
+```
+
+The solution needs a way out of the log density, which is what
+`enzax_log_density_grapevine` is for: it takes the same arguments as
+`enzax_log_density` and returns `(log_density, steady_state)`. Do not bind its
+`guess` argument, since that is what the sampler supplies.
+
+```python
+from blackjax_utils import run_sampler
+from grapevine import grapenuts
+
+from enzax.statistical_modelling import enzax_log_density_grapevine
+
+posterior_log_density = functools.partial(
+    enzax_log_density_grapevine,
+    model=model,
+    split=split,
+    measurements=measurements,
+    prior=prior,
+)
+states, info = run_sampler(
+    key=jax.random.key(1234),
+    log_posterior=posterior_log_density,
+    init_params=free_parameters,
+    init_sd=0.01,
+    n_chain=4,
+    n_warmup=200,
+    n_sample=200,
+    warmup_options=dict(initial_step_size=0.01),
+    sampler=grapenuts(default_guess),
+)
+```
+
+`grapenuts` supplies the warmup and the sampling kernel; everything else is as
+it was above. It also takes a `guess_fn`, which decides how the previous
+solution becomes the next guess. The default, `guess_previous`, reuses it as it
+is. `guess_implicit` instead takes an Euler step from it, which needs the
+residual whose root the steady state is:
+
+```python
+from grapevine import guess_implicit
+
+from enzax.parameter_split import combine_parameters
+
+
+def target_function(conc_ind, position):
+    parameters = combine_parameters(split, unflatten(position))
+    return model.dcdt(conc_ind, parameters)
+
+
+sampler = grapenuts(
+    default_guess,
+    guess_fn=functools.partial(guess_implicit, target_function=target_function),
+)
+```
+
+The position a `guess_fn` receives is the sampler's, which under
+blackjax-utils' default `flatten=True` is `init_params` ravelled into a single
+array; `unflatten` above is the second return value of
+`jax.flatten_util.ravel_pytree(free_parameters)`.
+
+### A caveat about tolerances
+
+grapevine is exactly valid when the solver reaches the same answer whatever
+guess it starts from. `get_steady_state` stops once
+`norm(dcdt) < steady_state_atol + steady_state_rtol * norm(conc)`, so its
+terminal state does depend on where it started, and a guess that already meets
+that bound is returned unchanged.
+
+This makes the event tolerances matter more than they otherwise would, and they
+have to be tight relative to the concentrations. Methionine's are of order
+`1e-5`, so at an atol of `1e-9` the solve stops at a residual only `1e-4`
+relative to the state, and the log density moves by around `1e-3` depending on
+the guess. At the default `1e-12` it moves by around `1e-7`. Tightening the
+event is cheap, because it decides only when to stop rather than how finely to
+integrate; tightening `ivp_atol` and `ivp_rtol` is expensive and does not help
+here. `tests/test_lp_grad.py::test_log_density_is_guess_invariant` measures
+this on the methionine model.
