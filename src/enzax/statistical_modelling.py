@@ -162,16 +162,15 @@ def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     return llik_conc + llik_enz + llik_flux
 
 
-@partial(
-    jax.jit,
-    static_argnames=(
-        "ivp_rtol",
-        "ivp_atol",
-        "steady_state_rtol",
-        "steady_state_atol",
-    ),
+_SOLVE_TOLERANCES = (
+    "ivp_rtol",
+    "ivp_atol",
+    "steady_state_rtol",
+    "steady_state_atol",
 )
-def enzax_log_density(
+
+
+def _log_density_and_steady_state(
     free_parameters: PyTree,
     model: RateEquationModel,
     measurements: PyTree,
@@ -180,9 +179,9 @@ def enzax_log_density(
     guess: IndConcArr | None = None,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
-    steady_state_rtol: float = 1e-9,
-    steady_state_atol: float = 1e-9,
-) -> Scalar:
+    steady_state_rtol: float = 1e-12,
+    steady_state_atol: float = 1e-12,
+) -> tuple[Scalar, IndConcArr]:
     """Get the log posterior density of a kinetic model's parameters.
 
     :param free_parameters: the parameters being inferred. With a `split`,
@@ -240,4 +239,42 @@ def enzax_log_density(
         (enz_hat, *enz_msts),
         (flux_hat, *flux_msts),
     )
-    return log_prior + log_likelihood
+    return log_prior + log_likelihood, steady
+
+
+enzax_log_density_grapevine = partial(
+    jax.jit, static_argnames=_SOLVE_TOLERANCES
+)(_log_density_and_steady_state)
+
+
+@partial(jax.jit, static_argnames=_SOLVE_TOLERANCES)
+def enzax_log_density(
+    free_parameters: PyTree,
+    model: RateEquationModel,
+    measurements: PyTree,
+    prior: PyTree,
+    split: ParameterSplit | None = None,
+    guess: IndConcArr | None = None,
+    ivp_rtol: float = 1e-9,
+    ivp_atol: float = 1e-9,
+    steady_state_rtol: float = 1e-12,
+    steady_state_atol: float = 1e-12,
+) -> Scalar:
+    """Get the log posterior density of a kinetic model's parameters.
+
+    Takes the same arguments as `enzax_log_density_grapevine`, which documents
+    them, but returns only the log density.
+    """
+    log_density, _ = _log_density_and_steady_state(
+        free_parameters,
+        model,
+        measurements,
+        prior,
+        split,
+        guess,
+        ivp_rtol,
+        ivp_atol,
+        steady_state_rtol,
+        steady_state_atol,
+    )
+    return log_density

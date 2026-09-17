@@ -125,6 +125,22 @@ def test_gradient_reaches_only_the_free_parameters():
     assert jnp.allclose(free_grad["log_saturation_constant"], expected)
 
 
+def test_split_treedefs_compare():
+    """Two equal splits must compare, so the positions cannot be arrays.
+
+    Static fields are pytree metadata, which has to be hashable and compare to
+    a single boolean. A numpy array is neither, and comparing one split with
+    itself hides that, because dict equality checks identity first.
+    """
+
+    def make_split():
+        return split_parameters_by_freeing(
+            LABELLING, TRUE_PARAMETERS, {"log_kcat": ["r1"]}
+        )
+
+    assert jax.tree.structure(make_split()) == jax.tree.structure(make_split())
+
+
 def test_split_works_as_a_jit_argument():
     split = split_parameters_by_freeing(
         LABELLING, TRUE_PARAMETERS, {"log_kcat": ["r1"]}

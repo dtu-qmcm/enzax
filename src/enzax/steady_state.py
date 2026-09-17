@@ -19,8 +19,8 @@ def get_steady_state(
     parameters: PyTree,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
-    steady_state_rtol: float = 1e-9,
-    steady_state_atol: float = 1e-9,
+    steady_state_rtol: float = 1e-12,
+    steady_state_atol: float = 1e-12,
 ) -> IndConcArr:
     """Get the steady state of a kinetic model, using diffrax.
 
@@ -45,8 +45,11 @@ def get_steady_state(
 
     :param steady_state_atol: absolute tolerance of the terminating event.
 
-    The two pairs are separate but default to the same value, so passing none
-    of them gives one tolerance for the whole solve.
+    The event defaults are tighter than the initial value problem's because
+    they decide only when to stop, not how finely to integrate, so tightening
+    them costs little. They need to be tight relative to the concentrations:
+    for a model whose concentrations are of order 1e-5, an atol of 1e-9 stops
+    the solve at a residual that is only 1e-4 relative to the state.
 
     """
     term = diffrax.ODETerm(rhs)

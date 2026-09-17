@@ -6,7 +6,12 @@ import jax
 from jax import numpy as jnp
 
 from enzax.examples import methionine
-from enzax.statistical_modelling import enzax_log_density, prior_from_truth
+from enzax.statistical_modelling import (
+    enzax_log_density,
+    enzax_log_density_grapevine,
+    prior_from_truth,
+)
+from enzax.steady_state import get_steady_state
 
 jax.config.update("jax_enable_x64", True)
 SEED = 1234
@@ -101,18 +106,26 @@ def deserialize_jax_dict(file_path):
         return json.load(f, object_hook=object_hook)
 
 
-def get_methionine_gradient():
-    """Get the gradient of the methionine model's log posterior density."""
-    true_parameters = methionine.parameters
-    true_model = methionine.model
-    default_state_guess = jnp.full((5,), 0.01)
+DEFAULT_STATE_GUESS = jnp.full((5,), 0.01)
+
+
+def get_methionine_measurements_and_prior():
+    """Get the methionine model's measurements and prior."""
     error_conc = jnp.full_like(obs_conc, 0.03)
     error_flux = jnp.full_like(obs_flux, 0.05)
     error_enzyme = jnp.full_like(obs_enzyme, 0.03)
     measurement_values = obs_conc, obs_enzyme, obs_flux
     measurement_errors = error_conc, error_enzyme, error_flux
     measurements = tuple(zip(measurement_values, measurement_errors))
-    prior = prior_from_truth(true_parameters, sd=0.1)  # pyright: ignore[reportArgumentType]
+    prior = prior_from_truth(methionine.parameters, sd=0.1)  # pyright: ignore[reportArgumentType]
+    return measurements, prior
+
+
+def get_methionine_gradient():
+    """Get the gradient of the methionine model's log posterior density."""
+    true_parameters = methionine.parameters
+    true_model = methionine.model
+    measurements, prior = get_methionine_measurements_and_prior()
     posterior_log_density = jax.jit(
         functools.partial(
             enzax_log_density,
@@ -120,7 +133,7 @@ def get_methionine_gradient():
             split=None,
             measurements=measurements,
             prior=prior,
-            guess=default_state_guess,
+            guess=DEFAULT_STATE_GUESS,
             # Tighter than `get_steady_state`'s defaults, which are set for the
             # speed of a sampling run. At those defaults this gradient varies
             # between platforms by far more than the tolerance asserted below.
@@ -139,6 +152,58 @@ def test_lp_grad():
     assert set(gradient.keys()) == set(expected_gradient.keys())
     for key, actual in gradient.items():
         assert jnp.isclose(actual, expected_gradient[key]).all(), key
+
+
+def get_methionine_log_density_and_grad(guess):
+    """Get the methionine log posterior density and its gradient."""
+    measurements, prior = get_methionine_measurements_and_prior()
+    posterior_log_density = functools.partial(
+        enzax_log_density_grapevine,
+        model=methionine.model,
+        split=None,
+        measurements=measurements,
+        prior=prior,
+        guess=guess,
+    )
+    gradient, _ = jax.jacrev(posterior_log_density, has_aux=True)(
+        methionine.parameters
+    )
+    log_density, _ = posterior_log_density(methionine.parameters)
+    return log_density, gradient
+
+
+def test_log_density_is_guess_invariant():
+    """Check that the guess does not change the target grapevine samples.
+
+    The grapevine method is only valid if the solver reaches the same answer
+    whatever guess it starts from. `get_steady_state` stops once
+    `norm(dcdt) < atol + rtol * norm(conc)`, so its terminal state does depend
+    on where it started, and this test bounds by how much. Methionine's
+    concentrations are of order 1e-5, so the event tolerances have to be
+    tight relative to that: at 1e-9 the log density moves by ~1e-3 between
+    guesses, which is why `get_steady_state` defaults to 1e-12.
+    """
+    steady = get_steady_state(
+        methionine.model,
+        DEFAULT_STATE_GUESS,
+        methionine.parameters,
+    )
+    expected_lp, expected_grad = get_methionine_log_density_and_grad(
+        DEFAULT_STATE_GUESS
+    )
+    guesses = {
+        "steady state": steady,
+        "perturbed up": steady * 1.5,
+        "perturbed down": steady * 0.5,
+        "distant": jnp.full((5,), 0.001),
+    }
+    for name, guess in guesses.items():
+        log_density, gradient = get_methionine_log_density_and_grad(guess)
+        assert jnp.isclose(log_density, expected_lp, rtol=1e-9, atol=1e-6), name
+        for key, actual in gradient.items():
+            assert jnp.isclose(
+                actual, expected_grad[key], rtol=1e-5, atol=1e-6
+            ).all(), f"{name}, {key}"
 
 
 if __name__ == "__main__":

@@ -20,8 +20,19 @@ from enzax.array_types import (
 )
 from enzax.parameters import INDEX_DTYPE
 
-# Some positions in one flat parameter array.
-Index = Int[np.ndarray, " _"]
+IndexArr = Int[np.ndarray, " _"]
+
+# Some positions in one flat parameter array. These are pytree metadata, since
+# they describe a parameter set's structure rather than its values, and
+# metadata has to be hashable and to compare to a single boolean. A numpy array
+# is neither, so use `as_array` to index with them.
+Index = tuple[int, ...]
+
+
+def as_array(positions: Index) -> IndexArr:
+    """Get positions in the form that indexing needs."""
+    return np.array(positions, dtype=INDEX_DTYPE)
+
 
 # A choice of parameters: `{parameter: labels}`, or `{parameter: None}` to
 # choose a whole parameter. An unlabelled parameter such as `temperature` can
@@ -132,9 +143,11 @@ def split_positions(
     labels: ParamLabels, fixed_labels: set[str]
 ) -> tuple[Index, Index]:
     """Split one parameter's positions into the free ones and the fixed ones."""
-    is_fixed = np.array([label in fixed_labels for label in labels], dtype=bool)
-    positions = np.arange(len(labels), dtype=INDEX_DTYPE)
-    return positions[~is_fixed], positions[is_fixed]
+    is_fixed = [label in fixed_labels for label in labels]
+    return (
+        tuple(i for i, fixed in enumerate(is_fixed) if not fixed),
+        tuple(i for i, fixed in enumerate(is_fixed) if fixed),
+    )
 
 
 def get_parameter_split(
@@ -156,7 +169,9 @@ def get_parameter_split(
         free_positions={p: free for p, (free, _) in splits.items()},
         fixed_positions=fixed_positions,
         free_whole=tuple(p for p in unlabelled if p not in fixed_labels),
-        fixed_values={p: parameters[p][fixed_positions[p]] for p in labelled}
+        fixed_values={
+            p: parameters[p][as_array(fixed_positions[p])] for p in labelled
+        }
         | {p: parameters[p] for p in unlabelled if p in fixed_labels},
     )
 
@@ -203,7 +218,7 @@ def get_free_parameters(
 ) -> ParamDict:
     """Gather the free parameters out of a full parameter set."""
     gathered = {
-        parameter: parameters[parameter][positions]
+        parameter: parameters[parameter][as_array(positions)]
         for parameter, positions in split.free_positions.items()
         if len(positions)
     }
@@ -224,10 +239,10 @@ def scatter_parameter_values(
     """
     dtype = fixed_values.dtype if free_values is None else free_values.dtype
     full = jnp.zeros(len(free_positions) + len(fixed_positions), dtype=dtype)
-    full = full.at[fixed_positions].set(fixed_values)
+    full = full.at[as_array(fixed_positions)].set(fixed_values)
     if free_values is None:
         return full
-    return full.at[free_positions].set(free_values)
+    return full.at[as_array(free_positions)].set(free_values)
 
 
 def combine_parameters(
