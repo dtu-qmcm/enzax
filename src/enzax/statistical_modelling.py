@@ -9,7 +9,7 @@ from jaxtyping import PyTree, Scalar
 from enzax.array_types import IndConcArr, ParamDict
 from enzax.kinetic_model import RateEquationModel
 from enzax.parameter_split import ParameterSplit, combine_parameters
-from enzax.steady_state import get_steady_state
+from enzax.steady_state import get_steady_state_hybrid
 
 
 def prior_from_truth(
@@ -199,23 +199,34 @@ def _log_density_and_steady_state(
         equations.
 
     :param ivp_rtol: relative tolerance of the steady state solve's initial
-        value problem, passed on to `get_steady_state`. Static, since a traced
-        tolerance would reach diffrax as an array rather than a float.
+        value problem, passed on to `get_steady_state_hybrid`. Static, since a
+        traced tolerance would reach diffrax as an array rather than a float.
 
     :param ivp_atol: absolute tolerance of the initial value problem.
 
     :param steady_state_rtol: relative tolerance of the terminating event.
 
     :param steady_state_atol: absolute tolerance of the terminating event.
+
+    The solve is `get_steady_state_hybrid` rather than `get_steady_state`,
+    which matters most here: with grapevine each draw's guess is the previous
+    draw's steady state, so the Newton path usually succeeds and the
+    integration usually takes no steps.
     """
     if guess is None:
         guess = jnp.full((len(model.independent_species_ix)), 0.01)
+    # A NaN guess is what a previous failed solve hands back under grapevine.
+    # Nothing can start from one -- the solve returns NaN again, and the rate
+    # laws raise on a NaN concentration rather than propagate it -- so it is
+    # replaced with the same default a caller who supplied no guess would get,
+    # which lets the next draw recover instead of inheriting the failure.
+    guess = jnp.where(jnp.isfinite(guess), guess, 0.01)
     if split is not None:
         parameters = combine_parameters(split, free_parameters)
     else:
         parameters = free_parameters
 
-    steady = get_steady_state(
+    steady = get_steady_state_hybrid(
         model,
         guess,
         parameters,
@@ -224,8 +235,17 @@ def _log_density_and_steady_state(
         steady_state_rtol=steady_state_rtol,
         steady_state_atol=steady_state_atol,
     )
+    # `get_steady_state_hybrid` returns NaN when it found no steady state,
+    # and the rate laws raise on a NaN concentration rather than propagate it:
+    # `flux` checks that no reversibility is NaN. So the likelihood is
+    # evaluated at the guess instead and the result thrown away, leaving a NaN
+    # density, which a sampler reads as an infinite energy change and so as a
+    # divergence to reject. `steady` itself is still returned as it is, since
+    # that is what says the solve failed.
+    found = jnp.isfinite(steady).all()
+    conc_ind = jnp.where(found, steady, guess)
     conc_balanced = model.get_balanced_conc(
-        steady, model.get_moiety_totals(parameters)
+        conc_ind, model.get_moiety_totals(parameters)
     )
     conc_hat = model.get_conc(
         conc_balanced, model.get_log_conc_unbalanced(parameters)
@@ -239,7 +259,8 @@ def _log_density_and_steady_state(
         (enz_hat, *enz_msts),
         (flux_hat, *flux_msts),
     )
-    return log_prior + log_likelihood, steady
+    log_density = jnp.where(found, log_prior + log_likelihood, jnp.nan)
+    return log_density, steady
 
 
 enzax_log_density_grapevine = partial(

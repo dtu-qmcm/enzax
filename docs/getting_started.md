@@ -154,6 +154,10 @@ my_guess = jnp.full((len(my_model.balanced_species),), 0.01)
 steady_state = get_steady_state(my_model, my_guess, my_parameters)
 ```
 
+`get_steady_state` integrates the model's equations until they stop changing, which is robust but does not take advantage of a good guess. If you have one -- the previous steady state in a sampling run, say -- `get_steady_state_hybrid` first tries a short Newton solve and integrates from whatever that produced. It takes the same arguments and returns the same thing, costs almost nothing when the Newton solve fails, and skips the integration entirely when it succeeds.
+
+Both return `nan` rather than raising if they find no steady state, which happens when the solve hits its `max_steps` cap or the state blows up.
+
 To access the Jacobian of this steady state with respect to the model's parameters, we can use JAX's [`jacrev`](https://jax.readthedocs.io/en/latest/_autosummary/jax.jacrev.html) function:
 
 ```python

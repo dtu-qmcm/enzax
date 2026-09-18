@@ -137,8 +137,12 @@ def enzax_log_density_sbml(
         parameters = free_parameters
 
     steady = get_steady_state(model, guess, parameters)
+    # A failed solve returns NaN, and the rate laws raise on a NaN
+    # concentration rather than propagate one, so the likelihood is evaluated
+    # at the guess instead and its value discarded below.
+    found = jnp.isfinite(steady).all()
     conc_balanced = model.get_balanced_conc(
-        steady, model.get_moiety_totals(parameters)
+        jnp.where(found, steady, guess), model.get_moiety_totals(parameters)
     )
     conc_hat = get_conc_assingment_species(conc_balanced, parameters, model)
     flux_hat = model.flux(conc_balanced, parameters)
@@ -148,8 +152,4 @@ def enzax_log_density_sbml(
         (conc_hat, *conc_msts),
         (flux_hat, *flux_msts),
     )
-    log_posterior = log_prior + log_likelihood
-    if steady is None:
-        log_posterior = -jnp.inf
-
-    return log_posterior
+    return jnp.where(found, log_prior + log_likelihood, -jnp.inf)

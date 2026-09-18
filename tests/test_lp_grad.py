@@ -106,6 +106,10 @@ def deserialize_jax_dict(file_path):
         return json.load(f, object_hook=object_hook)
 
 
+# Cold on purpose, and it has to stay that way for the expected gradient
+# below to keep meaning what it meant when it was written. From here the
+# hybrid solver's Newton path is rejected and the integration starts from this
+# exact point, so the numbers are the pure ODE solver's, bit for bit.
 DEFAULT_STATE_GUESS = jnp.full((5,), 0.01)
 
 
@@ -176,12 +180,19 @@ def test_log_density_is_guess_invariant():
     """Check that the guess does not change the target grapevine samples.
 
     The grapevine method is only valid if the solver reaches the same answer
-    whatever guess it starts from. `get_steady_state` stops once
+    whatever guess it starts from. The event stops the integration once
     `norm(dcdt) < atol + rtol * norm(conc)`, so its terminal state does depend
     on where it started, and this test bounds by how much. Methionine's
     concentrations are of order 1e-5, so the event tolerances have to be
     tight relative to that: at 1e-9 the log density moves by ~1e-3 between
     guesses, which is why `get_steady_state` defaults to 1e-12.
+
+    Three of the four guesses below are now close enough for the hybrid
+    solver's Newton path to be accepted, which makes them share a root
+    converged to machine precision; only the distant one goes through the
+    integration. So this measures the gap between the two, at about 1.1e-7 in
+    the log density and 6e-7 relative in the gradient, against assertion
+    tolerances of roughly 1.2e-6 and 1e-5.
     """
     steady = get_steady_state(
         methionine.model,
