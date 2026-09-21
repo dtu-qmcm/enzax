@@ -46,6 +46,7 @@ def get_steady_state(
     max_steps: int | None = DEFAULT_MAX_STEPS,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    adjoint: diffrax.AbstractAdjoint | None = None,
 ) -> IndConcArr:
     """Get the steady state of a kinetic model, using diffrax.
 
@@ -85,6 +86,17 @@ def get_steady_state(
     :param stepsize_controller: which diffrax step size controller to use.
     Defaults to the `PIDController` below, which is tuned for `Kvaerno5`;
     another solver generally wants another controller.
+
+    :param adjoint: how to differentiate the solve. Defaults to
+    `diffrax.ImplicitAdjoint`, which differentiates the steady state through
+    the implicit function theorem: one linear solve against the Jacobian at
+    the root, whatever the integration cost to reach it. The alternatives
+    differentiate the integration itself, so they are both more expensive and,
+    here, wrong in the case the hybrid solver is built around -- an
+    integration that takes no steps because the event fires immediately has no
+    steps to propagate a derivative through, and returns a zero gradient. The
+    argument exists so that `scripts/optimisation_benchmark.py` can measure
+    what the default is worth.
 
     The event defaults are tighter than the initial value problem's because
     they decide only when to stop, not how finely to integrate, so tightening
@@ -127,7 +139,8 @@ def get_steady_state(
         atol=steady_state_atol,
     )
     event = diffrax.Event(cond_fn)
-    adjoint = diffrax.ImplicitAdjoint()
+    if adjoint is None:
+        adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
         terms=term,
         solver=solver,
@@ -256,6 +269,7 @@ def get_steady_state_hybrid(
     max_steps: int | None = DEFAULT_MAX_STEPS,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    adjoint: diffrax.AbstractAdjoint | None = None,
     newton_max_steps: int = 10,
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
@@ -294,4 +308,5 @@ def get_steady_state_hybrid(
         max_steps=max_steps,
         solver=solver,
         stepsize_controller=stepsize_controller,
+        adjoint=adjoint,
     )
