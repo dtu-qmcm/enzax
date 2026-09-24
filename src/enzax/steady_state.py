@@ -29,8 +29,7 @@ DEFAULT_MAX_STEPS = 10000
 # `AutoLinearSolver(well_posed=None)` raises when the Jacobian at a bad guess
 # is singular, and under `vmap` equinox's error handling replaces the whole
 # batched buffer rather than the offending row, so one diverging member of a
-# batch would drag every other member onto the slow path. See
-# `refine_guess_newton`.
+# batch would drag every other member onto the slow path.
 NEWTON_LINEAR_SOLVER = lx.AutoLinearSolver(well_posed=False)
 
 
@@ -50,13 +49,8 @@ def get_steady_state(
 ) -> IndConcArr:
     """Get the steady state of a kinetic model, using diffrax.
 
-    The better the guess (generally) the faster and more reliable the solving.
-
-    Returns NaN if no steady state was found, rather than raising: a solve is
-    meant to end because its event fired, and anything else -- the step cap, a
-    state that blew up -- means there is no steady state to return. A sampler
-    reads a NaN log density as an infinite energy change, and so as a
-    divergence to reject.
+    Returns NaN if no steady state was found, so that a sampler treats the
+    point as a divergence rather than crashing.
 
     :param rhs: a function matching diffrax's required signature for an ODE
     right hand side. It should take in three arguments: an array of real
@@ -66,9 +60,8 @@ def get_steady_state(
     :param guess: a JAX array of floats. Must have the same length as `rhs`'s
     `y` and return value.
 
-    :param ivp_rtol: relative tolerance of the initial value problem, passed to
-    the step size controller. Unused if `stepsize_controller` is given, since a
-    controller carries its own tolerances.
+    :param ivp_rtol: relative tolerance of the initial value problem. Unused if
+    `stepsize_controller` is given.
 
     :param ivp_atol: absolute tolerance of the initial value problem.
 
@@ -77,15 +70,16 @@ def get_steady_state(
     norm(conc)`.
 
     :param steady_state_atol: absolute tolerance of the terminating event.
+    Should be small relative to the concentrations.
 
     :param max_steps: how many steps the solve may take before it is called a
-    failure, or None to let it run.
+    failure, or None to let it run. The default cap stops the solve hanging at
+    parameter values where it does not converge.
 
     :param solver: which diffrax solver to use. Defaults to `Kvaerno5`.
 
     :param stepsize_controller: which diffrax step size controller to use.
-    Defaults to the `PIDController` below, which is tuned for `Kvaerno5`;
-    another solver generally wants another controller.
+    Defaults to a `PIDController` tuned for `Kvaerno5`.
 
     :param adjoint: which adjoint to use. Must satisfy the diffrax adjoint API:
     see https://docs.kidger.site/diffrax/api/adjoints/. The default adjoint is
@@ -93,26 +87,6 @@ def get_steady_state(
     implicit function theorem. This is almost definitely what you want to use
     as it avoids differentiating the ODE solve leading to the steady state. The
     argument is here for benchmarking.
-
-    The event defaults are tighter than the initial value problem's because
-    they decide only when to stop, not how finely to integrate, so tightening
-    them costs little. They need to be tight relative to the concentrations:
-    for a model whose concentrations are of order 1e-5, an atol of 1e-9 stops
-    the solve at a residual that is only 1e-4 relative to the state.
-
-    `max_steps` defaults to a cap rather than to None because a solve that
-    does not converge otherwise hangs. Three log units from the parameters
-    enzax's glycolysis model was fitted at, its solve is still going after
-    200000 steps and 51 seconds, against 394 steps and 138 ms one log unit
-    away. NUTS visits such points while its step size is still being adapted,
-    and an uncapped solve hangs the chain there instead of rejecting.
-
-    The cap does change the target of a sampling run, since a point whose
-    solve is merely slow is given no density at all. It is set well above what
-    a real solve costs -- 394 steps at one log unit out, 821 from a
-    deliberately bad guess -- so what it removes is parameter values no
-    posterior mass is at.
-
     """
     term = diffrax.ODETerm(rhs)
     if solver is None:
@@ -170,64 +144,25 @@ def refine_guess_newton(
 ) -> IndConcArr:
     """Improve a steady state guess with a bounded Newton root find on `dcdt`.
 
-    Returns the root Newton found when it can be trusted, and the original
-    guess when it cannot, so that the caller can pass the result straight to a
-    solver without checking anything. Newton is fast near a steady state and
-    fails outright far from one, and this function is where that failure is
-    absorbed.
+    Returns the root Newton found if it converged to finite, positive
+    concentrations, and the original guess otherwise, so that the result can
+    be passed straight to `get_steady_state`. The solve is wrapped in
+    `stop_gradient`, so gradients come only from the following solve's
+    adjoint at the final root.
 
-    :param model: the kinetic model whose `dcdt` is being solved. A model
-    rather than a bare right hand side, because the domain check below needs
-    the model's link matrix and moiety totals.
+    :param model: the kinetic model whose `dcdt` is being solved.
 
     :param guess: the concentrations of the independent species to start from,
     and to fall back to.
 
     :param parameters: a PyTree of parameters.
 
-    :param newton_max_steps: how many Newton steps to allow. Short on purpose:
-    a Newton solve that has not converged in a handful of steps is not in a
-    basin of attraction, and the integration that follows is what handles that
-    case.
+    :param newton_max_steps: how many Newton steps to allow. Small on purpose,
+    since a Newton solve that has not converged in a few steps is unlikely to.
 
     :param newton_rtol: relative tolerance of the Newton solve.
 
     :param newton_atol: absolute tolerance of the Newton solve.
-
-    Converged is not the same as valid, which is why the check is not just
-    `sol.result`: a Newton solver has no notion of a physical concentration,
-    and a steady state event would fire on a non-physical root too, since it
-    only tests whether `dcdt` is near zero. The check is on the balanced
-    concentrations rather than on the independent ones, because a dependent
-    species' concentration is `moiety_total + L0 @ conc_ind` and can be
-    negative while every independent concentration is positive.
-
-    That last case has not been observed. A sweep of 400 random guesses per
-    example, signs included, found no root this function accepted at a
-    non-positive concentration, and the reason looks structural rather than
-    lucky: `KineticModel.dcdt` clips concentrations at 1e-12, so at a negative
-    concentration the residual is the one at zero, which these rate laws do
-    not make vanish. The check is kept because it states the contract, and
-    because it costs one comparison.
-
-    The clip has a second consequence that does bite: it makes the residual
-    non-smooth at the boundary, a zero Jacobian column that a Newton solver
-    feels and an integrator mostly does not. That is why the leash here is
-    short.
-
-    The solve is wrapped in `stop_gradient` on both sides, which means
-    optimistix's implicit function theorem rule never runs: with no tangents
-    on either input there is nothing for it to differentiate. Without it every
-    backward pass would solve an extra linear system at a root that is about
-    to be discarded, and would do it with lineax's `throw=True`, which raises
-    at a diverged root rather than returning anything. Gradients come entirely
-    from the following solve's adjoint at the final root, which does not care
-    which solver found it.
-
-    A guess that is already NaN -- which happens when a previous failed solve
-    is fed back as the next guess -- comes back unchanged, since Newton
-    started there does not converge.
-
     """
     sol = optx.root_find(
         lambda conc_ind, params: model(0.0, conc_ind, params),
@@ -272,18 +207,10 @@ def get_steady_state_hybrid(
 ) -> IndConcArr:
     """Get a steady state, trying Newton first and integrating from its answer.
 
-    Takes `get_steady_state`'s arguments, which document them, plus
-    `refine_guess_newton`'s. Returns the same thing, to the same tolerances.
-
-    There is no branch here, and that is the point: `lax.cond` on a traced
-    success flag lowers to a `select` under `vmap`, which runs both branches,
-    so a chain map over several chains would pay for the integration whether
-    or not Newton succeeded. Seeding instead of branching costs a failed
-    Newton solve, which is a few evaluations of `dcdt`, and buys the whole
-    integration when Newton succeeds -- because from a sufficiently good
-    starting point the steady state event fires immediately and the solve
-    takes no steps at all.
-
+    Takes `get_steady_state`'s arguments plus `refine_guess_newton`'s. The
+    integration always runs rather than being skipped when Newton succeeds,
+    because under `vmap` a `lax.cond` would run both branches anyway; from a
+    good Newton answer it takes no steps.
     """
     seed = refine_guess_newton(
         model,

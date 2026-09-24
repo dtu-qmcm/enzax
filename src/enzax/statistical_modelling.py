@@ -213,9 +213,10 @@ def _log_density_and_steady_state(
 
     :param steady_state_atol: absolute tolerance of the terminating event.
 
-    :param solver:
+    :param solver: a diffrax ODE solver for `get_steady_state_hybrid` to use.
 
-    :param stepsize_controller:
+    :param stepsize_controller: a diffrax step size controller for the ODE
+        solver to use.
 
     The solve is `get_steady_state_hybrid` rather than `get_steady_state`,
     which matters most here: with grapevine each draw's guess is the previous
