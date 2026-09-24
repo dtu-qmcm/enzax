@@ -1,6 +1,7 @@
 import operator
 from functools import partial
 
+import diffrax
 import jax
 from jax import numpy as jnp
 from jax.scipy.stats import multivariate_normal, norm
@@ -162,11 +163,13 @@ def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     return llik_conc + llik_enz + llik_flux
 
 
-_SOLVE_TOLERANCES = (
+_STATIC_SOLVE_ARGUMENTS = (
     "ivp_rtol",
     "ivp_atol",
     "steady_state_rtol",
     "steady_state_atol",
+    "solver",
+    "stepsize_controller",
 )
 
 
@@ -181,6 +184,8 @@ def _log_density_and_steady_state(
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
     steady_state_atol: float = 1e-12,
+    solver: diffrax.AbstractSolver | None = None,
+    stepsize_controller: diffrax.AbstractStepSizeController | None = None,
 ) -> tuple[Scalar, IndConcArr]:
     """Get the log posterior density of a kinetic model's parameters.
 
@@ -208,6 +213,10 @@ def _log_density_and_steady_state(
 
     :param steady_state_atol: absolute tolerance of the terminating event.
 
+    :param solver:
+
+    :param stepsize_controller:
+
     The solve is `get_steady_state_hybrid` rather than `get_steady_state`,
     which matters most here: with grapevine each draw's guess is the previous
     draw's steady state, so the Newton path usually succeeds and the
@@ -234,6 +243,8 @@ def _log_density_and_steady_state(
         ivp_atol=ivp_atol,
         steady_state_rtol=steady_state_rtol,
         steady_state_atol=steady_state_atol,
+        solver=solver,
+        stepsize_controller=stepsize_controller,
     )
     # `get_steady_state_hybrid` returns NaN when it found no steady state,
     # and the rate laws raise on a NaN concentration rather than propagate it:
@@ -264,11 +275,11 @@ def _log_density_and_steady_state(
 
 
 enzax_log_density_grapevine = partial(
-    jax.jit, static_argnames=_SOLVE_TOLERANCES
+    jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS
 )(_log_density_and_steady_state)
 
 
-@partial(jax.jit, static_argnames=_SOLVE_TOLERANCES)
+@partial(jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS)
 def enzax_log_density(
     free_parameters: PyTree,
     model: RateEquationModel,
@@ -280,6 +291,8 @@ def enzax_log_density(
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
     steady_state_atol: float = 1e-12,
+    solver: diffrax.AbstractSolver | None = None,
+    stepsize_controller: diffrax.AbstractStepSizeController | None = None,
 ) -> Scalar:
     """Get the log posterior density of a kinetic model's parameters.
 
@@ -297,5 +310,7 @@ def enzax_log_density(
         ivp_atol,
         steady_state_rtol,
         steady_state_atol,
+        solver,
+        stepsize_controller,
     )
     return log_density

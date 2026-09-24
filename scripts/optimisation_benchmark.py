@@ -1,105 +1,25 @@
 """Measure what each of enzax's MCMC optimisations is worth.
 
-Enzax applies four optimisations to the operation a gradient-based sampler
-spends all its time on -- solve for a steady state, differentiate it -- and
-this script prices them, one at a time and in the order they are listed on the
-[performance](../docs/performance.md) page:
+The script prices the four optimisations described on the performance page:
+implicit differentiation, the BDF solver from diffrax-bdf, the grapevine method
+and the hybrid solver. It adds them one at a time, in that order, starting from
+a configuration that backpropagates through a `Kvaerno5` solve from a fixed
+guess, and reports the wall time of one NUTS iteration for each configuration.
 
-1. **implicit adjoint**, `diffrax.ImplicitAdjoint`: differentiate the root
-   rather than the integration that found it;
-2. **a BDF solver**, [diffrax-bdf](https://github.com/dtu-qmcm/diffrax-bdf),
-   in place of enzax's default `Kvaerno5`;
-3. **the grapevine method**, which hands each leapfrog step the steady state
-   the previous one found instead of a fixed default guess;
-4. **the hybrid forward solve**, `get_steady_state_hybrid`, which tries a
-   bounded Newton root find and integrates from whatever it produced.
+Every configuration is timed on the same trajectory. A chain of GrapeNUTS with
+all four optimisations is warmed up on the glycolysis model, then a trajectory
+of the length the sampler used is simulated from where the chain ended, half
+forward and half backward as NUTS does. Each configuration's log density and
+gradient are timed at several steps along it, and the iteration time is
+estimated from those as described in `summarise`. This assumes that a slower
+configuration would have explored the posterior in the same way, which should
+hold because every configuration targets the same posterior to the same
+tolerances.
 
-Each is added to the one above, so the last configuration is all four
-together and the first is a plain backpropagate-through-`Kvaerno5` solve from
-a fixed guess. What is reported is the wall time of **one NUTS iteration**:
-the time of one leapfrog step times the number of leapfrog steps the sampler
-really took.
-
-Three of the four are enzax's own defaults. The BDF is not: `get_steady_state`
-defaults to `Kvaerno5`, and the BDF arrives with `diffrax-bdf`, which the
-`mcmc` dependency group installs and this script therefore requires.
-
-    uv run --group mcmc python scripts/optimisation_benchmark.py
-
-    # reuse the cached warmup, e.g. while iterating on the figure
-    uv run --group mcmc python scripts/optimisation_benchmark.py \
-        --cache warmup.npz
-
-    # a few minutes rather than half an hour, on the 5-state model
-    uv run --group mcmc python scripts/optimisation_benchmark.py \
-        --model methionine --n-warmup 50
-
-    # start from forward sensitivities instead of backpropagation, which is
-    # the alternative Stan and Maud actually use
-    uv run --group mcmc python scripts/optimisation_benchmark.py \
-        --baseline-adjoint forward
-
-## How one iteration is priced
-
-A configuration is not sampled with. It is measured on an iteration that the
-*optimised* configuration produced, which is what makes the numbers
-comparable: every configuration is timed at the same positions, from the same
-guesses, so the only thing that differs between rows is the machinery being
-priced.
-
-Getting that iteration takes three stages.
-
-**Warm up.** One chain of GrapeNUTS at the optimised settings, with the step
-size and the diagonal mass matrix adapted as usual, then a handful of draws to
-see how many leapfrog steps an iteration really costs. This is the expensive
-stage, and `--cache` writes it to an npz so that it happens once.
-
-**Rebuild a trajectory.** A momentum is drawn from the adapted metric and the
-velocity Verlet recursion is run for that many steps, half of them forward and
-half of them backward, as NUTS grows a trajectory. Each step records the
-position it came from, the steady state found there, and the position it moved
-to. This is a Hamiltonian trajectory the sampler could have generated, in the
-region of the posterior warmup left the chain in.
-
-**Time the trajectory.** For each configuration, and at several positions
-along that trajectory, the log density and its gradient are evaluated and
-timed -- including, for the grapevine configurations, the cost of computing
-the guess. The mean is multiplied by the trajectory's length.
-
-Two things this assumes, both worth saying out loud. The trajectory is the
-same for every configuration, when in truth a run with a slower solver would
-have wandered somewhere else; it would not have wandered anywhere
-*systematically* different, because every configuration here targets the same
-posterior to the same tolerances. And the adapted step size is the optimised
-configuration's, for the same reason: what warmup adapts to is the posterior's
-geometry, which no choice of solver moves.
-
-## What the numbers do not include
-
-Compilation, which is a fixed cost of a minute or two per configuration and is
-paid once per run rather than once per iteration. The three unoptimised
-configurations are slower to compile as well as to run -- differentiating the
-integration is what makes the jaxpr large -- so leaving it out is generous to
-them.
-
-## A correctness check that comes for free
-
-Every configuration computes the same log density at the same position, so the
-table reports each one's gradient against the optimised configuration's. They
-agree, and the size of the residual disagreement is itself informative: it is
-the same for all four rows, around 1e-7 on the methionine model and 1e-4 on
-glycolysis, which is not an adjoint's error but the steady state's. The
-optimised row's Newton solve converges to machine precision where the others
-stop as soon as the event tolerance is met.
-
-That agreement is also why the adjoint has to be the first optimisation rather
-than the last. Backpropagation gets the right answer here only because these
-rows integrate from a fixed guess and so have an integration to
-backpropagate through. Once grapevine and the hybrid solve are in, the event
-fires immediately and the integration takes no steps -- there is nothing left
-to propagate a derivative through, and backpropagation returns exactly zero.
-The combination is not a row in the table because it is not a usable
-configuration.
+Compilation time is not included. The table also reports how far each
+configuration's gradient is from the fully optimised one's: the differences
+are small, and come from the steady state tolerances rather than the
+differentiation method.
 """
 
 # Two environment variables have to be set before the libraries that read them
@@ -113,11 +33,11 @@ import os
 # instead: it makes the log density NaN, which blackjax reads as a divergence.
 os.environ.setdefault("EQX_ON_ERROR", "nan")
 
-import argparse
 import csv
 import functools
 import textwrap
 import time
+from pathlib import Path
 from typing import Callable, NamedTuple
 
 import diffrax
@@ -132,6 +52,7 @@ from grapevine.integrator import grapevine_velocity_verlet
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
+from enzax.examples import glycolysis
 from enzax.parameter_split import (
     combine_parameters,
     count_free_parameters,
@@ -184,6 +105,15 @@ TARGET_ACCEPTANCE = 0.8
 # converging.
 INITIAL_STEP_SIZE = 0.001
 INIT_SD = 0.01
+N_WARMUP = 200
+N_SAMPLE = 20
+MAX_TREEDEPTH = 6
+
+N_TIMED = 6
+N_REPEAT = 3
+OUT_PREFIX = (
+    Path(__file__).parents[1] / "docs" / "img" / "optimisation_benchmark"
+)
 
 # Solve tolerances and step cap, all of them enzax's own defaults, repeated
 # here so that every configuration gets the same ones.
@@ -214,15 +144,9 @@ SOLVERS = {
 # which compiles to a program too large to be worth waiting for. 64 is
 # binomial checkpointing's usual working range and costs recomputation the
 # backward pass was going to do anyway.
-# `forward` is forward-mode sensitivity analysis, which is what Stan's
-# `ode_bdf_tol` and so Maud do. It is the default baseline's alternative and
-# the slower of the two at this parameter count, which is why `backprop` is
-# what `CONFIGURATIONS` starts from: the row being beaten should be the best
-# available, not the worst.
 ADJOINTS = {
     "implicit": diffrax.ImplicitAdjoint(),
     "backprop": diffrax.RecursiveCheckpointAdjoint(checkpoints=64),
-    "forward": diffrax.ForwardMode(),
 }
 
 
@@ -250,7 +174,7 @@ class Configuration(NamedTuple):
 
 
 # The optimisations, cumulatively, in the order the performance page lists
-# them. The first row's adjoint is what `--baseline-adjoint` chooses.
+# them.
 CONFIGURATIONS = (
     Configuration("no optimisations", "backprop", "kvaerno5", False, False),
     Configuration("+ implicit adjoint", "implicit", "kvaerno5", False, False),
@@ -479,8 +403,8 @@ def warm_up(
     :param n_sample: draws taken after adaptation, to measure the leapfrog
         steps per iteration and to land somewhere the chain would really be.
 
-    :return: the adapted step size and inverse mass matrix, the position and
-        steady state the chain ended at, and the median leapfrog count.
+    :return: the adapted step size and inverse mass matrix, the position the
+        chain ended at, and the median leapfrog count.
     """
     optimised = CONFIGURATIONS[-1]
     density = make_density(problem, optimised)
@@ -537,7 +461,6 @@ def warm_up(
         "step_size": np.asarray(step_size),
         "inverse_mass_matrix": inverse_mass_matrix,
         "position": np.asarray(state.position),
-        "solution": np.asarray(state.guess),
         "n_leapfrog": np.asarray(int(np.median(leapfrogs))),
     }
 
@@ -563,10 +486,12 @@ def build_trajectory(
     sampler ever went, where the solve is harder for every configuration and
     the guesses are no worse for the optimised one.
 
-    :return: one `(previous position, previous solution, position)` per
-        leapfrog step, in the order the recursion produced them. That triple
-        is what one step of work needs: the pair a guess is extrapolated
-        from, and the position the guess is for.
+    :return: one `(previous position, previous solution, position,
+        is_default)` per leapfrog step, in the order the recursion produced
+        them. That is what one step of work needs: the pair a guess is
+        extrapolated from, the position the guess is for, and whether the step
+        starts a trajectory, where the previous solution is the default guess
+        and is used as it is.
     """
     density = make_density(problem, CONFIGURATIONS[-1])
     guess_fn = make_guess_fn(problem)
@@ -580,25 +505,29 @@ def build_trajectory(
     start_momentum = jax.random.normal(key, start_position.shape) / jnp.sqrt(
         inverse_mass_matrix
     )
-    (_, start_solution), start_gradient = value_and_grad(
-        start_position, guess=jnp.asarray(warmed["solution"])
-    )
+    default_guess = problem.default_guess
+    _, start_gradient = value_and_grad(start_position, guess=default_guess)
     steps = []
     halves = ((1.0, n_step - n_step // 2), (-1.0, n_step // 2))
     for direction, length in halves:
-        position, solution = start_position, start_solution
+        position, solution = start_position, default_guess
+        is_default = jnp.bool_(True)
         momentum = direction * start_momentum
         gradient = start_gradient
         for _ in range(length):
             momentum = momentum + 0.5 * step_size * gradient
             moved = position + step_size * inverse_mass_matrix * momentum
-            guess = guess_fn(
-                GuessInputs(solution, position, jnp.bool_(False)), moved
-            )
+            if is_default:
+                guess = solution
+            else:
+                guess = guess_fn(
+                    GuessInputs(solution, position, is_default), moved
+                )
             (_, moved_solution), gradient = value_and_grad(moved, guess=guess)
             momentum = momentum + 0.5 * step_size * gradient
-            steps.append((position, solution, moved))
+            steps.append((position, solution, moved, is_default))
             position, solution = moved, moved_solution
+            is_default = jnp.bool_(False)
     return steps
 
 
@@ -608,9 +537,11 @@ def make_leapfrog_cost(
     """Get the work one leapfrog step does, as a function to time.
 
     That is the guess, if the configuration computes one, and then the log
-    density and its gradient. The previous position and solution are taken
-    whether or not they are used, so that every configuration is timed through
-    a function of the same shape.
+    density and its gradient. The guess is made as grapevine's integrator
+    makes it: extrapolated from the previous position and solution, except at
+    the start of a trajectory, where the default guess is used as it is. Every
+    configuration takes all four arguments whether or not it uses them, so
+    that each is timed through a function of the same shape.
     """
     density = make_density(problem, configuration)
     value_and_grad = jax.value_and_grad(density, has_aux=True)
@@ -618,14 +549,17 @@ def make_leapfrog_cost(
     default_guess = problem.default_guess
 
     @eqx.filter_jit()
-    def leapfrog_cost(previous_position, previous_solution, position):
+    def leapfrog_cost(
+        previous_position, previous_solution, position, is_default
+    ):
         if guess_fn is None:
             guess = default_guess
         else:
-            guess = guess_fn(
-                GuessInputs(
-                    previous_solution, previous_position, jnp.bool_(False)
-                ),
+            guess = jax.lax.cond(
+                is_default,
+                lambda inputs, _: inputs.solution,
+                guess_fn,
+                GuessInputs(previous_solution, previous_position, is_default),
                 position,
             )
         return value_and_grad(position, guess=guess)
@@ -693,6 +627,7 @@ def time_configuration(
                 "grapevine": configuration.grapevine,
                 "hybrid": configuration.hybrid,
                 "step": int(step),
+                "is_default": bool(arguments[3]),
                 "seconds": seconds,
                 "log_density": float(log_density),
                 "gradient_relative_error": error,
@@ -709,9 +644,18 @@ def time_configuration(
 def summarise(
     records: list[dict],
     n_leapfrog: int,
+    n_default: int,
     configurations: tuple[Configuration, ...],
 ) -> list[dict]:
     """Turn the timed steps into one row per configuration.
+
+    A NUTS iteration's time is estimated as `n_default` steps at the mean time
+    of the timed trajectory starts, plus the remaining `n_leapfrog -
+    n_default` at the mean time of the other timed steps. Trajectory starts
+    are counted separately because they solve from the default guess, so for
+    the grapevine configurations they cost far more than the steps after them,
+    and an unweighted mean over the timed steps would count them several times
+    over.
 
     :return: a row per configuration, in `configurations` order, with the
         seconds one NUTS iteration would take and the factor gained over the
@@ -724,12 +668,16 @@ def summarise(
             for record in records
             if record["configuration"] == configuration.label
         ]
-        seconds = float(np.mean([record["seconds"] for record in mine]))
+        default = [r["seconds"] for r in mine if r["is_default"]]
+        other = [r["seconds"] for r in mine if not r["is_default"]]
+        seconds_per_iteration = n_default * float(np.mean(default)) + (
+            (n_leapfrog - n_default) * float(np.mean(other)) if other else 0.0
+        )
         rows.append(
             {
                 "configuration": configuration.label,
-                "seconds_per_leapfrog": seconds,
-                "seconds_per_iteration": seconds * n_leapfrog,
+                "seconds_per_leapfrog": seconds_per_iteration / n_leapfrog,
+                "seconds_per_iteration": seconds_per_iteration,
                 "gradient_relative_error": float(
                     np.max(
                         [record["gradient_relative_error"] for record in mine]
@@ -926,145 +874,54 @@ def write_csv(records: list[dict], path: str) -> None:
     print(f"timings written to {path}")
 
 
-def main(
-    model: str,
-    baseline_adjoint: str,
-    n_warmup: int,
-    n_sample: int,
-    max_treedepth: int,
-    n_timed: int,
-    n_repeat: int,
-    n_leapfrog: int | None,
-    cache: str | None,
-    out_prefix: str,
-) -> None:
-    """Price each optimisation and draw the figure.
-
-    :param model: which `enzax.examples` module to fit.
-
-    :param baseline_adjoint: how the first configuration differentiates the
-        solve, a key of `ADJOINTS` other than `implicit`.
-
-    :param n_leapfrog: override the trajectory length, rather than taking the
-        one the sampler produced. Useful for a quick run.
-
-    :param cache: an npz holding a previous run's warmup. Read if it exists,
-        written if it does not.
-
-    :param out_prefix: `<prefix>.csv` and `<prefix>.png` are written.
-    """
-    example = __import__(f"enzax.examples.{model}", fromlist=["model"])
-    configurations = (
-        CONFIGURATIONS[0]._replace(adjoint=baseline_adjoint),
-    ) + CONFIGURATIONS[1:]
+def main() -> None:
+    """Price each optimisation and draw the figure."""
     key_warmup, key_trajectory = jax.random.split(jax.random.key(SEED), 2)
-    problem, _ = build_problem(example, SEED)
+    problem, _ = build_problem(glycolysis, SEED)
     n_free = count_free_parameters(problem.split)
     print(
-        f"{model}: {len(problem.model.independent_species)} balanced species, "
-        f"{len(problem.model.reactions)} reactions, {n_free} free parameters"
+        f"glycolysis: {len(problem.model.independent_species)} balanced "
+        f"species, {len(problem.model.reactions)} reactions, {n_free} free "
+        "parameters"
     )
-    if cache is not None and os.path.exists(cache):
-        warmed = dict(np.load(cache))
-        print(f"warmup read from {cache}")
-    else:
-        print(f"warming up: {n_warmup} adaptation draws, {n_sample} samples")
-        warmed = warm_up(problem, key_warmup, n_warmup, n_sample, max_treedepth)
-        if cache is not None:
-            np.savez(cache, **warmed)
-            print(f"warmup written to {cache}")
-    n_step = n_leapfrog or int(warmed["n_leapfrog"])
+    print(f"warming up: {N_WARMUP} adaptation draws, {N_SAMPLE} samples")
+    warmed = warm_up(problem, key_warmup, N_WARMUP, N_SAMPLE, MAX_TREEDEPTH)
+    n_step = int(warmed["n_leapfrog"])
     print(f"rebuilding one trajectory of {n_step} leapfrog steps")
     steps = build_trajectory(problem, warmed, key_trajectory, n_step)
-    where = np.unique(
-        np.linspace(0, len(steps) - 1, min(n_timed, len(steps)))
+    defaults = [position for position, step in enumerate(steps) if step[3]]
+    where = np.union1d(
+        np.linspace(0, len(steps) - 1, min(N_TIMED, len(steps)))
         .round()
-        .astype(int)
+        .astype(int),
+        defaults,
     )
     print(f"timing each configuration at steps {[int(s) for s in where]}")
     records: list[dict] = []
     reference = None
     # The optimised configuration goes first, so that the rows above it have
     # something to report their gradients against.
-    for configuration in reversed(configurations):
+    for configuration in reversed(CONFIGURATIONS):
         print(f"{configuration.label}:")
         mine = time_configuration(
-            problem, configuration, steps, where, n_repeat, reference
+            problem, configuration, steps, where, N_REPEAT, reference
         )
         if reference is None:
             reference = np.stack([record["gradient"] for record in mine])
         records.extend(mine)
-    rows = summarise(records, n_step, configurations)
+    rows = summarise(records, n_step, len(defaults), CONFIGURATIONS)
     report(rows, n_step, n_free)
-    write_csv(records, f"{out_prefix}.csv")
+    write_csv(records, f"{OUT_PREFIX}.csv")
     plot(
         rows,
-        f"{out_prefix}.png",
+        f"{OUT_PREFIX}.png",
         subtitle=(
-            f"{model}: {len(problem.model.independent_species)} balanced "
+            f"glycolysis: {len(problem.model.independent_species)} balanced "
             f"species, {n_free} free parameters, {n_step} leapfrog steps per "
             f"iteration. Each row adds one optimisation to the row above."
         ),
     )
 
 
-def parse_args():
-    """Read the command line."""
-    parser = argparse.ArgumentParser(
-        description="Measure what each of enzax's MCMC optimisations is worth."
-    )
-    parser.add_argument(
-        "--model",
-        default="glycolysis",
-        help="which enzax.examples module to fit",
-    )
-    parser.add_argument(
-        "--baseline-adjoint",
-        choices=["backprop", "forward"],
-        default="backprop",
-        help="how the unoptimised configuration differentiates the solve",
-    )
-    parser.add_argument("--n-warmup", type=int, default=200)
-    parser.add_argument("--n-sample", type=int, default=20)
-    parser.add_argument("--max-treedepth", type=int, default=6)
-    parser.add_argument(
-        "--n-timed",
-        type=int,
-        default=6,
-        help="how many points along the trajectory to time",
-    )
-    parser.add_argument(
-        "--n-repeat",
-        type=int,
-        default=3,
-        help="how many times to time each point; the median is kept",
-    )
-    parser.add_argument(
-        "--n-leapfrog",
-        type=int,
-        default=None,
-        help="override the trajectory length the sampler produced",
-    )
-    parser.add_argument(
-        "--cache",
-        default=None,
-        help="an npz to read the warmup from, or write it to",
-    )
-    parser.add_argument("--out-prefix", default="optimisation_benchmark")
-    return parser.parse_args()
-
-
 if __name__ == "__main__":
-    args = parse_args()
-    main(
-        model=args.model,
-        baseline_adjoint=args.baseline_adjoint,
-        n_warmup=args.n_warmup,
-        n_sample=args.n_sample,
-        max_treedepth=args.max_treedepth,
-        n_timed=args.n_timed,
-        n_repeat=args.n_repeat,
-        n_leapfrog=args.n_leapfrog,
-        cache=args.cache,
-        out_prefix=args.out_prefix,
-    )
+    main()

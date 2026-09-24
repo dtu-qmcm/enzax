@@ -87,16 +87,12 @@ def get_steady_state(
     Defaults to the `PIDController` below, which is tuned for `Kvaerno5`;
     another solver generally wants another controller.
 
-    :param adjoint: how to differentiate the solve. Defaults to
-    `diffrax.ImplicitAdjoint`, which differentiates the steady state through
-    the implicit function theorem: one linear solve against the Jacobian at
-    the root, whatever the integration cost to reach it. The alternatives
-    differentiate the integration itself, so they are both more expensive and,
-    here, wrong in the case the hybrid solver is built around -- an
-    integration that takes no steps because the event fires immediately has no
-    steps to propagate a derivative through, and returns a zero gradient. The
-    argument exists so that `scripts/optimisation_benchmark.py` can measure
-    what the default is worth.
+    :param adjoint: which adjoint to use. Must satisfy the diffrax adjoint API:
+    see https://docs.kidger.site/diffrax/api/adjoints/. The default adjoint is
+    diffrax.ImplicitAdjoint, which differentiates the steady state using the
+    implicit function theorem. This is almost definitely what you want to use
+    as it avoids differentiating the ODE solve leading to the steady state. The
+    argument is here for benchmarking.
 
     The event defaults are tighter than the initial value problem's because
     they decide only when to stop, not how finely to integrate, so tightening
