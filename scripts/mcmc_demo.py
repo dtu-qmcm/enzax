@@ -25,6 +25,7 @@ from enzax.parameter_split import (
     get_free_parameters,
     split_parameters_by_freeing,
 )
+from enzax.shard_map_patch import patch_for_shard_map
 from enzax.statistical_modelling import (
     enzax_log_density_grapevine,
     prior_from_truth,
@@ -84,6 +85,7 @@ def report(split, free_true, states):
 
 
 def main():
+    patch_for_shard_map()
     model = example.model
     true_parameters = example.parameters
     default_guess = example.steady_state
