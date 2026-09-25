@@ -29,6 +29,9 @@ guess = jnp.full((len(model.balanced_species),), 0.01)
 steady_state = get_steady_state(methionine.model, guess, methionine.parameters)
 ```
 
+`get_steady_state_hybrid` takes the same arguments and tries a short Newton
+solve first, which skips the integration when the guess is already good.
+
 ### Find a steady state's Jacobian with respect to all parameters
 
 ```python

@@ -1,213 +1,143 @@
-"""Demonstration of how to make a Bayesian kinetic model with enzax."""
+"""Fit a kinetic model to simulated data with enzax and grapevine.
+
+Change the `enzax.examples` import below to fit a different model.
+"""
+
+# ruff: noqa: E402
+
+import os
+
+os.environ.setdefault("EQX_ON_ERROR", "nan")
 
 import functools
-import logging
-import warnings
 
-import equinox as eqx
+import blackjax
 import jax
+from blackjax_utils import run_sampler
+from grapevine import grapenuts, guess_implicit
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
-import blackjax
-from blackjax_utils import NUTS, run_sampler
-from grapevine import (
-    grapenuts,
-    guess_implicit,
-    guess_implicit_cg,
-    guess_previous,
-)
-
-from enzax.examples import methionine
+from enzax.examples import methionine as example
 from enzax.parameter_split import (
     combine_parameters,
     count_free_parameters,
-    get_free_labels,
     get_free_parameters,
     split_parameters_by_freeing,
 )
 from enzax.statistical_modelling import (
-    enzax_log_density,
     enzax_log_density_grapevine,
     prior_from_truth,
 )
-from enzax.steady_state import get_steady_state
+from enzax.steady_state import get_steady_state_hybrid
+
+jax.config.update("jax_enable_x64", True)
 
 SEED = 1234
 N_CHAIN = 4
 N_WARMUP = 2
 N_SAMPLE = 2
-
-jax.config.update("jax_enable_x64", True)
-
-
-FREE_PARAMETERS = {
-    "log_kcat": ["MAT1"],
-    "temperature": None,
-    "dgf": None,
-}
+MAX_TREEDEPTH = 10
+INIT_SD = 0.01
+INITIAL_STEP_SIZE = 0.001
+TARGET_ACCEPTANCE = 0.95
+FREE_PARAMETERS = {"log_kcat": None}
+PRIOR_SD = 0.1
+CONC_ERROR = 0.03
+ENZYME_ERROR = 0.03
+FLUX_ERROR = 0.05
 
 
 def simulate(key, truth, error):
-    """Simulate observations from the true model.
-
-    Args:
-        key: jax.random key
-        truth: tuple of true concentration, log enzyme and flux
-        error: tuple of concentration, enzyme and flux error
-
-    """
-    key_conc, key_enz, key_flux = jax.random.split(key, num=3)
-    true_conc, true_log_enz, true_flux = truth
-    conc_err, enz_err, flux_err = error
+    key_conc, key_enzyme, key_flux = jax.random.split(key, 3)
+    true_conc, true_log_enzyme, true_flux = truth
+    conc_error, enzyme_error, flux_error = error
     return (
-        jnp.exp(jnp.log(true_conc) + jax.random.normal(key_conc) * conc_err),
-        jnp.exp(true_log_enz + jax.random.normal(key_enz) * enz_err),
-        true_flux + jax.random.normal(key_flux) * flux_err,
+        jnp.exp(jnp.log(true_conc) + jax.random.normal(key_conc) * conc_error),
+        jnp.exp(true_log_enzyme + jax.random.normal(key_enzyme) * enzyme_error),
+        true_flux + jax.random.normal(key_flux) * flux_error,
     )
 
 
-def get_guess_fns(model, split, init_params):
-    """Get the guessing heuristics grapevine can use for this model.
-
-    `guess_implicit` and `guess_implicit_cg` take an Euler step from the
-    previous steady state, so they need the residual whose root it is, as a
-    function of the concentrations and the parameters being inferred.
-
-    The position they are handed is the sampler's, which under blackjax-utils'
-    default `flatten=True` is `init_params` ravelled into one array, so it has
-    to be unravelled before it means anything to the model.
-    """
-    _, unflatten = ravel_pytree(init_params)
+def get_guess_fn(model, split, free_parameters):
+    _, unflatten = ravel_pytree(free_parameters)
 
     def target_function(conc_ind, position):
         parameters = combine_parameters(split, unflatten(position))
         return model.dcdt(conc_ind, parameters)
 
-    return {
-        "previous": guess_previous,
-        "implicit": functools.partial(
-            guess_implicit, target_function=target_function
-        ),
-        "implicit_cg": functools.partial(
-            guess_implicit_cg, target_function=target_function
-        ),
-    }
+    return functools.partial(guess_implicit, target_function=target_function)
 
 
-def main(heuristic: str | None = "previous"):
-    """Demonstrate How to make a Bayesian kinetic model with enzax.
+def report(split, free_true, states):
+    n_free = count_free_parameters(split)
+    print(f"True values against the posterior ({n_free} free):")
+    for (path, true), draws in zip(
+        jax.tree.leaves_with_path(free_true),
+        jax.tree.leaves(states.position),
+    ):
+        pooled = draws.reshape(-1, *draws.shape[2:])
+        low = jnp.quantile(pooled, 0.01, axis=0)
+        high = jnp.quantile(pooled, 0.99, axis=0)
+        covered = int(jnp.sum((true >= low) & (true <= high)))
+        print(f"  {path[0].key}: {covered}/{jnp.size(true)} covered")
 
-    :param heuristic: which grapevine guessing heuristic to use, or None to
-        use plain NUTS, which starts every solve from `default_guess`.
-    """
-    true_parameters = methionine.parameters
-    model = methionine.model
-    # A guess in the right order of magnitude. Starting every solve from a
-    # flat 0.01 would be three to five orders of magnitude out for this
-    # model, which costs plain NUTS dearly and flatters grapevine.
-    default_guess = methionine.steady_state
-    true_steady = get_steady_state(model, default_guess, true_parameters)
+
+def main():
+    model = example.model
+    true_parameters = example.parameters
+    default_guess = example.steady_state
     split = split_parameters_by_freeing(
-        model.parameter_labelling,
-        true_parameters,
-        FREE_PARAMETERS,
+        model.parameter_labelling, true_parameters, FREE_PARAMETERS
     )
-    free_params = get_free_parameters(split, true_parameters)
-    is_mv = eqx.tree_at(
-        lambda params: params["dgf"],
-        jax.tree.map(lambda _: False, free_params),
-        replace=True,
+    free_true = get_free_parameters(split, true_parameters)
+    prior = prior_from_truth(free_true, sd=PRIOR_SD)
+    steady = get_steady_state_hybrid(model, default_guess, true_parameters)
+    balanced = model.get_balanced_conc(
+        steady, model.get_moiety_totals(true_parameters)
     )
-    prior = prior_from_truth(free_params, sd=0.1, is_multivariate=is_mv)
-    # get true concentration, flux and log enzyme
-    true_conc = methionine.model.get_conc(
-        true_steady,
-        model.get_log_conc_unbalanced(true_parameters),
+    true_conc = model.get_conc(
+        balanced, model.get_log_conc_unbalanced(true_parameters)
     )
-    true_flux = model.flux(true_steady, methionine.parameters)
-    true_log_enz = true_parameters["log_enzyme"]
-    # simulate observations
-    conc_err = jnp.full_like(true_conc, 0.03)
-    flux_err = jnp.full_like(true_flux, 0.05)
-    enz_err = jnp.full_like(true_log_enz, 0.03)
-    key = jax.random.key(SEED)
-    key_sim, key_nuts = jax.random.split(key, num=2)
-    measurement_errors = (conc_err, enz_err, flux_err)
-    measurement_values = simulate(
-        key=key_sim,
-        truth=(true_conc, true_log_enz, true_flux),
-        error=measurement_errors,
+    true_flux = model.flux(balanced, true_parameters)
+    true_log_enzyme = true_parameters["log_enzyme"]
+    errors = (
+        jnp.full_like(true_conc, CONC_ERROR),
+        jnp.full_like(true_log_enzyme, ENZYME_ERROR),
+        jnp.full_like(true_flux, FLUX_ERROR),
     )
-    measurements = tuple(zip(measurement_values, measurement_errors))
-    model_kwargs = dict(
-        model=model, split=split, measurements=measurements, prior=prior
+    key_sim, key_mcmc = jax.random.split(jax.random.key(SEED), 2)
+    values = simulate(key_sim, (true_conc, true_log_enzyme, true_flux), errors)
+    measurements = tuple(zip(values, errors))
+    log_density = functools.partial(
+        enzax_log_density_grapevine,
+        model=model,
+        split=split,
+        measurements=measurements,
+        prior=prior,
     )
-    if heuristic is None:
-        posterior_log_density = functools.partial(
-            enzax_log_density, guess=default_guess, **model_kwargs
-        )
-        sampler = NUTS
-    else:
-        # grapevine supplies the guess itself, from the steady state found at
-        # the previous point on the same Hamiltonian trajectory, so `guess` is
-        # deliberately not bound here.
-        posterior_log_density = functools.partial(
-            enzax_log_density_grapevine, **model_kwargs
-        )
-        sampler = grapenuts(
-            default_guess,
-            guess_fn=get_guess_fns(model, split, free_params)[heuristic],
-        )
-    with blackjax.progress_bar("enzax NUTS"):
+    sampler = grapenuts(
+        default_guess, guess_fn=get_guess_fn(model, split, free_true)
+    )
+    with blackjax.progress_bar("enzax"):
         states, info = run_sampler(
-            key=key_nuts,
-            log_posterior=posterior_log_density,
-            init_params=free_params,
-            init_sd=0.01,
+            key=key_mcmc,
+            log_posterior=log_density,
+            init_params=free_true,
+            init_sd=INIT_SD,
             n_chain=N_CHAIN,
             n_warmup=N_WARMUP,
             n_sample=N_SAMPLE,
-            max_num_doublings=10,
+            max_num_doublings=MAX_TREEDEPTH,
             sampler=sampler,
             warmup_options=dict(
-                initial_step_size=0.01,
-                is_mass_matrix_diagonal=False,
-                target_acceptance_rate=0.95,
+                initial_step_size=INITIAL_STEP_SIZE,
+                is_mass_matrix_diagonal=True,
+                target_acceptance_rate=TARGET_ACCEPTANCE,
             ),
         )
-    if jnp.any(info.is_divergent):
-        n_divergent = info.is_divergent.sum()
-        msg = f"There were {n_divergent} post-warmup divergent transitions."
-        warnings.warn(msg)
-    else:
-        logging.info("No post-warmup divergent transitions!")
-    n_free = count_free_parameters(split)
-    print(f"True parameter values vs posterior ({n_free} free):")
-    for (path, leaf_true), leaf_model in zip(
-        jax.tree.leaves_with_path(free_params), jax.tree.leaves(states.position)
-    ):
-        parameter = path[0].key
-        # blackjax-utils samples several chains at once, so each leaf arrives
-        # with shape (n_chain, n_sample, ...). Pool the draws before
-        # summarising them.
-        draws = leaf_model.reshape(-1, *leaf_model.shape[2:])
-        model_low = jnp.quantile(draws, 0.01, axis=0)
-        model_high = jnp.quantile(draws, 0.99, axis=0)
-        labels = get_free_labels(split, parameter)
-        print(f" {parameter}:")
-        if jnp.ndim(leaf_true) == 0:
-            print(f"  true value: {leaf_true}")
-            print(f"  posterior 1%: {model_low}")
-            print(f"  posterior 99%: {model_high}")
-        else:
-            for label, true, low, high in zip(
-                labels, leaf_true, model_low, model_high
-            ):
-                print(
-                    f"  {label}: true {true:.4g}, "
-                    f"posterior 1% {low:.4g}, 99% {high:.4g}"
-                )
+    print(f"Divergent transitions: {int(info.is_divergent.sum())}")
+    report(split, free_true, states)
 
 
 if __name__ == "__main__":

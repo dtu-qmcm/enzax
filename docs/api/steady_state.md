@@ -4,4 +4,6 @@
       filters:
         - "!check"
       members:
-        - get_kinetic_model_steady_state
+        - get_steady_state
+        - get_steady_state_hybrid
+        - refine_guess_newton

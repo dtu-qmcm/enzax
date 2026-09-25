@@ -276,10 +276,17 @@ array; `unflatten` above is the second return value of
 ### A caveat about tolerances
 
 grapevine is exactly valid when the solver reaches the same answer whatever
-guess it starts from. `get_steady_state` stops once
+guess it starts from. The integration stops once
 `norm(dcdt) < steady_state_atol + steady_state_rtol * norm(conc)`, so its
 terminal state does depend on where it started, and a guess that already meets
 that bound is returned unchanged.
+
+`enzax_log_density` uses `get_steady_state_hybrid`, which narrows this rather
+than widening it: when the guess is close enough for its Newton step to be
+accepted, the answer is a root converged to machine precision and so does not
+depend on the guess at all. What is left is the gap between that root and the
+point the integration stops at, which on the methionine model is about `1e-7`
+in the log density.
 
 This makes the event tolerances matter more than they otherwise would, and they
 have to be tight relative to the concentrations. Methionine's are of order
