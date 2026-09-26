@@ -23,7 +23,7 @@ class ReactionScope:
     """What a rate equation needs to know about the reaction it belongs to.
 
     Built once per reaction at model construction and handed to
-    `RateEquation.get_labels` and `RateEquation.resolve`.
+    `RateEquation.get_labels` and `RateEquation.get_input_indexes`.
 
     Note that `species`, `stoichiometry` and `species_to_dgf_ix` have length
     n_species, where n_species is the model's total number of species.
@@ -174,11 +174,11 @@ class RateEquation(Module, ABC):
        what the labels are. The model collects these from all its rate
        equations, via `get_labels_by_parameter`, to work out its parameter
        labels.
-    2. `resolve` turns those labels into index arrays, given the finished
+    2. `get_input_indexes` turns those labels into index arrays, given the finished
        labels. The result is static and is stored on the model.
     3. `get_input` gathers the actual values, once per flux evaluation.
 
-    `resolve` must build its index bundle itself rather than leaving the model
+    `get_input_indexes` must build its index bundle itself rather than leaving the model
     to assemble one, so that each reaction's ragged `n_rxn_*` axes are bound in
     their own jaxtyping scope.
     """  # noqa: E501
@@ -203,7 +203,7 @@ class RateEquation(Module, ABC):
         return self.get_labels(scope).by_parameter()
 
     @abstractmethod
-    def resolve(
+    def get_input_indexes(
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,

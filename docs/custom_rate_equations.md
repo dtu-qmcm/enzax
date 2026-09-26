@@ -379,25 +379,25 @@ Be warned that this is more work than writing one function. A rate equation refe
 | --- | --- | --- |
 | `get_species` | model construction | extra species ids the reaction names but the stoichiometry does not (optional; defaults to `()`) |
 | `get_labels` | model construction | a `RateEquationLabels` subclass listing every label the equation refers to |
-| `resolve` | model construction | a PyTree of positions: where in each parameter's array this reaction's values live |
+| `get_input_indexes` | model construction | a PyTree of positions: where in each parameter's array this reaction's values live |
 | `get_input` | once per flux evaluation | the parameter values, gathered from those positions |
 | `__call__` | once per flux evaluation | the flux, as a scalar |
 
-The `RateEquationLabels` subclass has one field per group of labels the rate equation declares, and its `by_parameter` method says which flat array each group is gathered from. That method is the only record of the correspondence, so all three of `by_parameter`, `resolve` and `get_input` have to name the same arrays.
+The `RateEquationLabels` subclass has one field per group of labels the rate equation declares, and its `by_parameter` method says which flat array each group is gathered from. That method is the only record of the correspondence, so all three of `by_parameter`, `get_input_indexes` and `get_input` have to name the same arrays.
 
-Two of these mistakes fail differently, which is worth knowing before you make one. If `resolve` looks for a position in an array that `by_parameter` did not name, the label is not there and the model raises as it is built:
+Two of these mistakes fail differently, which is worth knowing before you make one. If `get_input_indexes` looks for a position in an array that `by_parameter` did not name, the label is not there and the model raises as it is built:
 
 ```
 KeyError: "'log_enzyme' has no value labelled 'r2'."
 ```
 
-But if `resolve` is right and `get_input` reads a different array at the position it found, nothing raises at all. JAX clamps an out-of-range index rather than complaining, so the rate equation quietly gathers some other reaction's value and the flux is wrong.
+But if `get_input_indexes` is right and `get_input` reads a different array at the position it found, nothing raises at all. JAX clamps an out-of-range index rather than complaining, so the rate equation quietly gathers some other reaction's value and the flux is wrong.
 
-Note that `resolve` returns a bundle of its own, rather than positions the model assembles for it. This is partly because each reaction's arrays are ragged -- one reaction has three substrates, the next has one -- so each needs its own [jaxtyping](https://docs.kidger.site/jaxtyping/) scope for shape annotations like `n_rxn_substrate` to be meaningful. It is also a convenient place to put anything else about the reaction that never changes, such as its stoichiometric coefficients.
+Note that `get_input_indexes` returns a bundle of its own, rather than positions the model assembles for it. This is partly because each reaction's arrays are ragged -- one reaction has three substrates, the next has one -- so each needs its own [jaxtyping](https://docs.kidger.site/jaxtyping/) scope for shape annotations like `n_rxn_substrate` to be meaningful. It is also a convenient place to put anything else about the reaction that never changes, such as its stoichiometric coefficients.
 
 ### What a rate equation gets told
 
-`resolve` and `get_labels` are handed a `ReactionScope`, which is everything the rate equation is allowed to know about the reaction it belongs to:
+`get_input_indexes` and `get_labels` are handed a `ReactionScope`, which is everything the rate equation is allowed to know about the reaction it belongs to:
 
 - `reaction_id`, the reaction's own id, which is the default label for anything the reaction has one of.
 - `species`, the model's species ids, in the model's order.
@@ -406,7 +406,7 @@ Note that `resolve` returns a bundle of its own, rather than positions the model
 
 Rather than reading these directly, use the helpers in `enzax.rate_equation`: `get_substrates`, `get_products` and `get_reactants` return species ids in the model's order, and `get_species_positions` turns species ids into positions, raising for a species the model does not have.
 
-Positions matter because `__call__` is handed the concentrations of *all* the model's species, in the model's order, not just the ones this reaction uses. A rate equation picks out what it needs by indexing with the positions that `resolve` worked out.
+Positions matter because `__call__` is handed the concentrations of *all* the model's species, in the model's order, not just the ones this reaction uses. A rate equation picks out what it needs by indexing with the positions that `get_input_indexes` worked out.
 
 ### A complete example
 
@@ -480,7 +480,7 @@ class MassAction(RateEquation):
             )
         )
 
-    def resolve(
+    def get_input_indexes(
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
@@ -513,7 +513,7 @@ class MassAction(RateEquation):
         )
 ```
 
-A few things to notice. The rate constant is stored in `log_kcat`, since a turnover number is the closest thing enzax has to a rate constant; the [next subsection](#what-a-rate-equation-may-not-do) explains why it cannot have an array of its own. Its label defaults to the reaction id, exactly as `MichaelisMenten`'s does, so two mass action reactions share a rate constant by declaring the same label. The reaction orders come out of the stoichiometry in `resolve`, where they are computed once, and they travel as a numpy array because they never change and JAX should not trace them.
+A few things to notice. The rate constant is stored in `log_kcat`, since a turnover number is the closest thing enzax has to a rate constant; the [next subsection](#what-a-rate-equation-may-not-do) explains why it cannot have an array of its own. Its label defaults to the reaction id, exactly as `MichaelisMenten`'s does, so two mass action reactions share a rate constant by declaring the same label. The reaction orders come out of the stoichiometry in `get_input_indexes`, where they are computed once, and they travel as a numpy array because they never change and JAX should not trace them.
 
 Using it in a model is no different from using a built-in rate equation. Here reaction `r2` consumes two molecules of `m1c`:
 

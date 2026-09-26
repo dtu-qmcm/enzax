@@ -13,4 +13,4 @@
         - PolynomialTerm
         - get_default_expression
         - get_expression_labels
-        - resolve_expression
+        - get_polynomial_indexes

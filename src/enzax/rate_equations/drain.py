@@ -50,7 +50,7 @@ class Drain(RateEquation):
             drain=get_reaction_label(self.drain, scope.reaction_id)
         )
 
-    def resolve(
+    def get_input_indexes(
         self, scope: ReactionScope, labelling: ParamLabelling
     ) -> DrainIx:
         lab = self.get_labels(scope)

@@ -49,7 +49,7 @@ from enzax.binding import (
     get_default_expression,
     get_expression_labels,
     get_expression_species,
-    resolve_expression,
+    get_polynomial_indexes,
 )
 from enzax.parameters import (
     get_parameter_position,
@@ -570,7 +570,7 @@ class MichaelisMenten(RateEquation):
             expression = expression + dead_end_states
         return expression
 
-    def resolve(
+    def get_input_indexes(
         self, scope: ReactionScope, labelling: ParamLabelling
     ) -> MichaelisMentenIx:
         lab = self.get_labels(scope)
@@ -589,10 +589,10 @@ class MichaelisMenten(RateEquation):
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
             water_dgf=self.water_dgf,
-            binding_polynomial=resolve_expression(
+            binding_polynomial=get_polynomial_indexes(
                 self.get_expression(scope), scope, labelling, "km"
             ),
-            allostery=self.resolve_allostery(scope, labelling, lab),
+            allostery=self.get_allostery_indexes(scope, labelling, lab),
         )
 
     def get_dgf_positions(
@@ -623,7 +623,7 @@ class MichaelisMenten(RateEquation):
             )
         return positions
 
-    def resolve_allostery(
+    def get_allostery_indexes(
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
@@ -635,8 +635,10 @@ class MichaelisMenten(RateEquation):
         tense, relaxed = self.get_allosteric_expressions(scope)
         return AllostericIx(
             ix_tc=get_parameter_position(labelling, "log_tc", lab.tc),
-            tense_state=resolve_expression(tense, scope, labelling, "dc"),
-            relaxed_state=resolve_expression(relaxed, scope, labelling, "dc"),
+            tense_state=get_polynomial_indexes(tense, scope, labelling, "dc"),
+            relaxed_state=get_polynomial_indexes(
+                relaxed, scope, labelling, "dc"
+            ),
         )
 
     def get_input(
