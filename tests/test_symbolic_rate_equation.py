@@ -8,7 +8,10 @@ from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equation import ReactionScope
 from enzax.rate_equations import Drain, MichaelisMenten, SymbolicRateEquation
-from enzax.rate_equations.symbolic import parse_expression
+from enzax.rate_equations.symbolic import (
+    get_flux_at_equilibrium,
+    parse_expression,
+)
 
 jax.config.update("jax_enable_x64", True)
 
@@ -204,11 +207,68 @@ def test_effectors_custom_parameters_and_temperature():
     assert jnp.isclose(flux, expected, rtol=1e-12)
 
 
-def test_reversibility_is_not_implemented_yet():
+REVERSIBLE_MM_PARAMETERS = MM_PARAMETERS | {
+    "km_p": {"kind": "log_saturation_constant", "label": "km|r1|b"}
+}
+REVERSIBLE_MM_EXPRESSION = (
+    "kcat * enzyme * (s / km) / (1 + s / km + p / km_p) * reversibility"
+)
+
+
+@pytest.mark.parametrize("water_stoichiometry", [0.0, 1.0])
+def test_agrees_with_reversible_michaelis_menten(water_stoichiometry):
     symbolic = SymbolicRateEquation(
-        expression="kcat * s * reversibility",
-        species=MM_SPECIES,
-        parameters={"kcat": "log_kcat"},
+        expression=REVERSIBLE_MM_EXPRESSION,
+        species={"s": "a", "p": "b"},
+        parameters=REVERSIBLE_MM_PARAMETERS,
+        water_stoichiometry=water_stoichiometry,
     )
-    with pytest.raises(NotImplementedError, match="not implemented yet"):
-        get_model_and_parameters(symbolic)
+    built_in = MichaelisMenten(water_stoichiometry=water_stoichiometry)
+    assert_same_flux_and_gradient(symbolic, built_in)
+
+
+def test_keq_comes_from_formation_energies():
+    flux, _ = get_flux_and_gradient(SymbolicRateEquation(expression="keq"))
+    dgr_std = VALUES["dgf"]["b"] - VALUES["dgf"]["a"]
+    expected = jnp.exp(-dgr_std / (VALUES["temperature"] * 0.008314))
+    assert jnp.isclose(flux, expected, rtol=1e-12)
+
+
+def get_flux_at_equilibrium_for(rate_equation):
+    model, parameters = get_model_and_parameters(rate_equation)
+    return get_flux_at_equilibrium(model, "r1", CONC, parameters)
+
+
+@pytest.mark.parametrize(
+    "rate_equation",
+    [
+        MichaelisMenten(),
+        SymbolicRateEquation(
+            expression=REVERSIBLE_MM_EXPRESSION,
+            species={"s": "a", "p": "b"},
+            parameters=REVERSIBLE_MM_PARAMETERS,
+        ),
+        SymbolicRateEquation(
+            expression="k * (s - p / keq)",
+            species={"s": "a", "p": "b"},
+            parameters={"k": "log_kcat"},
+        ),
+    ],
+)
+def test_consistent_laws_vanish_at_equilibrium(rate_equation):
+    assert jnp.isclose(get_flux_at_equilibrium_for(rate_equation), 0.0)
+
+
+@pytest.mark.parametrize(
+    "rate_equation",
+    [
+        MichaelisMenten(reversible=False),
+        SymbolicRateEquation(
+            expression="k * (s - p / 2)",
+            species={"s": "a", "p": "b"},
+            parameters={"k": "log_kcat"},
+        ),
+    ],
+)
+def test_inconsistent_laws_do_not_vanish_at_equilibrium(rate_equation):
+    assert not jnp.isclose(get_flux_at_equilibrium_for(rate_equation), 0.0)

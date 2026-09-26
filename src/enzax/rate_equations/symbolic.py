@@ -2,12 +2,13 @@ import io
 import tokenize
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import equinox as eqx
 import numpy as np
 import sympy
 from jax import numpy as jnp
-from jaxtyping import Scalar
+from jaxtyping import Array, Scalar
 
 from enzax.array_types import ConcArray, ParamDict, ParamLabelling
 from enzax.parameters import (
@@ -19,11 +20,16 @@ from enzax.rate_equation import (
     RateEquation,
     RateEquationLabels,
     ReactionScope,
+    get_reactants,
     get_species_label,
     get_species_positions,
 )
+from enzax.rate_equations.saturable import get_reversibility
 
-RESERVED_SYMBOLS = ("reversibility",)
+if TYPE_CHECKING:
+    from enzax.kinetic_model import RateEquationModel
+
+RESERVED_SYMBOLS = ("reversibility", "keq")
 
 FUNCTIONS = {
     "exp": sympy.exp,
@@ -176,6 +182,18 @@ def get_parameter_value(
     return jnp.exp(value) if kind.startswith("log_") else value
 
 
+def get_keq(
+    dgf: Array,
+    temperature: Scalar,
+    reactant_stoichiometry: np.ndarray,
+    water_stoichiometry: float,
+    water_dgf: float,
+) -> Scalar:
+    RT = temperature * 0.008314
+    dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
+    return jnp.exp(-dgr_std / RT)
+
+
 @dataclass(frozen=True)
 class SymbolicLabels(RateEquationLabels):
     by_symbol: dict[str, tuple[str, str | None]]
@@ -189,16 +207,57 @@ class SymbolicLabels(RateEquationLabels):
         return {kind: tuple(labels) for kind, labels in grouped.items()}
 
 
+class ThermodynamicIx(eqx.Module):
+    ix_reactant: np.ndarray
+    ix_dgf: np.ndarray
+    reactant_stoichiometry: np.ndarray
+    water_stoichiometry: float
+    water_dgf: float
+
+
 class SymbolicIx(eqx.Module):
     function: Callable
     ix_species: np.ndarray
     parameter_positions: tuple[tuple[str, int | None], ...]
+    reserved: tuple[str, ...]
+    thermodynamics: ThermodynamicIx | None
 
 
 class SymbolicInput(eqx.Module):
     function: Callable = eqx.field(static=True)
+    reserved: tuple[str, ...] = eqx.field(static=True)
     ix_species: np.ndarray
     parameter_values: tuple[Scalar, ...]
+    thermodynamics: ThermodynamicIx | None
+    dgf: Array | None
+    temperature: Scalar | None
+
+
+def get_reserved_values(
+    conc: ConcArray, symbolic_input: SymbolicInput
+) -> dict[str, Scalar]:
+    thermodynamics = symbolic_input.thermodynamics
+    if thermodynamics is None:
+        return {}
+    values = {}
+    if "reversibility" in symbolic_input.reserved:
+        values["reversibility"] = get_reversibility(
+            conc[thermodynamics.ix_reactant],
+            symbolic_input.dgf,
+            symbolic_input.temperature,
+            thermodynamics.reactant_stoichiometry,
+            thermodynamics.water_stoichiometry,
+            thermodynamics.water_dgf,
+        )
+    if "keq" in symbolic_input.reserved:
+        values["keq"] = get_keq(
+            symbolic_input.dgf,
+            symbolic_input.temperature,
+            thermodynamics.reactant_stoichiometry,
+            thermodynamics.water_stoichiometry,
+            thermodynamics.water_dgf,
+        )
+    return values
 
 
 class SymbolicRateEquation(RateEquation):
@@ -207,6 +266,8 @@ class SymbolicRateEquation(RateEquation):
     parameters: dict[str, str | dict[str, str]] = eqx.field(
         default_factory=dict
     )
+    water_stoichiometry: float = 0.0
+    water_dgf: float = -150.9
 
     def get_species(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(self.species.values()))
@@ -232,22 +293,33 @@ class SymbolicRateEquation(RateEquation):
         check_default_labels_are_distinct(by_symbol, defaulted, reaction_id)
         return SymbolicLabels(by_symbol=by_symbol)
 
+    def get_thermodynamic_indexes(
+        self, scope: ReactionScope
+    ) -> ThermodynamicIx:
+        ix_reactant = get_species_positions(scope, get_reactants(scope))
+        return ThermodynamicIx(
+            ix_reactant=ix_reactant,
+            ix_dgf=scope.species_to_dgf_ix[ix_reactant],
+            reactant_stoichiometry=scope.stoichiometry[ix_reactant],
+            water_stoichiometry=self.water_stoichiometry,
+            water_dgf=self.water_dgf,
+        )
+
     def get_input_indexes(
         self, scope: ReactionScope, labelling: ParamLabelling
     ) -> SymbolicIx:
         lab = self.get_labels(scope)
-        reserved = get_symbol_names(self.expression) & set(RESERVED_SYMBOLS)
-        if reserved:
-            msg = (
-                f"Reaction {scope.reaction_id}'s expression uses "
-                f"{sorted(reserved)}, which is not implemented yet."
-            )
-            raise NotImplementedError(msg)
         species_symbols = sorted(self.species)
         parameter_symbols = sorted(self.parameters)
+        reserved = tuple(
+            sorted(get_symbol_names(self.expression) & set(RESERVED_SYMBOLS))
+        )
         by_name = {s.name: s for s in self.expression.free_symbols}
         function = sympy.lambdify(
-            [by_name[name] for name in species_symbols + parameter_symbols],
+            [
+                by_name[name]
+                for name in species_symbols + parameter_symbols + list(reserved)
+            ],
             self.expression,
             "jax",
         )
@@ -266,22 +338,79 @@ class SymbolicRateEquation(RateEquation):
                 scope, [self.species[symbol] for symbol in species_symbols]
             ),
             parameter_positions=tuple(parameter_positions),
+            reserved=reserved,
+            thermodynamics=(
+                self.get_thermodynamic_indexes(scope) if reserved else None
+            ),
         )
 
     def get_input(self, parameters: ParamDict, ix: SymbolicIx) -> SymbolicInput:
+        thermodynamics = ix.thermodynamics
         return SymbolicInput(
             function=ix.function,
+            reserved=ix.reserved,
             ix_species=ix.ix_species,
             parameter_values=tuple(
                 get_parameter_value(parameters, kind, position)
                 for kind, position in ix.parameter_positions
+            ),
+            thermodynamics=thermodynamics,
+            dgf=(
+                None
+                if thermodynamics is None
+                else parameters["dgf"][thermodynamics.ix_dgf]
+            ),
+            temperature=(
+                None if thermodynamics is None else parameters["temperature"]
             ),
         )
 
     def __call__(
         self, conc: ConcArray, symbolic_input: SymbolicInput
     ) -> Scalar:
+        reserved_values = get_reserved_values(conc, symbolic_input)
         return symbolic_input.function(
             *conc[symbolic_input.ix_species],
             *symbolic_input.parameter_values,
+            *(reserved_values[name] for name in symbolic_input.reserved),
         )
+
+
+def get_flux_at_equilibrium(
+    model: "RateEquationModel",
+    reaction_id: str,
+    conc: ConcArray,
+    parameters: ParamDict,
+) -> Scalar:
+    position = model.reactions.index(reaction_id)
+    rate_equation = model.rate_equations[reaction_id]
+    ix = model.rate_equation_ix[position]
+    stoichiometry = model.S[:, position]
+    products = np.flatnonzero(stoichiometry > 0.0)
+    if len(products) == 0:
+        msg = (
+            f"Reaction {reaction_id} has no products, so it has no "
+            "equilibrium to evaluate its flux at."
+        )
+        raise ValueError(msg)
+    ix_product = products[0]
+    water_stoichiometry = getattr(rate_equation, "water_stoichiometry", 0.0)
+    water_dgf = getattr(rate_equation, "water_dgf", -150.9)
+    ix_reactant = np.flatnonzero(stoichiometry != 0.0)
+    keq = get_keq(
+        parameters["dgf"][model.species_to_dgf_ix[ix_reactant]],
+        parameters["temperature"],
+        stoichiometry[ix_reactant],
+        water_stoichiometry,
+        water_dgf,
+    )
+    log_q_without_product = sum(
+        stoichiometry[i] * jnp.log(conc[i])
+        for i in ix_reactant
+        if i != ix_product
+    )
+    conc_product = jnp.exp(
+        (jnp.log(keq) - log_q_without_product) / stoichiometry[ix_product]
+    )
+    conc_eq = conc.at[ix_product].set(conc_product)
+    return rate_equation(conc_eq, rate_equation.get_input(parameters, ix))
