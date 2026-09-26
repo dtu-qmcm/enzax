@@ -9,6 +9,7 @@ from enzax.parameters import pack_parameters
 from enzax.rate_equation import ReactionScope
 from enzax.rate_equations import Drain, MichaelisMenten, SymbolicRateEquation
 from enzax.rate_equations.symbolic import parse_expression
+from enzax.steady_state import get_steady_state_hybrid
 from enzax.thermodynamics import get_flux_at_equilibrium
 
 jax.config.update("jax_enable_x64", True)
@@ -270,3 +271,107 @@ def test_consistent_laws_vanish_at_equilibrium(rate_equation):
 )
 def test_inconsistent_laws_do_not_vanish_at_equilibrium(rate_equation):
     assert not jnp.isclose(get_flux_at_equilibrium_for(rate_equation), 0.0)
+
+
+PATHWAY_STOICHIOMETRY = {
+    "r1": {"a_x": -1.0, "a": 1.0},
+    "r2": {"a": -1.0, "b": 1.0},
+    "r3": {"b": -1.0},
+}
+PATHWAY_VALUES = {
+    "log_saturation_constant": {
+        "km|r1|a_x": jnp.log(0.5),
+        "km|r1|a": jnp.log(0.3),
+        "km|r2|a": jnp.log(0.2),
+        "km|r2|b": jnp.log(0.4),
+        "km|r3|b": jnp.log(0.1),
+    },
+    "log_kcat": {"r1": jnp.log(3.0), "r2": jnp.log(2.0), "r3": jnp.log(1.0)},
+    "log_enzyme": {"r1": 0.0, "r2": 0.0, "r3": 0.0},
+    "dgf": {"a_x": -5.0, "a": -3.0, "b": -1.0},
+    "log_conc_unbalanced": {"a_x": jnp.log(1.0)},
+    "temperature": 310.0,
+}
+
+
+def get_symbolic_michaelis_menten(reaction, substrate, product=None):
+    species = {"s": substrate}
+    parameters = {
+        "kcat": "log_kcat",
+        "enzyme": "log_enzyme",
+        "km_s": {
+            "kind": "log_saturation_constant",
+            "label": f"km|{reaction}|{substrate}",
+        },
+    }
+    if product is None:
+        expression = "kcat * enzyme * (s / km_s) / (1 + s / km_s)"
+    else:
+        species["p"] = product
+        parameters["km_p"] = {
+            "kind": "log_saturation_constant",
+            "label": f"km|{reaction}|{product}",
+        }
+        expression = (
+            "kcat * enzyme * (s / km_s) / (1 + s / km_s + p / km_p)"
+            " * reversibility"
+        )
+    return SymbolicRateEquation(
+        expression=expression, species=species, parameters=parameters
+    )
+
+
+def get_pathway(symbolic):
+    if symbolic:
+        rate_equations = {
+            "r1": get_symbolic_michaelis_menten("r1", "a_x", "a"),
+            "r2": get_symbolic_michaelis_menten("r2", "a", "b"),
+            "r3": get_symbolic_michaelis_menten("r3", "b"),
+        }
+    else:
+        rate_equations = {
+            "r1": MichaelisMenten(),
+            "r2": MichaelisMenten(),
+            "r3": MichaelisMenten(reversible=False),
+        }
+    model = RateEquationModel(
+        stoichiometry=PATHWAY_STOICHIOMETRY,
+        balanced_species=["a", "b"],
+        rate_equations=rate_equations,
+    )
+    return model, pack_parameters(model.parameter_labelling, PATHWAY_VALUES)
+
+
+def test_steady_state_gradient_matches_finite_differences():
+    model, parameters = get_pathway(symbolic=True)
+    guess = jnp.array([0.1, 0.1])
+
+    def total(log_kcat):
+        with_kcat = parameters | {"log_kcat": log_kcat}
+        return get_steady_state_hybrid(model, guess, with_kcat).sum()
+
+    steady = get_steady_state_hybrid(model, guess, parameters)
+    assert jnp.isfinite(steady).all()
+    assert jnp.allclose(model.dcdt(steady, parameters), 0.0, atol=1e-8)
+    log_kcat = parameters["log_kcat"]
+    gradient = jax.grad(total)(log_kcat)
+    step = 1e-5
+    for i in range(len(log_kcat)):
+        up = total(log_kcat.at[i].add(step))
+        down = total(log_kcat.at[i].add(-step))
+        assert jnp.isclose(gradient[i], (up - down) / (2 * step), rtol=1e-4)
+
+
+def test_flux_works_under_vmap():
+    model, parameters = get_pathway(symbolic=True)
+    expected_model, _ = get_pathway(symbolic=False)
+    log_kcat = parameters["log_kcat"] + jnp.linspace(-1.0, 1.0, 5)[:, None]
+    conc = jnp.array([0.2, 0.3])
+
+    def flux(model, log_kcat):
+        return model.flux(conc, parameters | {"log_kcat": log_kcat})
+
+    batched = jax.vmap(lambda k: flux(model, k))(log_kcat)
+    expected = jax.vmap(lambda k: flux(expected_model, k))(log_kcat)
+    assert batched.shape == (5, 3)
+    assert jnp.allclose(batched, expected, rtol=1e-12)
