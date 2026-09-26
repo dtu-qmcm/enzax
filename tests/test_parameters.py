@@ -11,6 +11,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel, get_species_to_compound
 from enzax.parameters import (
+    check_parameter_labelling,
     get_parameter_position,
     pack_parameters,
     unpack_parameters,
@@ -265,6 +266,31 @@ def test_log_k_labels_must_have_a_known_prefix():
                 MichaelisMenten(),
             ]
         )
+
+
+@pytest.mark.parametrize("parameter", ["log_custom", "custom"])
+def test_custom_labels_must_have_the_custom_prefix(parameter):
+    check_parameter_labelling({parameter: ("cu|r1|x", "cu|volume")})
+    with pytest.raises(ValueError, match="must start with one of"):
+        check_parameter_labelling({parameter: ("r1|x",)})
+
+
+def test_custom_parameters_pack_and_unpack():
+    labelling = {
+        "log_custom": ("cu|r1|x", "cu|volume"),
+        "custom": ("cu|r1|y",),
+        "temperature": (),
+    }
+    spec = {
+        "log_custom": {"cu|r1|x": 0.5, "cu|volume": -1.0},
+        "custom": {"cu|r1|y": -2.0},
+        "temperature": 310.0,
+    }
+    check_parameter_labelling(labelling)
+    parameters = pack_parameters(labelling, spec)
+    assert jnp.array_equal(parameters["log_custom"], jnp.array([0.5, -1.0]))
+    assert jnp.array_equal(parameters["custom"], jnp.array([-2.0]))
+    assert unpack_parameters(labelling, parameters) == spec
 
 
 def test_compounds_must_belong_to_species():
