@@ -2,7 +2,6 @@ import io
 import tokenize
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import equinox as eqx
 import numpy as np
@@ -24,10 +23,7 @@ from enzax.rate_equation import (
     get_species_label,
     get_species_positions,
 )
-from enzax.rate_equations.saturable import get_reversibility
-
-if TYPE_CHECKING:
-    from enzax.kinetic_model import RateEquationModel
+from enzax.thermodynamics import get_keq, get_reversibility
 
 RESERVED_SYMBOLS = ("reversibility", "keq")
 
@@ -180,18 +176,6 @@ def get_parameter_value(
 ) -> Scalar:
     value = parameters[kind] if position is None else parameters[kind][position]
     return jnp.exp(value) if kind.startswith("log_") else value
-
-
-def get_keq(
-    dgf: Array,
-    temperature: Scalar,
-    reactant_stoichiometry: np.ndarray,
-    water_stoichiometry: float,
-    water_dgf: float,
-) -> Scalar:
-    RT = temperature * 0.008314
-    dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
-    return jnp.exp(-dgr_std / RT)
 
 
 @dataclass(frozen=True)
@@ -374,43 +358,3 @@ class SymbolicRateEquation(RateEquation):
             *symbolic_input.parameter_values,
             *(reserved_values[name] for name in symbolic_input.reserved),
         )
-
-
-def get_flux_at_equilibrium(
-    model: "RateEquationModel",
-    reaction_id: str,
-    conc: ConcArray,
-    parameters: ParamDict,
-) -> Scalar:
-    position = model.reactions.index(reaction_id)
-    rate_equation = model.rate_equations[reaction_id]
-    ix = model.rate_equation_ix[position]
-    stoichiometry = model.S[:, position]
-    products = np.flatnonzero(stoichiometry > 0.0)
-    if len(products) == 0:
-        msg = (
-            f"Reaction {reaction_id} has no products, so it has no "
-            "equilibrium to evaluate its flux at."
-        )
-        raise ValueError(msg)
-    ix_product = products[0]
-    water_stoichiometry = getattr(rate_equation, "water_stoichiometry", 0.0)
-    water_dgf = getattr(rate_equation, "water_dgf", -150.9)
-    ix_reactant = np.flatnonzero(stoichiometry != 0.0)
-    keq = get_keq(
-        parameters["dgf"][model.species_to_dgf_ix[ix_reactant]],
-        parameters["temperature"],
-        stoichiometry[ix_reactant],
-        water_stoichiometry,
-        water_dgf,
-    )
-    log_q_without_product = sum(
-        stoichiometry[i] * jnp.log(conc[i])
-        for i in ix_reactant
-        if i != ix_product
-    )
-    conc_product = jnp.exp(
-        (jnp.log(keq) - log_q_without_product) / stoichiometry[ix_product]
-    )
-    conc_eq = conc.at[ix_product].set(conc_product)
-    return rate_equation(conc_eq, rate_equation.get_input(parameters, ix))

@@ -7,3 +7,4 @@
         - MichaelisMenten
         - SaturableRateEquation
         - Drain
+        - SymbolicRateEquation

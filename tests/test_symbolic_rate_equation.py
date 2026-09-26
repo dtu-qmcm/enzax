@@ -8,10 +8,8 @@ from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equation import ReactionScope
 from enzax.rate_equations import Drain, MichaelisMenten, SymbolicRateEquation
-from enzax.rate_equations.symbolic import (
-    get_flux_at_equilibrium,
-    parse_expression,
-)
+from enzax.rate_equations.symbolic import parse_expression
+from enzax.thermodynamics import get_flux_at_equilibrium
 
 jax.config.update("jax_enable_x64", True)
 

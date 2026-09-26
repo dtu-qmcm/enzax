@@ -68,6 +68,7 @@ from enzax.rate_equation import (
     get_species_positions,
     get_substrates,
 )
+from enzax.thermodynamics import get_reversibility
 
 
 def get_michaelis_constant_labels(
@@ -243,33 +244,6 @@ def get_free_enzyme_ratio(
 ) -> Scalar:
     """Get the fraction of enzyme that is bound to nothing at all."""
     return 1.0 / binding_polynomial(conc, k)
-
-
-def get_reversibility(
-    reactant_conc: ReactantArr,
-    dgf: ReactantArr,
-    temperature: Scalar,
-    reactant_stoichiometry: StaticReactantArr,
-    water_stoichiometry: float,
-    water_dgf: float,
-) -> Scalar:
-    """Get the reversibility of a reaction.
-
-    The equation is
-
-      1 - exp(((dgr + (RT * quotient)) / RT))
-
-    but it's implemented a bit differently so as to be more numerically stable.
-    """  # noqa: E501
-    RT = temperature * 0.008314
-    conc_clipped = jnp.clip(reactant_conc, min=1e-9)
-    dgr_std = (
-        reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf
-    ).flatten()
-    quotient = (reactant_stoichiometry.T @ jnp.log(conc_clipped)).flatten()
-    expand = jnp.clip((dgr_std / RT) + quotient, min=-1e2, max=1e2)
-    out = -jnp.expm1(expand)[0]
-    return eqx.error_if(out, jnp.isnan(out), "Reversibility is nan!")
 
 
 def generalised_mwc_effect(
