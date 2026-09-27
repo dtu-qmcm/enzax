@@ -1,3 +1,15 @@
+"""Thermodynamic quantities calculated from formation energies.
+
+enzax gives every compound a standard formation energy `dgf`, in kJ/mol, and
+calculates each reaction's standard Gibbs energy change from it:
+
+    dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
+
+Water is added separately because it is not one of the model's species. The
+functions here turn `dgr_std` into what rate laws need, so every reversible
+rate law in a model agrees about where each reaction's equilibrium is.
+"""
+
 from typing import TYPE_CHECKING
 
 import equinox as eqx
@@ -15,6 +27,7 @@ from enzax.array_types import (
 if TYPE_CHECKING:
     from enzax.kinetic_model import RateEquationModel
 
+# The gas constant in kJ/mol/K, the units formation energies are given in.
 GAS_CONSTANT = 0.008314
 
 
@@ -52,6 +65,17 @@ def get_keq(
     water_stoichiometry: float,
     water_dgf: float,
 ) -> Scalar:
+    """Get a reaction's equilibrium constant from its formation energies.
+
+    The equation is
+
+        K = exp(-dgr_std / RT)
+
+    The standard state is a concentration of 1 in the model's concentration
+    units, so K has those units raised to the reaction's net stoichiometry:
+    for example mM^-1 for a binding reaction A + B -> AB in a model whose
+    concentrations are in mM.
+    """
     RT = temperature * GAS_CONSTANT
     dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
     return jnp.exp(-dgr_std / RT)
@@ -63,6 +87,18 @@ def get_flux_at_equilibrium(
     conc: ConcArray,
     parameters: ParamDict,
 ) -> Scalar:
+    """Get a reaction's flux at a point where it is at equilibrium.
+
+    The point is `conc` with the reaction's first product changed so that the
+    mass action ratio equals the equilibrium constant. A thermodynamically
+    consistent rate law gives zero flux there, so this checks one that is not
+    consistent by construction, such as a `SymbolicRateEquation` with a
+    hand-written equilibrium constant. Irreversible rate laws fail the check,
+    as they should.
+
+    `conc` holds the concentrations of all the model's species, in the model's
+    order, as a rate equation receives them.
+    """
     position = model.reactions.index(reaction_id)
     rate_equation = model.rate_equations[reaction_id]
     ix = model.rate_equation_ix[position]
