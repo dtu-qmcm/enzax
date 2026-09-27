@@ -195,6 +195,7 @@ def sbml_to_enzax(
 
 
 def math_to_sympy(ast: libsbml.ASTNode) -> sympy.Expr:
+    """Turn a libsbml math object into a sympy expression."""
     return SBMLMathMLParser().parse_str(
         libsbml.writeMathMLToString(
             libsbml.parseL3Formula(libsbml.formulaToL3String(ast))
@@ -203,6 +204,9 @@ def math_to_sympy(ast: libsbml.ASTNode) -> sympy.Expr:
 
 
 def check_sbml_is_supported(model: libsbml.Model) -> None:
+    """Raise if a model uses SBML that sbml_to_rate_equation_model does not
+    handle.
+    """
     problems = []
     if model.getNumEvents():
         problems.append("events")
@@ -240,6 +244,9 @@ def check_sbml_is_supported(model: libsbml.Model) -> None:
 
 
 def get_assignment_rules(model: libsbml.Model) -> dict[str, sympy.Expr]:
+    """Get each assignment rule's expression, in terms of variables no rule
+    assigns.
+    """
     rules = {
         rule.getVariable(): math_to_sympy(rule.getMath())
         for rule in model.getListOfRules()
@@ -257,6 +264,9 @@ def get_assignment_rules(model: libsbml.Model) -> dict[str, sympy.Expr]:
 
 
 def get_initial_values(model: libsbml.Model) -> dict[str, float]:
+    """Get the initial values of compartments, parameters and species, after
+    initial assignments.
+    """
     values = {c.getId(): c.getSize() for c in model.getListOfCompartments()}
     values |= {p.getId(): p.getValue() for p in model.getListOfParameters()}
     values |= {
@@ -293,6 +303,9 @@ def get_symbolic_rate_equation(
     values: Mapping[str, float],
     parameter_kinds: Mapping[str, str],
 ) -> tuple[SymbolicRateEquation, dict[str, tuple[str, float]]]:
+    """Turn a reaction's kinetic law into a SymbolicRateEquation, plus its
+    parameter values.
+    """
     local_ids = {
         p.getId(): p.getValue()
         for p in reaction.getKineticLaw().getListOfParameters()
@@ -340,6 +353,7 @@ def get_symbolic_rate_equation(
 def get_stoichiometry(
     reaction: libsbml.Reaction, excluded: set[str]
 ) -> dict[str, float]:
+    """Get a reaction's net stoichiometry, leaving out some species."""
     stoichiometry: dict[str, float] = {}
     for references, sign in [
         (reaction.getListOfReactants(), -1.0),
@@ -360,6 +374,42 @@ def sbml_to_rate_equation_model(
     libsbml_model: libsbml.Model,
     parameter_kinds: Mapping[str, str] | None = None,
 ) -> tuple[RateEquationModel, ParamDict]:
+    """Turn a libsbml.Model into a RateEquationModel plus parameters.
+
+    This is experimental. It handles enough of SBML for the models enzax ships
+    with, and raises on anything it does not handle rather than guessing.
+
+    Each reaction's kinetic law becomes a `SymbolicRateEquation`, and the values
+    it uses become `log_custom` or `custom` parameters. A local parameter is
+    labelled `cu|{reaction}|{id}`, and a global parameter or compartment size
+    `cu|{id}`. A value goes in `log_custom` if it is positive and in `custom`
+    otherwise, unless `parameter_kinds` says which.
+
+    Assignment rules are substituted into the kinetic laws, so a species that
+    a rule assigns is not one of the enzax model's species. Initial
+    assignments are evaluated, and give the unbalanced species their
+    concentrations. Boundary species are unbalanced; the others are balanced
+    if a reaction changes them.
+
+    SBML has no formation energies, so every `dgf` is 0 and the temperature is
+    298.15 K. Neither matters unless a rate law is changed to use
+    `reversibility` or `keq`.
+
+    Not supported: events, rate rules, algebraic rules, fast reactions,
+    species with only substance units, boundary species that are neither
+    constant nor assigned by a rule, and compartments whose size is not 1. The
+    last is because enzax treats a kinetic law's value as a rate of change of
+    concentration, which it only is when the volume is 1.
+
+    Args:
+        libsbml_model: The libsbml.Model to convert.
+        parameter_kinds: `{label: kind}` for values whose kind should not be
+            chosen by sign, where the kind is "log_custom" or "custom". A value
+            that is not positive cannot be log_custom.
+
+    Returns:
+        A tuple of a RateEquationModel and its packed parameters.
+    """
     parameter_kinds = {} if parameter_kinds is None else parameter_kinds
     check_sbml_is_supported(libsbml_model)
     rules = get_assignment_rules(libsbml_model)
