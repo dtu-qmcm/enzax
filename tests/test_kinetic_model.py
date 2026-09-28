@@ -1,10 +1,14 @@
 """Unit tests for kinetic models."""
 
+import jax
 import numpy as np
 import pytest
+from jax import numpy as jnp
 
 from enzax.kinetic_model import RateEquationModel, validate_kinetic_model
+from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
+from enzax.steady_state import get_steady_state_hybrid
 
 
 def get_model(
@@ -145,3 +149,42 @@ def test_a_rate_equation_needs_a_reaction():
                 "not_a_reaction": MichaelisMenten(),
             },
         )
+
+
+def test_independently_built_models_have_equal_tree_structures():
+    a = get_model(**TWO_MOIETIES, dependent_species=["B", "X2"])
+    b = get_model(**TWO_MOIETIES, dependent_species=["B", "X2"])
+    assert jax.tree.structure(a) == jax.tree.structure(b)
+
+
+def get_two_reaction_model(kcat_label):
+    model = RateEquationModel(
+        stoichiometry={"r1": {"x": -1.0, "a": 1.0}, "r2": {"a": -1.0}},
+        balanced_species=["a"],
+        rate_equations={
+            "r1": MichaelisMenten(),
+            "r2": MichaelisMenten(reversible=False, kcat=kcat_label),
+        },
+    )
+    labelling = model.parameter_labelling
+    spec = {
+        "log_saturation_constant": {
+            label: 0.0 for label in labelling["log_saturation_constant"]
+        },
+        "log_kcat": {label: 0.0 for label in labelling["log_kcat"]},
+        "log_enzyme": {label: 0.0 for label in labelling["log_enzyme"]},
+        "dgf": {"x": -5.0, "a": -3.0},
+        "log_conc_unbalanced": {"x": 0.0},
+        "temperature": 310.0,
+    }
+    return model, pack_parameters(labelling, spec)
+
+
+def test_differently_structured_models_share_a_jitted_solver():
+    steady_states = []
+    for kcat_label in ["r2", "k2"]:
+        model, parameters = get_two_reaction_model(kcat_label)
+        steady_states.append(
+            get_steady_state_hybrid(model, jnp.array([0.1]), parameters)
+        )
+    assert jnp.allclose(steady_states[0], steady_states[1])
