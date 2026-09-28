@@ -188,6 +188,26 @@ def validate_kinetic_model(model: "KineticModel") -> None:
         raise ValueError(msg)
 
 
+# A pair (shape, values) for a static field
+FrozenArray = tuple[tuple[int, ...], tuple[int | float, ...]]
+
+
+def freeze_array(values) -> FrozenArray:
+    """Put an array into a form that a static field can hold.
+
+    This is required because static fields need to be comparable with ==, which
+    numpy arrays are not. See https://github.com/dtu-qmcm/enzax/issues/65.
+    """
+    array = np.asarray(values)
+    return array.shape, tuple(array.ravel().tolist())
+
+
+def unfreeze_array(frozen: FrozenArray, dtype) -> np.ndarray:
+    """Turn a frozen array into a numpy array with the given dtype."""
+    shape, values = frozen
+    return np.array(values, dtype=dtype).reshape(shape)
+
+
 class KineticModel(eqx.Module):
     """Structural information about a kinetic model.
 
@@ -229,18 +249,13 @@ class KineticModel(eqx.Module):
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
-    species_to_dgf_ix: SpeciesIx = eqx.field(static=True, init=False)
-    balanced_species_ix: BalancedSpeciesIx = eqx.field(static=True, init=False)
-    unbalanced_species_ix: UnbalancedSpeciesIx = eqx.field(
-        static=True, init=False
-    )
-    independent_species_ix: IndSpeciesIx = eqx.field(
-        static=True,
-        init=False,
-    )
-    dependent_species_ix: DepSpeciesIx = eqx.field(static=True, init=False)
-    S: StoichiometricMatrix = eqx.field(static=True, init=False)
-    L0: LinkMatrix = eqx.field(static=True, init=False)
+    _species_to_dgf_ix: FrozenArray = eqx.field(static=True, init=False)
+    _balanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _unbalanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _independent_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _dependent_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _S: FrozenArray = eqx.field(static=True, init=False)
+    _L0: FrozenArray = eqx.field(static=True, init=False)
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
 
     def __post_init__(self):
@@ -259,47 +274,41 @@ class KineticModel(eqx.Module):
             self.species, self.compound_to_species
         )
         compounds = self._dgf_labels()
-        self.species_to_dgf_ix = np.array(
-            [compounds.index(c) for c in self.species_to_compound.values()],
-            dtype=np.int16,
+        self._species_to_dgf_ix = freeze_array(
+            [compounds.index(c) for c in self.species_to_compound.values()]
         )
         self.unbalanced_species = [
             s for s in self.species if s not in self.balanced_species
         ]
-        self.balanced_species_ix = np.array(
-            [get_ix_from_list(s, self.species) for s in self.balanced_species],
-            dtype=np.int16,
+        self._balanced_species_ix = freeze_array(
+            [get_ix_from_list(s, self.species) for s in self.balanced_species]
         )
-        self.unbalanced_species_ix = np.array(
-            [
-                get_ix_from_list(s, self.species)
-                for s in self.unbalanced_species
-            ],
-            dtype=np.int16,
+        self._unbalanced_species_ix = freeze_array(
+            [get_ix_from_list(s, self.species) for s in self.unbalanced_species]
         )
         self.independent_species = [
             s for s in self.balanced_species if s not in self.dependent_species
         ]
-        self.independent_species_ix = np.array(
+        self._independent_species_ix = freeze_array(
             [
                 get_ix_from_list(s, self.species)
                 for s in self.independent_species
-            ],
-            dtype=np.int16,
+            ]
         )
-        self.dependent_species_ix = np.array(
-            [get_ix_from_list(s, self.species) for s in self.dependent_species],
-            dtype=np.int16,
+        self._dependent_species_ix = freeze_array(
+            [get_ix_from_list(s, self.species) for s in self.dependent_species]
         )
         S = np.zeros(shape=(len(self.species), len(self.reactions)))
         for ix_reaction, reaction in enumerate(self.reactions):
             for species_i, coeff in self.stoichiometry[reaction].items():
                 ix_species = get_ix_from_list(species_i, self.species)
                 S[ix_species, ix_reaction] = coeff
-        self.S = S.astype(np.float64)
+        self._S = freeze_array(S)
         validate_kinetic_model(self)
-        self.L0 = get_link_matrix(
-            self.S, self.independent_species_ix, self.dependent_species_ix
+        self._L0 = freeze_array(
+            get_link_matrix(
+                self.S, self.independent_species_ix, self.dependent_species_ix
+            )
         )
         for species_i in self.species:
             check_id_has_no_separator(species_i, "Species")
@@ -309,6 +318,34 @@ class KineticModel(eqx.Module):
             check_id_has_no_separator(compound, "Compound")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
+
+    @property
+    def species_to_dgf_ix(self) -> SpeciesIx:
+        return unfreeze_array(self._species_to_dgf_ix, np.int16)
+
+    @property
+    def balanced_species_ix(self) -> BalancedSpeciesIx:
+        return unfreeze_array(self._balanced_species_ix, np.int16)
+
+    @property
+    def unbalanced_species_ix(self) -> UnbalancedSpeciesIx:
+        return unfreeze_array(self._unbalanced_species_ix, np.int16)
+
+    @property
+    def independent_species_ix(self) -> IndSpeciesIx:
+        return unfreeze_array(self._independent_species_ix, np.int16)
+
+    @property
+    def dependent_species_ix(self) -> DepSpeciesIx:
+        return unfreeze_array(self._dependent_species_ix, np.int16)
+
+    @property
+    def S(self) -> StoichiometricMatrix:
+        return unfreeze_array(self._S, np.float64)
+
+    @property
+    def L0(self) -> LinkMatrix:
+        return unfreeze_array(self._L0, np.float64)
 
     def _build_species(self) -> list[str]:
         """Work out the model's species, in the order they are first named.
