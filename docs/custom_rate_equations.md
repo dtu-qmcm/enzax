@@ -2,10 +2,11 @@
 
 This page assumes you have read [Getting started](getting_started.md), and in particular that you have seen how to define a `RateEquationModel`, how enzax labels model parameters and how two reactions can share a parameter value by using the same label.
 
-A rate equation says how one reaction's flux depends on the concentrations of the model's species and on the model's parameters. Enzax gives you three levels of control, in increasing order of effort:
+A rate equation says how one reaction's flux depends on the concentrations of the model's species and on the model's parameters. Enzax gives you four levels of control, in increasing order of effort:
 
 1. **[Use a built-in rate equation](#use-a-built-in-rate-equation)**, configured with its fields. Covers most reactions.
 2. **[Write your own binding polynomial](#write-your-own-binding-polynomial)** with `SaturableRateEquation`, keeping Michaelis-Menten's thermodynamics and turnover. Covers reactions whose enzyme has states that the stoichiometry does not imply, such as abortive complexes.
+3. **[Write the flux as a formula](#write-the-flux-as-a-formula)** with `SymbolicRateEquation`. This is the best choice for rate laws that don't represent saturating enzymes but can easily be written down in an equation, or for reproducing a rate law from literature equations.
 3. **[Write a rate equation from scratch](#write-a-rate-equation-from-scratch)** by subclassing `RateEquation`. Covers everything else.
 
 ## Use a built-in rate equation
@@ -15,7 +16,7 @@ Enzax provides two "ready-to-go" rate equations:
 - `MichaelisMenten` covers reversible and irreversible reactions, competitive inhibition and allosteric regulation.
 - `Drain` gives a reaction a constant flux, for representing a process at the edge of your model whose kinetics you do not want to describe.
 
-Enzax's other built-in rate equation, `SaturableRateEquation`, is mostly the same as `MichaelisMenten`, but with the enzyme's states written out by hand, allowing for more customisation. It is the subject of the [next section](#write-your-own-binding-polynomial).
+Enzax's other built-in rate equations are more customisable. `SaturableRateEquation` is mostly the same as `MichaelisMenten`, but with the enzyme's states written out by hand, and `SymbolicRateEquation` gets its flux from a formula.
 
 Every enzyme-catalysed rate equation in enzax has the same shape:
 
@@ -367,9 +368,86 @@ It is possible to write incorrect models using `SaturableRateEquation`! To avoid
 
 **A species you name does not have to be a reactant, and does not have to exist yet.** Naming one is how an effector joins the model, and there is no check that you meant to: a misspelled species id gives you a new unbalanced species with its own concentration and formation energy to declare, rather than an error. If a model has grown a species you do not recognise, carefully check `model.species` and `model.parameter_labelling`.
 
+## Write the flux as a formula
+
+If you can write a flux down as a formula, `SymbolicRateEquation` saves you from writing a subclass. You give it the formula, as a string or a sympy expression, and say what each symbol in it is: a species, a parameter, or one of two symbols that enzax calculates for you. Enzax turns the formula into a JAX function when the model is built.
+
+Here is reaction `r2` from the [mass action example](#a-complete-example) below, written as a formula:
+
+```python
+from enzax.rate_equations import SymbolicRateEquation
+
+SymbolicRateEquation(
+    expression="k * m1c**2",
+    species={"m1c": "m1c"},
+    parameters={"k": "log_kcat"},
+)
+```
+
+### Declaring species and parameters
+
+### Declaring species and parameters
+
+Every symbol in the expression must be declared, and every declaration must be used.
+
+- `species` maps symbols to species ids. It must include the reactants, since nothing is inferred from the stoichiometry. As with the built-in rate equations' effectors, naming a species that takes part in no reaction adds it to the model.
+- `parameters` maps symbols to declarations. A declaration is either a parameter kind such as `"log_kcat"`, or a mapping `{"kind": ..., "label": ...}` that gives the label too.
+
+The expression sees every parameter on its natural scale, so a `log_kcat` value arrives as the turnover number itself, not its logarithm.
+
+A declaration that only gives a kind gets a default label:
+
+| Kind | Default label |
+| --- | --- |
+| `log_kcat`, `log_enzyme`, `log_tc`, `log_drain` | the reaction id |
+| `log_custom`, `custom` | `cu\|{reaction}\|{symbol}` |
+| `log_saturation_constant` | none, so give one, e.g. `km\|r1\|a` |
+| `temperature` | unlabelled |
+
+Two symbols share a value by being given the same label, whether they are in the same reaction or different ones. Two symbols of the same kind that would share a label only because of their defaults are an error, since that is almost always a mistake.
+
+When parsing a string, sympy would normally read some names as its own objects: `E` as Euler's number, `I` as the imaginary unit, `S` as its registry of special numbers. Enzax reads every name as a plain symbol apart from `exp`, `log`, `sqrt`, `Abs`, `Min` and `Max`, so `S` and `E` are fine names for a substrate and an enzyme.
+
+### Thermodynamics
+
+It is easy to write a formula that contradicts the model's formation energies, for example by typing an equilibrium constant into a reversible rate law by hand. To avoid this, use one of the two symbols that enzax reserves:
+
+- `reversibility` is `1 - Q/K`, the same driving force `MichaelisMenten` uses.
+- `keq` is the equilibrium constant `K`.
+
+Both come from the formation energies of the reaction's reactants, so a rate law that uses them is consistent with the rest of the model by construction. As for `MichaelisMenten`, the fields `water_stoichiometry` and `water_dgf` say how water contributes.
+
+For example, here is a reversible mass action version of `r2`:
+
+```python
+SymbolicRateEquation(
+    expression="k * (m1c**2 - m2c / keq)",
+    species={"m1c": "m1c", "m2c": "m2c"},
+    parameters={"k": "log_kcat"},
+)
+```
+
+If a formula has its own equilibrium constant, check it with `enzax.thermodynamics.get_flux_at_equilibrium`. It evaluates a reaction's flux at a point where the mass action ratio equals the equilibrium constant, where a consistent rate law's flux is zero:
+
+```python
+from enzax.thermodynamics import get_flux_at_equilibrium
+
+get_flux_at_equilibrium(model, "r2", conc, parameters)
+```
+
+### Values that fit no parameter kind
+
+Formulas often contain constants that are not turnover numbers, enzyme concentrations or saturation constants, such as a permeability, a Hill coefficient or a ratio of two maximal rates. Declare these as `log_custom` if they are positive and `custom` if they can be zero or negative. Their labels start with `cu|`. The default label belongs to the reaction, and you can give a label such as `cu|membrane_potential` to share a value between reactions.
+
+Prefer an existing kind when one fits. It keeps the parameter's meaning visible in `model.parameter_labelling`, and it is what priors and parameter splits are organised by.
+
+### Models from SBML
+
+`enzax.sbml.sbml_to_rate_equation_model` builds a `RateEquationModel` from an SBML file, with one `SymbolicRateEquation` per reaction. It is experimental: see its docstring for what it supports.
+
 ## Write a rate equation from scratch
 
-The rate equations above all describe a saturating enzyme, and a binding polynomial can say a great deal about one. But some fluxes are not of that shape at all: elementary mass action kinetics, a transporter obeying a rate law from a particular paper, or an empirical function fitted to data. For these, write your own `RateEquation` subclass.
+The rate equations above all describe a saturating enzyme, and a binding polynomial can say a great deal about one. But some fluxes are not of that shape at all: elementary mass action kinetics, a transporter obeying a rate law from a particular paper, or an empirical function fitted to data. If the flux is a formula, `SymbolicRateEquation` is usually less work. Write your own `RateEquation` subclass when one class should work for any reaction, as the mass action example below does by reading its reaction orders from the stoichiometry, or when the flux needs logic that a formula can't express.
 
 Be warned that this is more work than writing one function. A rate equation refers to its parameters by label, and labels become positions in the model's flat parameter arrays once, when the model is built, so that evaluating a flux is only array indexing and arithmetic. Getting a parameter value into a flux therefore takes three stages rather than one, and a subclass has to implement each of them.
 
@@ -513,7 +591,7 @@ class MassAction(RateEquation):
         )
 ```
 
-A few things to notice. The rate constant is stored in `log_kcat`, since a turnover number is the closest thing enzax has to a rate constant; the [next subsection](#what-a-rate-equation-may-not-do) explains why it cannot have an array of its own. Its label defaults to the reaction id, exactly as `MichaelisMenten`'s does, so two mass action reactions share a rate constant by declaring the same label. The reaction orders come out of the stoichiometry in `get_input_indexes`, where they are computed once, and they travel as a numpy array because they never change and JAX should not trace them.
+A few things to notice. The rate constant is stored in `log_kcat`, since a turnover number is the closest thing enzax has to a rate constant; the [next subsection](#what-a-rate-equation-may-not-do) explains the alternatives. Its label defaults to the reaction id, exactly as `MichaelisMenten`'s does, so two mass action reactions share a rate constant by declaring the same label. The reaction orders come out of the stoichiometry in `get_input_indexes`, where they are computed once, and they travel as a numpy array because they never change and JAX should not trace them.
 
 Using it in a model is no different from using a built-in rate equation. Here reaction `r2` consumes two molecules of `m1c`:
 
@@ -559,23 +637,26 @@ Array([0.05263158, 0.4       , 0.07692308], dtype=float64)
 
 ### What a rate equation may not do
 
-Enzax's parameters are a closed set, listed as `PARAMETERS` in `enzax.parameters`: `log_saturation_constant`, `log_kcat`, `log_enzyme`, `log_tc` and `log_drain` come from rate equations, and `dgf`, `log_conc_unbalanced`, `conserved_pools` and `temperature` come from the model's structure. A rate equation whose `by_parameter` names anything else raises when the model is constructed:
+Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, conserved_pools and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
 
 ```
 ValueError: Unknown parameters: ['log_my_thing'].
 ```
 
-Within `log_saturation_constant`, every label must start with `km|`, `ki|` or `dc|`.
+Within `log_saturation_constant`, every label must start with `km|`, `ki|` or `dc|`, and within `log_custom` and `custom`, with `cu|`.
 
-So a rate equation with a genuinely new kind of parameter cannot be written in your own script alone. The good news is that adding one is a small change: putting its name in `KINETIC_PARAMETERS` is enough, since packing, unpacking and priors all work from the model's labelling rather than from a hardcoded list of parameters. The bad news is that it is a change to enzax itself rather than to your model, so the [contributing guide](contributing.md) is the place to start.
+A quantity that fits none of the other kinds goes in `log_custom` if it is positive and in custom otherwise. `MassAction` could have used `log_custom` for its rate constant, but reusing `log_kcat` says more about what the value is. Either way, the name follows the parameter around: it appears in `model.parameter_labelling`, in a parameter set and in any Jacobian with respect to the parameters.
+
+A genuinely new kind of parameter, one that deserves its own name, requires a small change to enzax itself: just put its name in `KINETIC_PARAMETERS`. See the [contributing guide](contributing.md) for more about developing enzax.
 
 Until then, the way to express a new quantity is to reuse whichever existing parameter it most resembles, as `MassAction` does with `log_kcat`. Bear in mind that the reused name will follow the parameter around: it is what appears in `model.parameter_labelling`, in a parameter set and in any Jacobian with respect to the parameters.
 
 ## Checklist
 
-Whichever of the three routes you took, it is worth checking that the rate equation you declared is the one you meant:
+Whichever of the four routes you took, it is worth checking that the rate equation you declared is the one you meant:
 
 - Is the rate equation registered in the model's `rate_equations` dictionary, under the right reaction id?
 - Does `model.parameter_labelling` contain the labels you expected, and no others? A label you did not expect usually means a species id typo or a sharing declaration that did not take effect; a missing one means a field that is not doing anything.
 - Does `model.species` contain only species you meant to model? Naming a species anywhere is enough to add it to the model.
 - Does `model.flux` at a known concentration vector agree with the formula worked out by hand? For a binding polynomial, `1 / Z` should be a fraction: if it is bigger than 1 or negative, the polynomial is not counting the unbound enzyme once.
+- For a reversible formula that doesn't use `reversibility` or `keq`, is `get_flux_at_equilibrium` zero?
