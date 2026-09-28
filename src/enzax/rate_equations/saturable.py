@@ -49,7 +49,7 @@ from enzax.binding import (
     get_default_expression,
     get_expression_labels,
     get_expression_species,
-    resolve_expression,
+    get_polynomial_indexes,
 )
 from enzax.parameters import (
     get_parameter_position,
@@ -68,6 +68,7 @@ from enzax.rate_equation import (
     get_species_positions,
     get_substrates,
 )
+from enzax.thermodynamics import get_reversibility
 
 
 def get_michaelis_constant_labels(
@@ -243,33 +244,6 @@ def get_free_enzyme_ratio(
 ) -> Scalar:
     """Get the fraction of enzyme that is bound to nothing at all."""
     return 1.0 / binding_polynomial(conc, k)
-
-
-def get_reversibility(
-    reactant_conc: ReactantArr,
-    dgf: ReactantArr,
-    temperature: Scalar,
-    reactant_stoichiometry: StaticReactantArr,
-    water_stoichiometry: float,
-    water_dgf: float,
-) -> Scalar:
-    """Get the reversibility of a reaction.
-
-    The equation is
-
-      1 - exp(((dgr + (RT * quotient)) / RT))
-
-    but it's implemented a bit differently so as to be more numerically stable.
-    """  # noqa: E501
-    RT = temperature * 0.008314
-    conc_clipped = jnp.clip(reactant_conc, min=1e-9)
-    dgr_std = (
-        reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf
-    ).flatten()
-    quotient = (reactant_stoichiometry.T @ jnp.log(conc_clipped)).flatten()
-    expand = jnp.clip((dgr_std / RT) + quotient, min=-1e2, max=1e2)
-    out = -jnp.expm1(expand)[0]
-    return eqx.error_if(out, jnp.isnan(out), "Reversibility is nan!")
 
 
 def generalised_mwc_effect(
@@ -570,7 +544,7 @@ class MichaelisMenten(RateEquation):
             expression = expression + dead_end_states
         return expression
 
-    def resolve(
+    def get_input_indexes(
         self, scope: ReactionScope, labelling: ParamLabelling
     ) -> MichaelisMentenIx:
         lab = self.get_labels(scope)
@@ -589,10 +563,10 @@ class MichaelisMenten(RateEquation):
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
             water_dgf=self.water_dgf,
-            binding_polynomial=resolve_expression(
+            binding_polynomial=get_polynomial_indexes(
                 self.get_expression(scope), scope, labelling, "km"
             ),
-            allostery=self.resolve_allostery(scope, labelling, lab),
+            allostery=self.get_allostery_indexes(scope, labelling, lab),
         )
 
     def get_dgf_positions(
@@ -623,7 +597,7 @@ class MichaelisMenten(RateEquation):
             )
         return positions
 
-    def resolve_allostery(
+    def get_allostery_indexes(
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
@@ -635,8 +609,10 @@ class MichaelisMenten(RateEquation):
         tense, relaxed = self.get_allosteric_expressions(scope)
         return AllostericIx(
             ix_tc=get_parameter_position(labelling, "log_tc", lab.tc),
-            tense_state=resolve_expression(tense, scope, labelling, "dc"),
-            relaxed_state=resolve_expression(relaxed, scope, labelling, "dc"),
+            tense_state=get_polynomial_indexes(tense, scope, labelling, "dc"),
+            relaxed_state=get_polynomial_indexes(
+                relaxed, scope, labelling, "dc"
+            ),
         )
 
     def get_input(

@@ -471,7 +471,7 @@ class RateEquationModel(KineticModel):
         )
         super().__post_init__()
         self.rate_equation_ix = [
-            self.rate_equations[scope.reaction_id].resolve(
+            self.rate_equations[scope.reaction_id].get_input_indexes(
                 scope, self.parameter_labelling
             )
             for scope in self._scopes()

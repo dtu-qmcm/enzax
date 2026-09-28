@@ -26,6 +26,11 @@ convention:
     ki|{reaction}|{species}     competitive inhibition constants
     dc|{reaction}|{species}     allosteric dissociation constants
 
+Values that fit none of these kinds live in log_custom, if they are positive,
+or custom otherwise. Their labels start with cu|: by default
+cu|{reaction}|{symbol} for a value one rate equation owns, and anything else
+after cu| for a value several share, such as cu|cytosol_volume.
+
 Note that a value's label doesn't necessarily correspond to the part it plays
 in a rate equation. For example, a rate equation might use a value labelled
 "km..." both as a Michaelis constant and as an allosteric one.
@@ -52,6 +57,16 @@ SEP = "|"
 # Valid label prefixes for values in the `log_saturation_constant` array.
 K_PREFIXES = ("km", "ki", "dc")
 
+# Label prefix for values in the log_custom and custom arrays.
+CUSTOM_PREFIX = "cu"
+
+# Parameters whose labels must start with a prefix, and the prefixes allowed.
+LABEL_PREFIXES = {
+    "log_saturation_constant": K_PREFIXES,
+    "log_custom": (CUSTOM_PREFIX,),
+    "custom": (CUSTOM_PREFIX,),
+}
+
 # Parameters whose labels come from the model's rate equations.
 KINETIC_PARAMETERS = (
     "log_saturation_constant",
@@ -59,6 +74,8 @@ KINETIC_PARAMETERS = (
     "log_enzyme",
     "log_tc",
     "log_drain",
+    "log_custom",
+    "custom",
 )
 
 # Parameters whose labels come from the model's structure.
@@ -98,19 +115,19 @@ def check_parameter_labelling(labelling: Mapping[str, Sequence[str]]) -> None:
     """Raise unless a parameter labelling is well formed.
 
     The checks are that every parameter is one enzax knows about, that every
-    `log_saturation_constant` label starts with a recognised prefix, and
-    that no parameter labels two of its positions the same way.
+    label of a parameter with a prefix convention starts with a valid prefix,
+    and that no parameter labels two of its positions the same way.
     """
     check_parameters_are_known(labelling)
-    for label in labelling.get("log_saturation_constant", ()):
-        prefix = label.split(SEP)[0]
-        if prefix not in K_PREFIXES:
-            msg = (
-                f"log_saturation_constant label {label!r} has prefix "
-                f"{prefix!r}, but must "
-                f"start with one of {[p + SEP for p in K_PREFIXES]}."
-            )
-            raise ValueError(msg)
+    for parameter, prefixes in LABEL_PREFIXES.items():
+        for label in labelling.get(parameter, ()):
+            prefix = label.split(SEP)[0]
+            if prefix not in prefixes:
+                msg = (
+                    f"{parameter} label {label!r} has prefix {prefix!r}, but "
+                    f"must start with one of {[p + SEP for p in prefixes]}."
+                )
+                raise ValueError(msg)
     for parameter, labels in labelling.items():
         if len(set(labels)) != len(labels):
             msg = f"Duplicate labels for {parameter!r}: {list(labels)}."

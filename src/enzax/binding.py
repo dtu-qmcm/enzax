@@ -33,9 +33,9 @@ can represent their desired enzyme behaviour. The functions `site` and
 can be combined using the `*` and `+` operators, and also multiplied by scalars,
 to represent binding polynomials.
 
-The function `resolve_expression` compiles a `BindingPolynomialExpression` into
-a `BindingPolynomial`, whose factors hold positions rather than names, once
-when the model is built. All the algebra happens on expressions, before
+The function `get_polynomial_indexes` compiles a `BindingPolynomialExpression`
+into a `BindingPolynomial`, whose factors hold positions rather than names,
+once when the model is built. All the algebra happens on expressions, before
 compiling. For example, this `BindingPolynomialExpression`:
 
     (site("a") + dead_end("b")) * site("c")
@@ -345,7 +345,7 @@ def get_expression_labels(
     return tuple(dict.fromkeys(labels))
 
 
-def resolve_factor(
+def get_factor_indexes(
     factor: NamedSite | NamedBound,
     scope: ReactionScope,
     labelling: ParamLabelling,
@@ -367,7 +367,7 @@ def resolve_factor(
     return BoundFactor(ix_species=ix_species, ix_k=ix_k)
 
 
-def resolve_expression(
+def get_polynomial_indexes(
     expression: BindingPolynomialExpression,
     scope: ReactionScope,
     labelling: ParamLabelling,
@@ -384,7 +384,7 @@ def resolve_expression(
             PolynomialTerm(
                 coefficient=term.coefficient,
                 factors=tuple(
-                    resolve_factor(factor, scope, labelling, prefix)
+                    get_factor_indexes(factor, scope, labelling, prefix)
                     for factor in term.factors
                 ),
             )
