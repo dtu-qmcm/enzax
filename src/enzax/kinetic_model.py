@@ -185,6 +185,12 @@ def unfreeze_array(frozen: FrozenArray, dtype) -> np.ndarray:
 class KineticModel(eqx.Module):
     """Structural information about a kinetic model.
 
+    The field `reactions` maps each reaction id to a `Reaction` object which
+    says which species the reaction consumes and produces (i.e. its
+    stoichiometry), and how to calculate its flux. The model's species are
+    assembled from the reactions' stoichiometries and effectors, as well as
+    the model's `extra_species` field.
+
     A model's balanced species are the ones whose concentrations are state
     variables. They are split into dependent and independent species: a
     dependent species' concentration is determined by the independent species'
@@ -196,13 +202,6 @@ class KineticModel(eqx.Module):
     model checks this, along with the other conditions listed in
     `validate_kinetic_model`.
 
-    The reactions and species come from the stoichiometry: the reactions are
-    its keys, in order, and the species are what they consume and produce, in
-    the order they first appear. A species that takes part in no reaction, as
-    an allosteric effector does, joins them if a rate equation names it, or
-    via `extra_species` for a model whose fluxes do not come from rate
-    equations.
-
     Formation energies belong to compounds rather than species, so species
     that represent the same compound in different compartments share one. Use
     `compound_to_species` to say which species a compound has, as in
@@ -210,11 +209,8 @@ class KineticModel(eqx.Module):
     claims is a compound of its own, so only compounds with more than one
     species need mentioning.
 
-    `rate_equations` maps each reaction id to the rate equation that gives its
-    flux, and must cover exactly the reactions the stoichiometry names.
-
-    The model owns the parameter labelling built from its rate equations'
-    labels, plus the labels implied by its own structure. Each rate equation's
+    The model owns the parameter labelling built from its reactions'
+    labels, plus the labels implied by its own structure. Each reaction's
     labels are resolved to positions in the flat parameter arrays once, here,
     and stored in `reaction_ix`, in reaction order.
     """

@@ -2,12 +2,14 @@
 
 This page assumes you have read [Getting started](getting_started.md), and in particular that you have seen how to define a `KineticModel`, how enzax labels model parameters and how two reactions can share a parameter value by using the same label.
 
+Enzax represents a reaction using a `Reaction` object that contains a stoichiometry as well as a rate equation. This page is about rate equations: stoichiometry works the same for all rate equations.
+
 A rate equation says how one reaction's flux depends on the concentrations of the model's species and on the model's parameters. Enzax gives you four levels of control, in increasing order of effort:
 
 1. **[Use a built-in rate equation](#use-a-built-in-rate-equation)**, configured with its fields. Covers most reactions.
 2. **[Write your own binding polynomial](#write-your-own-binding-polynomial)** with `SaturableReaction`, keeping Michaelis-Menten's thermodynamics and turnover. Covers reactions whose enzyme has states that the stoichiometry does not imply, such as abortive complexes.
 3. **[Write the flux as a formula](#write-the-flux-as-a-formula)** with `SymbolicReaction`. This is the best choice for rate laws that don't represent saturating enzymes but can easily be written down in an equation, or for reproducing a rate law from literature equations.
-3. **[Write a rate equation from scratch](#write-a-rate-equation-from-scratch)** by subclassing `Reaction`. Covers everything else.
+4. **[Write a rate equation from scratch](#write-a-rate-equation-from-scratch)** by subclassing `Reaction`. Covers everything else.
 
 ## Use a built-in rate equation
 
@@ -469,6 +471,8 @@ Be warned that this is more work than writing one function. A rate equation refe
 | `get_input` | once per flux evaluation | the parameter values, gathered from those positions |
 | `__call__` | once per flux evaluation | the flux, as a scalar |
 
+A subclass does not declare a stoichiometry field: it inherits one from `Reaction`, which the model uses to build its stoichiometric matrix. Inside the methods, the reaction's stoichiometry is available through the `ReactionScope`, described below.
+
 The `ReactionLabels` subclass has one field per group of labels the rate equation declares, and its `by_parameter` method says which flat array each group is gathered from. That method is the only record of the correspondence, so all three of `by_parameter`, `get_input_indexes` and `get_input` have to name the same arrays.
 
 Two of these mistakes fail differently, which is worth knowing before you make one. If `get_input_indexes` looks for a position in an array that `by_parameter` did not name, the label is not there and the model raises as it is built:
@@ -658,7 +662,7 @@ Until then, the way to express a new quantity is to reuse whichever existing par
 
 Whichever of the four routes you took, it is worth checking that the rate equation you declared is the one you meant:
 
-- Is the rate equation registered in the model's `rate_equations` dictionary, under the right reaction id?
+- Is the reaction in the model's `reactions` dictionary, with the right id?
 - Does `model.parameter_labelling` contain the labels you expected, and no others? A label you did not expect usually means a species id typo or a sharing declaration that did not take effect; a missing one means a field that is not doing anything.
 - Does `model.species` contain only species you meant to model? Naming a species anywhere is enough to add it to the model.
 - Does `model.flux` at a known concentration vector agree with the formula worked out by hand? For a binding polynomial, `1 / Z` should be a fraction: if it is bigger than 1 or negative, the polynomial is not counting the unbound enzyme once.

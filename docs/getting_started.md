@@ -46,13 +46,12 @@ my_model = KineticModel(
 ```
 The first statement imports `KineticModel`.
 
-The second statement imports the rate equaiton class `MichaelisMenten`. Instances of this class define rate equations that determine the flux of a reaction.
+The second statement imports the reaction class `MichaelisMenten`, which can hold a reaction's stoichiometry and calculate its flux according to Michaelis-Menten kinetics.
 
 The third statement initialises a `KineticModel` instance. Let's go through the arguments:
-- the `stoichiometry` argument specifies, for every reaction, the stoichiometric coefficient of each of its reactants.
-- the `balanced_species` argument indicates which of the species mentioned in `stoichiometry` (i.e. `"m1e"`, `"m1c"`, `"m2c"` and `"m2e"`) are assumed to have potentially-changing abundances, i.e. are "balanced". The model assumes that other unbalanced species have constant concentrations, helping to determine the system's boundary conditions.
+- the `reactions` argument maps reaction ids to reactions. Each reaction's stoichiometry gives the stoichiometric coefficient of each of its reactants, and its other fields configure its rate equation. For example, reaction `"r2"` obeys allosteric Michaelis-Menten kinetics, allosterically and competitively inhibited by `"m1c"`.
+- the `balanced_species` argument indicates which of the species the reactions mention (i.e. `"m1e"`, `"m1c"`, `"m2c"` and `"m2e"`) are assumed to have potentially-changing abundances, i.e. are "balanced". The model assumes that other unbalanced species have constant concentrations, helping to determine the system's boundary conditions.
 - `compound_to_species` maps ids of compounds to ids of their species: for example `"m1e"` and `"m1c"` belong to the compound `"m1"`. This is important for correctly representing the thermodynamics of single-compound reactions like `"r1"` and `"r2"`. Note that not every compound has to appear here: an unmentioned species is assumed to be its own singleton compound.
-- `rate_equations` maps reaction ids to rate equation instances. For example, reaction `"r2"` obeys allosteric Michaelis-Menten kinetics, allosterically and competitively inhibited by `"m1c"`.
 
 ### Parameters and their labels
 
