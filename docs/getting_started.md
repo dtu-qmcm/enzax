@@ -219,7 +219,7 @@ from enzax.sbml import load_libsbml_model_from_file, sbml_to_enzax
 
 path = Path("path") / "to" / "sbml_file.xml"
 libsbml_model = load_libsbml_model_from_file(path)
-model = sbml_to_enzax(libsbml_model)
+model, parameters = sbml_to_enzax(libsbml_model)
 ```
 
 or from a url:
@@ -229,7 +229,7 @@ from enzax.sbml import load_libsbml_model_from_url, sbml_to_enzax
 
 url = "https://raw.githubusercontent.com/dtu-qmcm/enzax/refs/heads/main/tests/data/exampleode.xml"
 libsbml_model = load_libsbml_model_from_url(url)
-model = sbml_to_enzax(libsbml_model)
+model, parameters = sbml_to_enzax(libsbml_model)
 ```
 
 !!! note

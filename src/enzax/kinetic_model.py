@@ -2,13 +2,11 @@
 
 from abc import abstractmethod
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
 import sympy
-import sympy2jax
 from jaxtyping import PyTree, ScalarLike
 
 from enzax.array_types import (
@@ -555,28 +553,3 @@ class RateEquationModel(KineticModel):
             ipt = rate_equation.get_input(parameters, ix)
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)
-
-
-class KineticModelSbml(KineticModel):
-    sym_module: Any = eqx.field(static=True, default=None)
-
-    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
-        assign_species = {}
-        for a in self.sym_module[1].keys():
-            assign_species.update(
-                {
-                    a: sympy2jax.SymbolicModule(self.sym_module[1][a])(
-                        **assign_species,
-                        **parameters,
-                        **dict(zip(self.balanced_species, conc_balanced)),
-                    )
-                }
-            )
-        flux = jnp.array(
-            self.sym_module[0](
-                **assign_species,
-                **parameters,
-                **dict(zip(self.balanced_species, conc_balanced)),
-            )
-        )
-        return flux

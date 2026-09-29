@@ -5,11 +5,10 @@ from pathlib import Path
 import libsbml
 import requests
 import sympy
-import sympy2jax
 from sbmlmath import SBMLMathMLParser
 
 from enzax.array_types import ParamDict
-from enzax.kinetic_model import KineticModelSbml, RateEquationModel
+from enzax.kinetic_model import RateEquationModel
 from enzax.parameters import CUSTOM_PREFIX, SEP, pack_parameters
 from enzax.rate_equations import SymbolicRateEquation
 
@@ -57,143 +56,6 @@ def load_libsbml_model_from_url(url: str) -> libsbml.Model:
     return _get_libsbml_model_from_doc(doc)
 
 
-def sbml_to_sympy(model):
-    reactions_sbml = model.getListOfReactions()
-    reactions_sympy = [
-        (
-            SBMLMathMLParser().parse_str(
-                libsbml.writeMathMLToString(
-                    libsbml.parseL3Formula(
-                        libsbml.formulaToL3String(r.getKineticLaw().getMath())
-                    )
-                )
-            )
-        )
-        for r in reactions_sbml
-    ]
-    return reactions_sympy
-
-
-def get_assignments(model):
-    assignments_sbml = model.getListOfRules()
-    assignments_sympy = {
-        a.variable: SBMLMathMLParser().parse_str(
-            libsbml.writeMathMLToString(
-                libsbml.parseL3Formula(libsbml.formulaToL3String(a.getMath()))
-            )
-        )
-        for a in assignments_sbml
-    }
-    return assignments_sympy
-
-
-def sympy_to_enzax(
-    reactions_sympy: list,
-    assignments_sympy: dict,
-):
-    sym_module = [
-        sympy2jax.SymbolicModule(reactions_sympy),
-        assignments_sympy,
-    ]
-    return sym_module
-
-
-def get_sbml_parameters(model: libsbml.Model) -> dict:
-    local_parameters = {
-        p.getId(): p.getValue()
-        for r in model.getListOfReactions()
-        for p in r.getKineticLaw().getListOfParameters()
-    }
-    compartment_volumes = {
-        c.getId(): c.volume for c in model.getListOfCompartments()
-    }
-    unbalanced_species = {
-        u.getId(): u.getInitialConcentration()
-        for u in model.getListOfSpecies()
-        if u.boundary_condition and u.constant
-    }
-    global_parameters = {
-        p.getId(): p.getValue()
-        for p in model.getListOfParameters()
-        if p.constant
-    }
-    return {
-        **local_parameters,
-        **compartment_volumes,
-        **unbalanced_species,
-        **global_parameters,
-    }
-
-
-def get_reaction_stoichiometry(reaction: libsbml.Reaction) -> dict[str, float]:
-    reactants = reaction.getListOfReactants()
-    products = reaction.getListOfProducts()
-    reactant_stoichiometries, product_stoichiometries = (
-        {s.getSpecies(): coeff * s.getStoichiometry() for s in list_of_species}
-        for list_of_species, coeff in [(reactants, -1.0), (products, 1.0)]
-    )
-    return reactant_stoichiometries | product_stoichiometries
-
-
-def get_kinetic_model_from_sbml(
-    libsbml_model: libsbml.Model,
-) -> KineticModelSbml:
-    """Turn a libsbml.Model into a KineticModelSbml.
-
-    Args:
-        libsbml_model: The libsbml.Model to convert.
-
-    Returns:
-        A KineticModelSbml
-
-    """
-    species = [s.getId() for s in libsbml_model.getListOfSpecies()]
-    balanced_species = [
-        b.getId()
-        for b in libsbml_model.getListOfSpecies()
-        if not b.boundary_condition
-    ]
-    stoichiometry = {
-        reaction.getId(): get_reaction_stoichiometry(reaction)
-        for reaction in libsbml_model.getListOfReactions()
-    }
-    # A model whose fluxes come from the file's own kinetic laws has no rate
-    # equations to name the species that take part in no reaction, so the
-    # file's species list says which those are.
-    in_a_reaction = {s for r in stoichiometry.values() for s in r}
-    extra_species = [s for s in species if s not in in_a_reaction]
-    sym_module = get_sbml_sym_module(libsbml_model)
-    return KineticModelSbml(
-        stoichiometry=stoichiometry,
-        balanced_species=balanced_species,
-        extra_species=extra_species,
-        sym_module=sym_module,
-    )
-
-
-def get_sbml_sym_module(model: libsbml.Model):
-    reactions_sympy = sbml_to_sympy(model)
-    assignments_sympy = get_assignments(model)
-    return sympy_to_enzax(reactions_sympy, assignments_sympy)
-
-
-def sbml_to_enzax(
-    libsbml_model: libsbml.Model,
-) -> tuple[KineticModelSbml, dict]:
-    """Turn a libsbml.Model into a KineticModelSbml plus parameters.
-
-    Args:
-        libsbml_model: The libsbml.Model to convert.
-
-    Returns:
-        A tuple of a KineticModelSbml and a dictionary of parameters
-
-    """
-    parameters = get_sbml_parameters(libsbml_model)
-    model = get_kinetic_model_from_sbml(libsbml_model)
-    return model, parameters
-
-
 def math_to_sympy(ast: libsbml.ASTNode) -> sympy.Expr:
     """Turn a libsbml math object into a sympy expression."""
     return SBMLMathMLParser().parse_str(
@@ -204,7 +66,7 @@ def math_to_sympy(ast: libsbml.ASTNode) -> sympy.Expr:
 
 
 def check_sbml_is_supported(model: libsbml.Model) -> None:
-    """Raise if a model uses SBML that sbml_to_rate_equation_model does not
+    """Raise if a model uses SBML that sbml_to_enzax does not
     handle.
     """
     problems = []
@@ -237,7 +99,7 @@ def check_sbml_is_supported(model: libsbml.Model) -> None:
             )
     if problems:
         msg = (
-            "sbml_to_rate_equation_model does not support "
+            "sbml_to_enzax does not support "
             f"{', '.join(dict.fromkeys(problems))}."
         )
         raise ValueError(msg)
@@ -370,7 +232,7 @@ def get_stoichiometry(
     return {s: c for s, c in stoichiometry.items() if c != 0.0}
 
 
-def sbml_to_rate_equation_model(
+def sbml_to_enzax(
     libsbml_model: libsbml.Model,
     parameter_kinds: Mapping[str, str] | None = None,
 ) -> tuple[RateEquationModel, ParamDict]:
@@ -428,7 +290,7 @@ def sbml_to_rate_equation_model(
         msg = (
             f"Species {unsupported} are boundary species that are not "
             "constant and have no assignment rule, which "
-            "sbml_to_rate_equation_model does not support."
+            "sbml_to_enzax does not support."
         )
         raise ValueError(msg)
     stoichiometry = {}

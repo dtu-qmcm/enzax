@@ -5,5 +5,4 @@
         - "!check"
       members:
         - KineticModel
-        - KineticModelSbml
         - RateEquationModel
