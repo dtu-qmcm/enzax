@@ -1,6 +1,6 @@
-"""Module providing `SymbolicRateEquation` for symbolic expression based flux.
+"""Module providing `SymbolicReaction` for symbolic expression based flux.
 
-`SymbolicRateEquation` takes its flux from a sympy expression, for kinetics
+`SymbolicReaction` takes its flux from a sympy expression, for kinetics
 that none of enzax's other rate laws can express: for example a transporter
 with an unusual mechanism or an SBML kinetic law. The expression is
 turned into a JAX function once, when the model is built.
@@ -23,9 +23,9 @@ from enzax.parameters import (
     KINETIC_PARAMETERS,
     get_parameter_position,
 )
-from enzax.rate_equation import (
-    RateEquation,
-    RateEquationLabels,
+from enzax.reaction import (
+    Reaction,
+    ReactionLabels,
     ReactionScope,
     get_reactants,
     get_species_label,
@@ -200,7 +200,7 @@ def get_parameter_value(
 
 
 @dataclass(frozen=True)
-class SymbolicLabels(RateEquationLabels):
+class SymbolicLabels(ReactionLabels):
     by_symbol: dict[str, tuple[str, str | None]]
 
     def by_parameter(self) -> ParamLabelling:
@@ -266,7 +266,7 @@ def get_reserved_values(
     return values
 
 
-class SymbolicRateEquation(RateEquation):
+class SymbolicReaction(Reaction):
     """A rate equation whose flux comes from a symbolic expression.
 
     Fields:
@@ -314,7 +314,7 @@ class SymbolicRateEquation(RateEquation):
 
     For example, an irreversible Michaelis-Menten law for reaction `r1: a -> b`:
 
-      SymbolicRateEquation(
+      SymbolicReaction(
           expression="kcat * enzyme * (s / km) / (1 + s / km)",
           species={"s": "a"},
           parameters={

@@ -95,7 +95,7 @@ def get_flux_at_equilibrium(
     The point is `conc` with the reaction's first product changed so that the
     mass action ratio equals the equilibrium constant. A thermodynamically
     consistent rate law gives zero flux there, so this checks one that is not
-    consistent by construction, such as a `SymbolicRateEquation` with a
+    consistent by construction, such as a `SymbolicReaction` with a
     hand-written equilibrium constant. Irreversible rate laws fail the check,
     as they should.
 
@@ -104,7 +104,7 @@ def get_flux_at_equilibrium(
     """
     position = model.reaction_ids.index(reaction_id)
     rate_equation = model.reactions[reaction_id]
-    ix = model.rate_equation_ix[position]
+    ix = model.reaction_ix[position]
     stoichiometry = model.S[:, position]
     products = np.flatnonzero(stoichiometry > 0.0)
     if len(products) == 0:

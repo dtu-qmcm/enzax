@@ -21,7 +21,7 @@ Here is a simple example of how to specify a `KineticModel` describing a simple 
 ```python
 
 from enzax.kinetic_model import KineticModel
-from enzax.rate_equations import MichaelisMenten
+from enzax.reactions import MichaelisMenten
 
 my_model = KineticModel(
     reactions={

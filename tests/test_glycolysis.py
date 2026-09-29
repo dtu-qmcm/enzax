@@ -99,7 +99,7 @@ def test_transketolase_is_one_enzyme_with_two_turnover_numbers():
 
 def test_transport_reactions_have_no_standard_free_energy_change():
     """Glucose is one compound, so `dgf_glc - dgf_glc` cancels by itself."""
-    ix = glycolysis.model.rate_equation_ix
+    ix = glycolysis.model.reaction_ix
     for reaction in ["GLUT4", "lac_transport"]:
         position = glycolysis.model.reaction_ids.index(reaction)
         dgf_positions = ix[position].ix_dgf

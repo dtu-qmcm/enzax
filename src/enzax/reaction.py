@@ -23,7 +23,7 @@ class ReactionScope:
     """What a rate equation needs to know about the reaction it belongs to.
 
     Built once per reaction at model construction and handed to
-    `RateEquation.get_labels` and `RateEquation.get_input_indexes`.
+    `Reaction.get_labels` and `Reaction.get_input_indexes`.
 
     Note that `species`, `stoichiometry` and `species_to_dgf_ix` have length
     n_species, where n_species is the model's total number of species.
@@ -140,7 +140,7 @@ def check_species_labels_are_distinct(
         seen[label] = species_id
 
 
-class RateEquationLabels(ABC):
+class ReactionLabels(ABC):
     """The parameter labels a rate equation refers to, grouped by what they are.
 
     A rate equation defines its own subclass, with one field per group of
@@ -159,7 +159,7 @@ class RateEquationLabels(ABC):
         ...
 
 
-class RateEquation(Module, ABC):
+class Reaction(Module, ABC):
     """Abstract definition of a rate equation.
 
     A rate equation is an equinox [Module](https://docs.kidger.site/equinox/api/module/module/) with a `__call__` method that takes in a 1 dimensional array of concentrations and an arbitrary PyTree of other inputs, returning a scalar value representing a single flux.
@@ -196,7 +196,7 @@ class RateEquation(Module, ABC):
         return ()
 
     @abstractmethod
-    def get_labels(self, scope: ReactionScope) -> RateEquationLabels:
+    def get_labels(self, scope: ReactionScope) -> ReactionLabels:
         """Get the parameter labels this rate equation refers to."""
         ...
 

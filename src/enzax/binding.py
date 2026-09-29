@@ -83,7 +83,7 @@ from enzax.array_types import (
     ParamLabelling,
 )
 from enzax.parameters import get_parameter_positions
-from enzax.rate_equation import (
+from enzax.reaction import (
     ReactionScope,
     get_products,
     get_species_label,

@@ -6,16 +6,16 @@ from jaxtyping import Scalar
 
 from enzax.array_types import ConcArray, ParamDict, ParamLabelling
 from enzax.parameters import get_parameter_position
-from enzax.rate_equation import (
-    RateEquation,
-    RateEquationLabels,
+from enzax.reaction import (
+    Reaction,
+    ReactionLabels,
     ReactionScope,
     get_reaction_label,
 )
 
 
 @dataclass(frozen=True)
-class DrainLabels(RateEquationLabels):
+class DrainLabels(ReactionLabels):
     """The labels a drain reaction refers to."""
 
     drain: str
@@ -32,7 +32,7 @@ class DrainInput(eqx.Module):
     abs_v: Scalar
 
 
-class Drain(RateEquation):
+class Drain(Reaction):
     """A drain reaction.
 
     Fields:

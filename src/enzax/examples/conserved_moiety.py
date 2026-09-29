@@ -29,7 +29,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import MichaelisMenten
+from enzax.reactions import MichaelisMenten
 
 balanced_species = ["A_c", "B_c", "C_c", "D_c", "X1_c", "X2_c"]
 dependent_species = ["X2_c"]

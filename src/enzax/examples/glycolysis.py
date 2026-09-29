@@ -52,9 +52,9 @@ from enzax.array_types import ParamValueSpec
 from enzax.binding import ONE, dead_end, site
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import (
+from enzax.reactions import (
     MichaelisMenten,
-    SaturableRateEquation,
+    SaturableReaction,
 )
 
 # The SBML file's boundary species are the ones enzax leaves unbalanced, plus
@@ -92,7 +92,7 @@ compound_to_species = {
 }
 reactions = {
     "GLUT4": MichaelisMenten(stoichiometry={"glc_e": -1.0, "glc_c": 1.0}),
-    "HEX1": SaturableRateEquation(
+    "HEX1": SaturableReaction(
         stoichiometry={
             "glc_c": -1.0,
             "atp_c": -1.0,
@@ -101,7 +101,7 @@ reactions = {
         },
         dead_end_states_expression=dead_end("g6p_c", "glc_c"),
     ),
-    "HEX2": SaturableRateEquation(
+    "HEX2": SaturableReaction(
         stoichiometry={
             "glc_c": -1.0,
             "atp_c": -1.0,
@@ -117,7 +117,7 @@ reactions = {
         relaxed_state_expression=ONE,
     ),
     "PGI": MichaelisMenten(stoichiometry={"g6p_c": -1.0, "f6p_c": 1.0}),
-    "PFKM": SaturableRateEquation(
+    "PFKM": SaturableReaction(
         stoichiometry={
             "atp_c": -1.0,
             "f6p_c": -1.0,
@@ -134,7 +134,7 @@ reactions = {
             * site("f26bp_c")
         ),
     ),
-    "PFKL": SaturableRateEquation(
+    "PFKL": SaturableReaction(
         stoichiometry={
             "f6p_c": -1.0,
             "atp_c": -1.0,
@@ -149,7 +149,7 @@ reactions = {
             {"f6p_c": "km|PFKL|f6p_c", "fdp_c": "km|PFKL|fdp_c"}
         ),
     ),
-    "FBA": SaturableRateEquation(
+    "FBA": SaturableReaction(
         stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
         dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
     ),
@@ -189,7 +189,7 @@ reactions = {
             "nad_c": 1.0,
         }
     ),
-    "G6PDH": SaturableRateEquation(
+    "G6PDH": SaturableReaction(
         stoichiometry={
             "g6p_c": -1.0,
             "nadp_c": -1.0,

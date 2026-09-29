@@ -1,11 +1,11 @@
-#  ::: enzax.rate_equation
+#  ::: enzax.reaction
     options:
       show_root_heading: true
       filters:
         - "!check"
       members:
-        - RateEquation
-        - RateEquationLabels
+        - Reaction
+        - ReactionLabels
         - ReactionScope
         - get_substrates
         - get_products

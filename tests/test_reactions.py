@@ -11,7 +11,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import MichaelisMenten
+from enzax.reactions import MichaelisMenten
 
 EXAMPLE_SPECIES = ["a", "b", "c"]
 R1 = {"a": -1.0, "b": 1.0}

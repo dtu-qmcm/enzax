@@ -9,7 +9,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import Drain, MichaelisMenten
+from enzax.reactions import Drain, MichaelisMenten
 
 balanced_species = [
     "met-L",

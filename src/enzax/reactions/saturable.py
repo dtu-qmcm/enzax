@@ -11,7 +11,7 @@ factor follows from whether the rate law declares an effector or a state --
 see `MichaelisMenten.is_allosteric`.
 
 The module holds two classes, differing only in where `Z` comes from.
-`MichaelisMenten` derives it from the stoichiometry; `SaturableRateEquation`
+`MichaelisMenten` derives it from the stoichiometry; `SaturableReaction`
 takes it, or parts of it, written out by hand.
 
 An irreversible reaction still resolves the positions its reversibility term
@@ -55,9 +55,9 @@ from enzax.parameters import (
     get_parameter_position,
     get_parameter_positions,
 )
-from enzax.rate_equation import (
-    RateEquation,
-    RateEquationLabels,
+from enzax.reaction import (
+    Reaction,
+    ReactionLabels,
     ReactionScope,
     check_species_labels_are_distinct,
     get_products,
@@ -128,7 +128,7 @@ def get_allosteric_species(
 
 
 @dataclass(frozen=True)
-class MichaelisMentenLabels(RateEquationLabels):
+class MichaelisMentenLabels(ReactionLabels):
     """The labels a Michaelis Menten rate equation refers to.
 
     Every group but `kcat`, `enzyme` and `tc` is gathered from
@@ -263,12 +263,12 @@ def generalised_mwc_effect(
     return 1.0 / (1 + tc * ratio**subunits)
 
 
-class MichaelisMenten(RateEquation):
+class MichaelisMenten(Reaction):
     """A reaction whose rate saturates as its enzyme's sites fill up.
 
     The binding polynomial follows from the stoichiometry: substrates bind in
     one random-order complex, products in another, and each competitive
-    inhibitor forms a dead end. `SaturableRateEquation` is the same rate law
+    inhibitor forms a dead end. `SaturableReaction` is the same rate law
     with that polynomial written out by hand.
 
     Fields, all optional:
@@ -322,7 +322,7 @@ class MichaelisMenten(RateEquation):
     subunits: int = 1
 
     # The four polynomials a rate law can write out by hand. This one writes
-    # none, so they are all absent; `SaturableRateEquation` has them as fields
+    # none, so they are all absent; `SaturableReaction` has them as fields
     # and overrides these. They are methods rather than fields because a
     # dataclass subclass can add a field but never remove one, which is why
     # the general class extends the specific one and not the other way round.
@@ -355,7 +355,7 @@ class MichaelisMenten(RateEquation):
 
         It has one exactly when something says what the enzyme's two states
         are: an allosteric effector, a transfer constant label, or -- in
-        `SaturableRateEquation` -- a tense or relaxed state polynomial.
+        `SaturableReaction` -- a tense or relaxed state polynomial.
         `subunits` cannot say so, since `subunits=1` is indistinguishable from
         the default.
         """
@@ -685,7 +685,7 @@ class MichaelisMenten(RateEquation):
         return rate
 
 
-class SaturableRateEquation(MichaelisMenten):
+class SaturableReaction(MichaelisMenten):
     """Michaelis Menten kinetics with a binding polynomial written by hand.
 
     Everything `MichaelisMenten` takes, plus the four polynomials below. Each

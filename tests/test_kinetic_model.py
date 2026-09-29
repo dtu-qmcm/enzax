@@ -7,7 +7,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import KineticModel, validate_kinetic_model
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import MichaelisMenten
+from enzax.reactions import MichaelisMenten
 from enzax.steady_state import get_steady_state_hybrid
 
 

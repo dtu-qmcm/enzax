@@ -27,10 +27,10 @@ each call its own jaxtyping scope, rather than in one flat loop.
 
 Rules for the `n_rxn_*` tier:
 
-* Use them only in `enzax.rate_equation` and `enzax.rate_equations.*`.
+* Use them only in `enzax.reaction` and `enzax.reactions.*`.
 * Never put two different reactions' arrays on the same `n_rxn_*` axis in
   one type-checked scope. In particular, build a reaction's index bundle
-  inside `RateEquation.get_input_indexes` rather than inline in a loop, so
+  inside `Reaction.get_input_indexes` rather than inline in a loop, so
   that each reaction gets its own binding scope.
 * Never annotate a `KineticModel` field with a reaction-level type: model
   fields are shared by every reaction.

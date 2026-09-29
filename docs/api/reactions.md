@@ -1,10 +1,10 @@
-#  ::: enzax.rate_equations
+#  ::: enzax.reactions
     options:
       show_root_heading: true
       filters:
         - "!check"
       members:
         - MichaelisMenten
-        - SaturableRateEquation
+        - SaturableReaction
         - Drain
-        - SymbolicRateEquation
+        - SymbolicReaction

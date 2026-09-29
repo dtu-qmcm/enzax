@@ -10,7 +10,7 @@ from sbmlmath import SBMLMathMLParser
 from enzax.array_types import ParamDict
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import CUSTOM_PREFIX, SEP, pack_parameters
-from enzax.rate_equations import SymbolicRateEquation
+from enzax.reactions import SymbolicReaction
 
 
 def _get_libsbml_model_from_doc(doc):
@@ -158,15 +158,15 @@ def get_initial_values(model: libsbml.Model) -> dict[str, float]:
     return values
 
 
-def get_symbolic_rate_equation(
+def get_symbolic_reaction(
     reaction: libsbml.Reaction,
     law: sympy.Expr,
     stoichiometry: dict[str, float],
     species_ids: set[str],
     values: Mapping[str, float],
     parameter_kinds: Mapping[str, str],
-) -> tuple[SymbolicRateEquation, dict[str, tuple[str, float]]]:
-    """Turn a reaction's kinetic law into a SymbolicRateEquation, plus its
+) -> tuple[SymbolicReaction, dict[str, tuple[str, float]]]:
+    """Turn a reaction's kinetic law into a SymbolicReaction, plus its
     parameter values.
     """
     local_ids = {
@@ -207,7 +207,7 @@ def get_symbolic_rate_equation(
             kind,
             math.log(value) if kind == "log_custom" else value,
         )
-    rate_equation = SymbolicRateEquation(
+    rate_equation = SymbolicReaction(
         stoichiometry=stoichiometry,
         expression=law,
         species=species,
@@ -245,7 +245,7 @@ def sbml_to_enzax(
     This is experimental. It handles enough of SBML for the models enzax ships
     with, and raises on anything it does not handle rather than guessing.
 
-    Each reaction's kinetic law becomes a `SymbolicRateEquation`, and the values
+    Each reaction's kinetic law becomes a `SymbolicReaction`, and the values
     it uses become `log_custom` or `custom` parameters. A local parameter is
     labelled `cu|{reaction}|{id}`, and a global parameter or compartment size
     `cu|{id}`. A value goes in `log_custom` if it is positive and in `custom`
@@ -309,7 +309,7 @@ def sbml_to_enzax(
         stoichiometry[reaction.getId()] = get_stoichiometry(
             reaction, set(rules)
         )
-        rate_equation, parameter_values = get_symbolic_rate_equation(
+        rate_equation, parameter_values = get_symbolic_reaction(
             reaction,
             law,
             stoichiometry[reaction.getId()],

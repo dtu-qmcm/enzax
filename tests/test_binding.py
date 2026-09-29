@@ -20,9 +20,9 @@ from enzax.binding import (
     site,
 )
 from enzax.kinetic_model import KineticModel
-from enzax.rate_equation import ReactionScope, get_species_positions
+from enzax.reaction import ReactionScope, get_species_positions
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import MichaelisMenten, SaturableRateEquation
+from enzax.reactions import MichaelisMenten, SaturableReaction
 
 HEX_SPECIES = ["glc_c", "atp_c", "g6p_c", "adp_c", "gdp_c"]
 HEX_STOICHIOMETRY = {
@@ -69,7 +69,7 @@ def get_parameters(model, k_values, tc=1.0):
 
 def get_polynomial_value(model, ix_reaction, conc, parameters):
     """Evaluate one reaction's binding polynomial."""
-    polynomial = model.rate_equation_ix[ix_reaction].binding_polynomial
+    polynomial = model.reaction_ix[ix_reaction].binding_polynomial
     return polynomial(conc, jnp.exp(parameters["log_saturation_constant"]))
 
 
@@ -145,7 +145,7 @@ def test_hex1_abortive_complexes():
         HEX_SPECIES,
         ["HEX1"],
         [
-            SaturableRateEquation(
+            SaturableReaction(
                 stoichiometry=HEX_STOICHIOMETRY["HEX1"],
                 dead_end_states_expression=(
                     dead_end("glc_c", "g6p_c") + dead_end("glc_c", "gdp_c")
@@ -186,11 +186,11 @@ def test_hex2_can_borrow_hex1s_constant():
         HEX_SPECIES,
         ["HEX1", "HEX2"],
         [
-            SaturableRateEquation(
+            SaturableReaction(
                 stoichiometry=stoichiometry["HEX1"],
                 dead_end_states_expression=dead_end("glc_c", "gdp_c"),
             ),
-            SaturableRateEquation(
+            SaturableReaction(
                 stoichiometry=stoichiometry["HEX2"],
                 dead_end_states_expression=dead_end(
                     {"glc_c": "km|HEX2|glc_c", "gdp_c": "km|HEX1|gdp_c"}
@@ -201,8 +201,8 @@ def test_hex2_can_borrow_hex1s_constant():
     labels = model.parameter_labelling["log_saturation_constant"]
     assert labels.count("km|HEX1|gdp_c") == 1
     assert "km|HEX2|gdp_c" not in labels
-    hex1_factor = model.rate_equation_ix[0].binding_polynomial.terms[-1]
-    hex2_factor = model.rate_equation_ix[1].binding_polynomial.terms[-1]
+    hex1_factor = model.reaction_ix[0].binding_polynomial.terms[-1]
+    hex2_factor = model.reaction_ix[1].binding_polynomial.terms[-1]
     assert hex1_factor.factors[0].ix_k[1] == hex2_factor.factors[0].ix_k[1]
 
 
@@ -212,7 +212,7 @@ def test_fba_ternary_abortive_complex():
         FBA_SPECIES,
         ["FBA"],
         [
-            SaturableRateEquation(
+            SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
             )
@@ -242,7 +242,7 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
         FBA_SPECIES,
         ["FBA"],
         [
-            SaturableRateEquation(
+            SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 dead_end_states_expression=dead_end("fdp_c", "g3p_c"),
             )
@@ -260,7 +260,7 @@ def test_an_expression_can_name_a_species_no_reaction_touches():
     model = KineticModel(
         balanced_species=FBA_SPECIES,
         reactions={
-            "FBA": SaturableRateEquation(
+            "FBA": SaturableReaction(
                 stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
                 dead_end_states_expression=dead_end("fdp_c", "gdp_c"),
             )
@@ -291,7 +291,7 @@ def test_a_non_positive_polynomial_is_an_error():
         FBA_SPECIES,
         ["FBA"],
         [
-            SaturableRateEquation(
+            SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 binding_polynomial_expression=-1.0 * ONE,
             )
@@ -361,7 +361,7 @@ def test_g6pdh_reuses_a_catalytic_constant_allosterically():
         G6PDH_STOICHIOMETRY,
         "G6PDH",
         G6PDH_CONC,
-        SaturableRateEquation(
+        SaturableReaction(
             stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
             subunits=2,
             tense_state_expression=site({"nadph_c": "km|G6PDH|nadph_c"}),
@@ -382,7 +382,7 @@ def test_pfkm_ratio_of_two_products_of_sites():
         PFK_STOICHIOMETRY,
         "PFKM",
         PFK_CONC,
-        SaturableRateEquation(
+        SaturableReaction(
             stoichiometry=PFK_STOICHIOMETRY["PFKM"],
             subunits=4,
             tense_state_expression=(
@@ -410,7 +410,7 @@ def test_a_constant_allosteric_factor():
         G6PDH_STOICHIOMETRY,
         "G6PDH",
         G6PDH_CONC,
-        SaturableRateEquation(
+        SaturableReaction(
             stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
             tense_state_expression=ONE,
             relaxed_state_expression=ONE,
@@ -428,7 +428,7 @@ def test_declaring_a_state_makes_a_reaction_allosteric():
     inhibitor, no activator and no transfer constant label, so the states are
     what enzax has to go on.
     """
-    rate_equation = SaturableRateEquation(
+    rate_equation = SaturableReaction(
         stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
         tense_state_expression=ONE,
         relaxed_state_expression=ONE,

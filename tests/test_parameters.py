@@ -16,8 +16,8 @@ from enzax.parameters import (
     pack_parameters,
     unpack_parameters,
 )
-from enzax.rate_equation import get_species_labels
-from enzax.rate_equations import MichaelisMenten
+from enzax.reaction import get_species_labels
+from enzax.reactions import MichaelisMenten
 
 SPECIES = ["a", "b", "c"]
 R1 = {"a": -1.0, "b": 1.0}
@@ -248,7 +248,7 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
         "km|r2|a",
         "km|r2|c",
     )
-    ix = model.rate_equation_ix[0]
+    ix = model.reaction_ix[0]
     position = get_parameter_position(
         labelling, "log_saturation_constant", "km|r1|b"
     )

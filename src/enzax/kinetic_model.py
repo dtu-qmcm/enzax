@@ -30,7 +30,7 @@ from enzax.parameters import (
     check_parameter_labelling,
     merge_labels,
 )
-from enzax.rate_equation import RateEquation, ReactionScope
+from enzax.reaction import Reaction, ReactionScope
 
 
 def get_ix_from_list(s: str, list_of_strings: list[str]):
@@ -216,10 +216,10 @@ class KineticModel(eqx.Module):
     The model owns the parameter labelling built from its rate equations'
     labels, plus the labels implied by its own structure. Each rate equation's
     labels are resolved to positions in the flat parameter arrays once, here,
-    and stored in `rate_equation_ix`, in reaction order.
+    and stored in `reaction_ix`, in reaction order.
     """
 
-    reactions: dict[str, RateEquation] = eqx.field(static=True)
+    reactions: dict[str, Reaction] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
     compound_to_species: dict[str, list[str]] | None = eqx.field(
@@ -242,7 +242,7 @@ class KineticModel(eqx.Module):
     _S: FrozenArray = eqx.field(static=True, init=False)
     _L0: FrozenArray = eqx.field(static=True, init=False)
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
-    rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
+    reaction_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
 
     def __post_init__(self):
         self.stoichiometry = {
@@ -308,7 +308,7 @@ class KineticModel(eqx.Module):
             check_id_has_no_separator(compound, "Compound")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
-        self.rate_equation_ix = [
+        self.reaction_ix = [
             self.reactions[scope.reaction_id].get_input_indexes(
                 scope, self.parameter_labelling
             )
@@ -441,7 +441,7 @@ class KineticModel(eqx.Module):
             conc_balanced, self.get_log_conc_unbalanced(parameters)
         )
         flux_list = []
-        for reaction, ix in zip(self.reaction_ids, self.rate_equation_ix):
+        for reaction, ix in zip(self.reaction_ids, self.reaction_ix):
             rate_equation = self.reactions[reaction]
             ipt = rate_equation.get_input(parameters, ix)
             flux_list.append(rate_equation(conc, ipt))

@@ -6,9 +6,9 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equation import ReactionScope
-from enzax.rate_equations import Drain, MichaelisMenten, SymbolicRateEquation
-from enzax.rate_equations.symbolic import parse_expression
+from enzax.reaction import ReactionScope
+from enzax.reactions import Drain, MichaelisMenten, SymbolicReaction
+from enzax.reactions.symbolic import parse_expression
 from enzax.steady_state import get_steady_state_hybrid
 from enzax.thermodynamics import get_flux_at_equilibrium
 
@@ -32,7 +32,7 @@ MM_PARAMETERS = {
 
 
 def get_labels(expression, species=MM_SPECIES, parameters=MM_PARAMETERS):
-    rate_equation = SymbolicRateEquation(
+    rate_equation = SymbolicReaction(
         stoichiometry=R1,
         expression=expression,
         species=species,
@@ -79,7 +79,7 @@ def test_explicit_labels_can_be_shared():
 
 
 def test_get_species_reports_every_declared_species():
-    rate_equation = SymbolicRateEquation(
+    rate_equation = SymbolicReaction(
         stoichiometry=R1, expression="s * e", species={"s": "a", "e": "e"}
     )
     assert rate_equation.get_species() == ("a", "e")
@@ -179,7 +179,7 @@ def assert_same_flux_and_gradient(symbolic, built_in):
 
 
 def test_agrees_with_irreversible_michaelis_menten():
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
         stoichiometry=R1,
         expression="kcat * enzyme * (s / km) / (1 + s / km)",
         species=MM_SPECIES,
@@ -191,14 +191,14 @@ def test_agrees_with_irreversible_michaelis_menten():
 
 
 def test_agrees_with_drain():
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
         stoichiometry=R1, expression="-v", parameters={"v": "log_drain"}
     )
     assert_same_flux_and_gradient(symbolic, Drain(stoichiometry=R1, sign=-1.0))
 
 
 def test_effectors_custom_parameters_and_temperature():
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
         stoichiometry=R1,
         expression="kcat * s * (1 + r * e) + c * temperature / 310",
         species={"s": "a", "e": "e"},
@@ -224,7 +224,7 @@ REVERSIBLE_MM_EXPRESSION = (
 
 @pytest.mark.parametrize("water_stoichiometry", [0.0, 1.0])
 def test_agrees_with_reversible_michaelis_menten(water_stoichiometry):
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
         stoichiometry=R1,
         expression=REVERSIBLE_MM_EXPRESSION,
         species={"s": "a", "p": "b"},
@@ -239,7 +239,7 @@ def test_agrees_with_reversible_michaelis_menten(water_stoichiometry):
 
 def test_keq_comes_from_formation_energies():
     flux, _ = get_flux_and_gradient(
-        SymbolicRateEquation(stoichiometry=R1, expression="keq")
+        SymbolicReaction(stoichiometry=R1, expression="keq")
     )
     dgr_std = VALUES["dgf"]["b"] - VALUES["dgf"]["a"]
     expected = jnp.exp(-dgr_std / (VALUES["temperature"] * 0.008314))
@@ -255,13 +255,13 @@ def get_flux_at_equilibrium_for(rate_equation):
     "rate_equation",
     [
         MichaelisMenten(stoichiometry=R1),
-        SymbolicRateEquation(
+        SymbolicReaction(
             stoichiometry=R1,
             expression=REVERSIBLE_MM_EXPRESSION,
             species={"s": "a", "p": "b"},
             parameters=REVERSIBLE_MM_PARAMETERS,
         ),
-        SymbolicRateEquation(
+        SymbolicReaction(
             stoichiometry=R1,
             expression="k * (s - p / keq)",
             species={"s": "a", "p": "b"},
@@ -277,7 +277,7 @@ def test_consistent_laws_vanish_at_equilibrium(rate_equation):
     "rate_equation",
     [
         MichaelisMenten(stoichiometry=R1, reversible=False),
-        SymbolicRateEquation(
+        SymbolicReaction(
             stoichiometry=R1,
             expression="k * (s - p / 2)",
             species={"s": "a", "p": "b"},
@@ -332,7 +332,7 @@ def get_symbolic_michaelis_menten(reaction, substrate, product=None):
             "kcat * enzyme * (s / km_s) / (1 + s / km_s + p / km_p)"
             " * reversibility"
         )
-    return SymbolicRateEquation(
+    return SymbolicReaction(
         stoichiometry=PATHWAY_STOICHIOMETRY[reaction],
         expression=expression,
         species=species,

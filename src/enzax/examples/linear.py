@@ -4,7 +4,7 @@ from jax import numpy as jnp
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import MichaelisMenten
+from enzax.reactions import MichaelisMenten
 
 balanced_species = ["m1c", "m2c"]
 reactions = {
