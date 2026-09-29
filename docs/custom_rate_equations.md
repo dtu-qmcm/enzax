@@ -1,6 +1,6 @@
 # How to make your own rate equation
 
-This page assumes you have read [Getting started](getting_started.md), and in particular that you have seen how to define a `RateEquationModel`, how enzax labels model parameters and how two reactions can share a parameter value by using the same label.
+This page assumes you have read [Getting started](getting_started.md), and in particular that you have seen how to define a `KineticModel`, how enzax labels model parameters and how two reactions can share a parameter value by using the same label.
 
 A rate equation says how one reaction's flux depends on the concentrations of the model's species and on the model's parameters. Enzax gives you four levels of control, in increasing order of effort:
 
@@ -33,7 +33,7 @@ v = enzyme * kcat * numerator / Z * reversibility * allosteric factor
 Each of the fields below either adds a state to `Z`, switches one of the optional factors on, or says which parameter value a quantity should use. The examples all extend the linear pathway model from [Getting started](getting_started.md):
 
 ```python
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.rate_equations import MichaelisMenten
 
 stoichiometry = {
@@ -48,7 +48,7 @@ stoichiometry = {
 `MichaelisMenten()` with nothing declared is a reversible reaction whose substrates bind in one random-order complex and whose products bind in another:
 
 ```python
-model = RateEquationModel(
+model = KineticModel(
     stoichiometry=stoichiometry,
     balanced_species=["m1c", "m2c"],
     rate_equations={
@@ -443,7 +443,7 @@ Prefer an existing kind when one fits. It keeps the parameter's meaning visible 
 
 ### Models from SBML
 
-`enzax.sbml.sbml_to_rate_equation_model` builds a `RateEquationModel` from an SBML file, with one `SymbolicRateEquation` per reaction. It is experimental: see its docstring for what it supports.
+`enzax.sbml.sbml_to_rate_equation_model` builds a `KineticModel` from an SBML file, with one `SymbolicRateEquation` per reaction. It is experimental: see its docstring for what it supports.
 
 ## Write a rate equation from scratch
 
@@ -596,7 +596,7 @@ A few things to notice. The rate constant is stored in `log_kcat`, since a turno
 Using it in a model is no different from using a built-in rate equation. Here reaction `r2` consumes two molecules of `m1c`:
 
 ```python
-model = RateEquationModel(
+model = KineticModel(
     stoichiometry={
         "r1": {"m1e": -1.0, "m1c": 1.0},
         "r2": {"m1c": -2.0, "m2c": 1.0},

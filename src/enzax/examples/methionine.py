@@ -7,7 +7,7 @@ https://doi.org/10.1021/acssynbio.3c00662
 
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import Drain, MichaelisMenten
 
@@ -31,7 +31,7 @@ balanced_species = [
     "hcys-L",
     "5mthf",
 ]
-model = RateEquationModel(
+model = KineticModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,
     rate_equations={

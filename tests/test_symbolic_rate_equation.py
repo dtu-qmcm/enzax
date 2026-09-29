@@ -4,7 +4,7 @@ import pytest
 import sympy
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equation import ReactionScope
 from enzax.rate_equations import Drain, MichaelisMenten, SymbolicRateEquation
@@ -139,7 +139,7 @@ VALUES = {
 
 
 def get_model_and_parameters(rate_equation):
-    model = RateEquationModel(
+    model = KineticModel(
         stoichiometry={"r1": {"a": -1.0, "b": 1.0}},
         balanced_species=["a", "b", "e"],
         extra_species=["a", "b", "e"],
@@ -334,7 +334,7 @@ def get_pathway(symbolic):
             "r2": MichaelisMenten(),
             "r3": MichaelisMenten(reversible=False),
         }
-    model = RateEquationModel(
+    model = KineticModel(
         stoichiometry=PATHWAY_STOICHIOMETRY,
         balanced_species=["a", "b"],
         rate_equations=rate_equations,

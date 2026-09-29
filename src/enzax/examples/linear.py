@@ -2,7 +2,7 @@
 
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
 
@@ -19,7 +19,7 @@ rate_equations = {
     ),
     "r3": MichaelisMenten(water_stoichiometry=0.0),
 }
-model = RateEquationModel(
+model = KineticModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,
     compound_to_species={"m1": ["m1e", "m1c"], "m2": ["m2c", "m2e"]},

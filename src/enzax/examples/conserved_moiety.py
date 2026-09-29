@@ -27,7 +27,7 @@ Two features of the model:
 
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
 
@@ -62,7 +62,7 @@ rate_equations = {
     "transD": MichaelisMenten(),
     "regX": MichaelisMenten(),
 }
-model = RateEquationModel(
+model = KineticModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,
     dependent_species=dependent_species,

@@ -50,7 +50,7 @@ from jax import numpy as jnp
 
 from enzax.array_types import ParamValueSpec
 from enzax.binding import ONE, dead_end, site
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import (
     MichaelisMenten,
@@ -238,7 +238,7 @@ rate_equations = {
     "pyr_drain": MichaelisMenten(reversible=False),
     "lac_transport": MichaelisMenten(),
 }
-model = RateEquationModel(
+model = KineticModel(
     stoichiometry=stoichiometry,
     balanced_species=balanced_species,
     compound_to_species=compound_to_species,

@@ -9,7 +9,7 @@ import jax
 import pytest
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel, get_species_to_compound
+from enzax.kinetic_model import KineticModel, get_species_to_compound
 from enzax.parameters import (
     check_parameter_labelling,
     get_parameter_position,
@@ -33,7 +33,7 @@ VALUES = {
 
 
 def get_model(rate_equations, **kwargs):
-    return RateEquationModel(
+    return KineticModel(
         stoichiometry=STOICHIOMETRY,
         balanced_species=SPECIES,
         rate_equations=dict(zip(STOICHIOMETRY, rate_equations)),
@@ -251,7 +251,7 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
 
 def test_separator_is_rejected_in_an_id():
     with pytest.raises(ValueError, match="separate the parts"):
-        RateEquationModel(
+        KineticModel(
             stoichiometry={"r1": {"a|b": -1.0, "c": 1.0}},
             balanced_species=["a|b", "c"],
             rate_equations={"r1": MichaelisMenten()},

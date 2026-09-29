@@ -14,16 +14,16 @@ $ pip install git+https://github.com/dtu-qmcm/enzax.git@main
 
 ## Make your own kinetic model
 
-Enzax's main function is to help you describe the dynamics of an enzyme-catalysed reaction network. The first step towards doing this is to define a "kinetic model", that is, a parameterised function that says how to the network's fluxes, and its states' dynamics, depend on its parameters and the present values of its states. Enzax provides an abstract base class `KineticModel` class for this, as well as handy subclasses like `RateEquationModel`.
+Enzax's main function is to help you describe the dynamics of an enzyme-catalysed reaction network. The first step towards doing this is to define a "kinetic model", that is, a parameterised function that says how to the network's fluxes, and its states' dynamics, depend on its parameters and the present values of its states. Enzax provides an abstract base class `KineticModel` class for this, as well as handy subclasses like `KineticModel`.
 
-Here is a simple example of how to specify a `RateEquationModel` describing a simple linear pathway with two state variables, two boundary species and three reactions.
+Here is a simple example of how to specify a `KineticModel` describing a simple linear pathway with two state variables, two boundary species and three reactions.
 
 ```python
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.rate_equations import MichaelisMenten
 
-my_model = RateEquationModel(
+my_model = KineticModel(
     stoichiometry={
         "r1": {"m1e": -1.0, "m1c": 1.0},
         "r2": {"m1c": -1.0, "m2c": 1.0},
@@ -39,11 +39,11 @@ my_model = RateEquationModel(
 )
 
 ```
-The first statement imports `RateEquationModel`.
+The first statement imports `KineticModel`.
 
 The second statement imports the rate equaiton class `MichaelisMenten`. Instances of this class define rate equations that determine the flux of a reaction.
 
-The third statement initialises a `RateEquationModel` instance. Let's go through the arguments:
+The third statement initialises a `KineticModel` instance. Let's go through the arguments:
 - the `stoichiometry` argument specifies, for every reaction, the stoichiometric coefficient of each of its reactants.
 - the `balanced_species` argument indicates which of the species mentioned in `stoichiometry` (i.e. `"m1e"`, `"m1c"`, `"m2c"` and `"m2e"`) are assumed to have potentially-changing abundances, i.e. are "balanced". The model assumes that other unbalanced species have constant concentrations, helping to determine the system's boundary conditions.
 - `compound_to_species` maps ids of compounds to ids of their species: for example `"m1e"` and `"m1c"` belong to the compound `"m1"`. This is important for correctly representing the thermodynamics of single-compound reactions like `"r1"` and `"r2"`. Note that not every compound has to appear here: an unmentioned species is assumed to be its own singleton compound.

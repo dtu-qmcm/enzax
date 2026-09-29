@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel, validate_kinetic_model
+from enzax.kinetic_model import KineticModel, validate_kinetic_model
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
 from enzax.steady_state import get_steady_state_hybrid
@@ -15,7 +15,7 @@ def get_model(
     stoichiometry, balanced_species, dependent_species, extra_species=()
 ):
     """Make a model with no rate equations, for testing structure only."""
-    return RateEquationModel(
+    return KineticModel(
         stoichiometry=stoichiometry,
         balanced_species=balanced_species,
         dependent_species=dependent_species,
@@ -131,7 +131,7 @@ def test_link_matrix(structure, dependent_species, expected_L0):
 
 def test_every_reaction_needs_a_rate_equation():
     with pytest.raises(ValueError, match="have no rate equation"):
-        RateEquationModel(
+        KineticModel(
             stoichiometry=CYCLE["stoichiometry"],
             balanced_species=["A", "B"],
             rate_equations={"f": MichaelisMenten()},
@@ -140,7 +140,7 @@ def test_every_reaction_needs_a_rate_equation():
 
 def test_a_rate_equation_needs_a_reaction():
     with pytest.raises(ValueError, match="which the stoichiometry does not"):
-        RateEquationModel(
+        KineticModel(
             stoichiometry=CYCLE["stoichiometry"],
             balanced_species=["A", "B"],
             rate_equations={
@@ -158,7 +158,7 @@ def test_independently_built_models_have_equal_tree_structures():
 
 
 def get_two_reaction_model(kcat_label):
-    model = RateEquationModel(
+    model = KineticModel(
         stoichiometry={"r1": {"x": -1.0, "a": 1.0}, "r2": {"a": -1.0}},
         balanced_species=["a"],
         rate_equations={

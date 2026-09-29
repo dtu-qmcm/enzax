@@ -16,7 +16,7 @@ def load_smallbone():
 
     Returns
     --------
-    model: RateEquationModel
+    model: KineticModel
     parameters: PyTree
         Parameters defined in the SBML-file
     init_conc: a JAX array of floats

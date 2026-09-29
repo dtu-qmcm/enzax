@@ -8,7 +8,7 @@ import sympy
 from sbmlmath import SBMLMathMLParser
 
 from enzax.array_types import ParamDict
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import CUSTOM_PREFIX, SEP, pack_parameters
 from enzax.rate_equations import SymbolicRateEquation
 
@@ -235,8 +235,8 @@ def get_stoichiometry(
 def sbml_to_enzax(
     libsbml_model: libsbml.Model,
     parameter_kinds: Mapping[str, str] | None = None,
-) -> tuple[RateEquationModel, ParamDict]:
-    """Turn a libsbml.Model into a RateEquationModel plus parameters.
+) -> tuple[KineticModel, ParamDict]:
+    """Turn a libsbml.Model into a KineticModel plus parameters.
 
     This is experimental. It handles enough of SBML for the models enzax ships
     with, and raises on anything it does not handle rather than guessing.
@@ -270,7 +270,7 @@ def sbml_to_enzax(
             that is not positive cannot be log_custom.
 
     Returns:
-        A tuple of a RateEquationModel and its packed parameters.
+        A tuple of a KineticModel and its packed parameters.
     """
     parameter_kinds = {} if parameter_kinds is None else parameter_kinds
     check_sbml_is_supported(libsbml_model)
@@ -317,7 +317,7 @@ def sbml_to_enzax(
         for s in all_species
         if not s.getBoundaryCondition() and s.getId() in in_a_reaction
     ]
-    model = RateEquationModel(
+    model = KineticModel(
         stoichiometry=stoichiometry,
         balanced_species=balanced_species,
         rate_equations=rate_equations,

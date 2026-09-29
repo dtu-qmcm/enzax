@@ -9,7 +9,7 @@ it, and is there to be an allosteric activator.
 import pytest
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
 
@@ -32,7 +32,7 @@ def get_flux(rate_equation, enzyme_label="r1"):
     The parameter values come from `EXAMPLE_K` and friends, but which of them
     are needed is decided by the rate equation, via the model's labels.
     """
-    model = RateEquationModel(
+    model = KineticModel(
         stoichiometry=EXAMPLE_STOICHIOMETRY,
         balanced_species=EXAMPLE_SPECIES,
         # `c` takes part in no reaction, so only a rate equation that names it

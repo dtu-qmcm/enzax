@@ -25,7 +25,7 @@ from enzax.array_types import (
 )
 
 if TYPE_CHECKING:
-    from enzax.kinetic_model import RateEquationModel
+    from enzax.kinetic_model import KineticModel
 
 # The gas constant in kJ/mol/K, the units formation energies are given in.
 GAS_CONSTANT = 0.008314
@@ -85,7 +85,7 @@ def get_keq(
 
 
 def get_flux_at_equilibrium(
-    model: "RateEquationModel",
+    model: "KineticModel",
     reaction_id: str,
     conc: ConcArray,
     parameters: ParamDict,

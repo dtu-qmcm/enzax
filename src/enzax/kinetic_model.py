@@ -1,6 +1,5 @@
 """Module containing enzax's definition of a kinetic model."""
 
-from abc import abstractmethod
 from collections.abc import Mapping, Sequence
 
 import equinox as eqx
@@ -233,6 +232,14 @@ class KineticModel(eqx.Module):
     `{"m1": ["m1_e", "m1_c"]}`. It is partial: a species that no compound
     claims is a compound of its own, so only compounds with more than one
     species need mentioning.
+
+    `rate_equations` maps each reaction id to the rate equation that gives its
+    flux, and must cover exactly the reactions the stoichiometry names.
+
+    The model owns the parameter labelling built from its rate equations'
+    labels, plus the labels implied by its own structure. Each rate equation's
+    labels are resolved to positions in the flat parameter arrays once, here,
+    and stored in `rate_equation_ix`, in reaction order.
     """
 
     stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
@@ -242,6 +249,9 @@ class KineticModel(eqx.Module):
         static=True, default=None
     )
     extra_species: list[str] = eqx.field(static=True, default_factory=list)
+    rate_equations: Mapping[str, RateEquation] = eqx.field(
+        static=True, default_factory=dict
+    )
     species: list[str] = eqx.field(static=True, init=False)
     reactions: list[str] = eqx.field(static=True, init=False)
     independent_species: list[str] = eqx.field(static=True, init=False)
@@ -255,8 +265,12 @@ class KineticModel(eqx.Module):
     _S: FrozenArray = eqx.field(static=True, init=False)
     _L0: FrozenArray = eqx.field(static=True, init=False)
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
+    rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
 
     def __post_init__(self):
+        check_rate_equations_cover_reactions(
+            list(self.stoichiometry), self.rate_equations
+        )
         self.reactions = list(self.stoichiometry)
         self.species = self._build_species()
         named = dict.fromkeys(self.balanced_species + self.dependent_species)
@@ -316,6 +330,12 @@ class KineticModel(eqx.Module):
             check_id_has_no_separator(compound, "Compound")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
+        self.rate_equation_ix = [
+            self.rate_equations[scope.reaction_id].get_input_indexes(
+                scope, self.parameter_labelling
+            )
+            for scope in self._scopes()
+        ]
 
     @property
     def species_to_dgf_ix(self) -> SpeciesIx:
@@ -367,20 +387,41 @@ class KineticModel(eqx.Module):
         )
 
     def _declared_species(self) -> list[str]:
-        """Get the species the model's flux definition names.
+        """Get the species the rate equations name, in reaction order.
 
-        The base implementation has no flux definition to ask. Subclasses that
-        have one override it.
+        An allosteric effector or a dead-end binder takes part in no reaction,
+        so the stoichiometry does not mention it, but it is a species of the
+        model all the same.
         """
-        return []
+        return [
+            species_id
+            for reaction in self.reactions
+            for species_id in self.rate_equations[reaction].get_species()
+        ]
 
     def _build_parameter_labelling(self) -> ParamLabelling:
-        """Get the model's parameter labelling.
+        """Collect parameter labels from the rate equations and the structure.
 
-        The base implementation has no parameters to label. Subclasses that
-        know where their parameters come from override it.
+        Labels are added in first-seen order: reaction by reaction, and within
+        a reaction group by group. A label that no rate equation refers to
+        cannot end up here, so there are no orphan parameters. A structural
+        parameter with nothing to label is left out, whereas `temperature` is
+        present with no labels at all, because it is one parameter in one
+        piece.
         """
-        return {}
+        from_rate_equations = [
+            self.rate_equations[scope.reaction_id].get_labels_by_parameter(
+                scope
+            )
+            for scope in self._scopes()
+        ]
+        from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
+        if self.unbalanced_species:
+            from_structure["log_conc_unbalanced"] = self.unbalanced_species
+        if self.dependent_species:
+            from_structure["conserved_pools"] = self.dependent_species
+        from_structure["temperature"] = ()
+        return merge_labels(*from_rate_equations, from_structure)
 
     def _scopes(self) -> list[ReactionScope]:
         """Get one static description per reaction, in reaction order."""
@@ -412,10 +453,23 @@ class KineticModel(eqx.Module):
         conc = conc.at[self.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
         return conc
 
-    @abstractmethod
-    def flux(
-        self, conc_balanced: BalancedConcArr, parameters: PyTree
-    ) -> Flux: ...
+    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
+        """Get fluxes from balanced species concentrations.
+
+        :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+
+        :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
+
+        """  # Noqa: E501
+        conc = self.get_conc(
+            conc_balanced, self.get_log_conc_unbalanced(parameters)
+        )
+        flux_list = []
+        for reaction, ix in zip(self.reactions, self.rate_equation_ix):
+            rate_equation = self.rate_equations[reaction]
+            ipt = rate_equation.get_input(parameters, ix)
+            flux_list.append(rate_equation(conc, ipt))
+        return jnp.array(flux_list)
 
     def get_log_conc_unbalanced(self, parameters: PyTree) -> UnbalancedConcArr:
         """Get the log unbalanced concentrations from a PyTree of parameters.
@@ -468,88 +522,3 @@ class KineticModel(eqx.Module):
         self, t: ScalarLike, y: IndConcArr, parameters: PyTree
     ) -> IndRateArr:
         return self.dcdt(y, parameters)
-
-
-class RateEquationModel(KineticModel):
-    """A kinetic model that specifies its fluxes using RateEquation objects.
-
-    `rate_equations` maps each reaction id to the rate equation that gives its
-    flux, and must cover exactly the reactions the stoichiometry names.
-
-    The model owns the parameter labelling built from its rate equations'
-    labels, plus the labels implied by its own structure. Each rate equation's
-    labels are resolved to positions in the flat parameter arrays once, here,
-    and stored in `rate_equation_ix`, in reaction order.
-    """
-
-    rate_equations: Mapping[str, RateEquation] = eqx.field(
-        static=True, default_factory=dict
-    )
-    rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
-
-    def _declared_species(self) -> list[str]:
-        """Get the species the rate equations name, in reaction order.
-
-        An allosteric effector or a dead-end binder takes part in no reaction,
-        so the stoichiometry does not mention it, but it is a species of the
-        model all the same.
-        """
-        return [
-            species_id
-            for reaction in self.reactions
-            for species_id in self.rate_equations[reaction].get_species()
-        ]
-
-    def __post_init__(self):
-        check_rate_equations_cover_reactions(
-            list(self.stoichiometry), self.rate_equations
-        )
-        super().__post_init__()
-        self.rate_equation_ix = [
-            self.rate_equations[scope.reaction_id].get_input_indexes(
-                scope, self.parameter_labelling
-            )
-            for scope in self._scopes()
-        ]
-
-    def _build_parameter_labelling(self) -> ParamLabelling:
-        """Collect parameter labels from the rate equations and the structure.
-
-        Labels are added in first-seen order: reaction by reaction, and within
-        a reaction group by group. A label that no rate equation refers to
-        cannot end up here, so there are no orphan parameters. A structural
-        parameter with nothing to label is left out, whereas `temperature` is
-        present with no labels at all, because it is one parameter in one
-        piece.
-        """
-        from_rate_equations = [
-            self.rate_equations[scope.reaction_id].get_labels_by_parameter(
-                scope
-            )
-            for scope in self._scopes()
-        ]
-        from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
-        if self.unbalanced_species:
-            from_structure["log_conc_unbalanced"] = self.unbalanced_species
-        if self.dependent_species:
-            from_structure["conserved_pools"] = self.dependent_species
-        from_structure["temperature"] = ()
-        return merge_labels(*from_rate_equations, from_structure)
-
-    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
-        """Get fluxes from balanced species concentrations.
-
-        :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
-
-        :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
-
-        """  # Noqa: E501
-        conc = self.get_conc(
-            conc_balanced, self.get_log_conc_unbalanced(parameters)
-        )
-        flux_list = []
-        for reaction, ix in zip(self.reactions, self.rate_equation_ix):
-            rate_equation = self.rate_equations[reaction]
-            ipt = rate_equation.get_input(parameters, ix)
-            flux_list.append(rate_equation(conc, ipt))
-        return jnp.array(flux_list)

@@ -19,7 +19,7 @@ from enzax.binding import (
     dead_end,
     site,
 )
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.rate_equation import ReactionScope, get_species_positions
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten, SaturableRateEquation
@@ -41,7 +41,7 @@ def get_model(species, stoichiometry, reactions, rate_equations):
     concentration vectors here the same length for every rate equation under
     test, including the ones that name no effector at all.
     """
-    return RateEquationModel(
+    return KineticModel(
         stoichiometry=stoichiometry,
         balanced_species=species,
         extra_species=species,
@@ -253,7 +253,7 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
 
 def test_an_expression_can_name_a_species_no_reaction_touches():
     """A species is whatever the model's parts name, expressions included."""
-    model = RateEquationModel(
+    model = KineticModel(
         stoichiometry=FBA_STOICHIOMETRY,
         balanced_species=FBA_SPECIES,
         rate_equations={
