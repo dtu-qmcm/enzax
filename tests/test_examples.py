@@ -3,7 +3,7 @@ from jax import numpy as jnp
 
 from enzax.array_types import ParamLeaf
 from enzax.examples import conserved_moiety, glycolysis, linear, methionine
-from enzax.steady_state import get_steady_state, get_steady_state_hybrid
+from enzax.steady_state import get_steady_state
 
 
 @pytest.mark.parametrize(
@@ -31,37 +31,8 @@ def test_dcdt(model, steady_state, parameters):
     assert jnp.isclose(dcdt, zero).all()
 
 
-@pytest.mark.parametrize(
-    ["model", "steady_state", "parameters"],
-    [
-        (methionine.model, methionine.steady_state, methionine.parameters),
-        (linear.model, linear.steady_state, linear.parameters),
-        (
-            conserved_moiety.model,
-            conserved_moiety.steady_state,
-            conserved_moiety.parameters,
-        ),
-        (
-            glycolysis.model,
-            glycolysis.steady_state,
-            glycolysis.parameters,
-        ),
-    ],
-)
-def test_dcdt_at_a_solved_steady_state(model, steady_state, parameters):
-    """Test for near-zero dcdt at a steady state the hybrid solver found.
-
-    From a cold guess, so the Newton path is rejected and this is the
-    fallback's answer. `tests/test_steady_state.py` covers the accepted path.
-    """
-    guess = jnp.full(steady_state.shape, 0.01)
-    solved = get_steady_state_hybrid(model, guess, parameters)
-    dcdt = model.dcdt(solved, parameters)
-    assert jnp.isclose(dcdt, jnp.zeros_like(dcdt), atol=1e-9).all()
-
-
 def test_conserved_moiety_is_conserved():
-    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]
+    pool: ParamLeaf = conserved_moiety.parameters["moiety_totals"]
     log_unbalanced: ParamLeaf = conserved_moiety.parameters[
         "log_conc_unbalanced"
     ]

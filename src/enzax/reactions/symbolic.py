@@ -1,6 +1,6 @@
-"""Module providing `SymbolicRateEquation` for symbolic expression based flux.
+"""Module providing `SymbolicReaction` for symbolic expression based flux.
 
-`SymbolicRateEquation` takes its flux from a sympy expression, for kinetics
+`SymbolicReaction` takes its flux from a sympy expression, for kinetics
 that none of enzax's other rate laws can express: for example a transporter
 with an unusual mechanism or an SBML kinetic law. The expression is
 turned into a JAX function once, when the model is built.
@@ -23,9 +23,9 @@ from enzax.parameters import (
     KINETIC_PARAMETERS,
     get_parameter_position,
 )
-from enzax.rate_equation import (
-    RateEquation,
-    RateEquationLabels,
+from enzax.reaction import (
+    Reaction,
+    ReactionLabels,
     ReactionScope,
     get_reactants,
     get_species_label,
@@ -200,7 +200,7 @@ def get_parameter_value(
 
 
 @dataclass(frozen=True)
-class SymbolicLabels(RateEquationLabels):
+class SymbolicLabels(ReactionLabels):
     by_symbol: dict[str, tuple[str, str | None]]
 
     def by_parameter(self) -> ParamLabelling:
@@ -266,7 +266,7 @@ def get_reserved_values(
     return values
 
 
-class SymbolicRateEquation(RateEquation):
+class SymbolicReaction(Reaction):
     """A rate equation whose flux comes from a symbolic expression.
 
     Fields:
@@ -285,7 +285,6 @@ class SymbolicRateEquation(RateEquation):
       scale, so a `log_` parameter arrives exponentiated.
     * `water_stoichiometry`: how much water the reaction consumes or produces,
       which only matters to `reversibility` and `keq`.
-    * `water_dgf`: water's formation energy.
 
     The allowed parameter kinds are `log_saturation_constant`, `log_kcat`,
     `log_enzyme`, `log_tc`, `log_drain`, `log_custom`, `custom` and
@@ -314,7 +313,7 @@ class SymbolicRateEquation(RateEquation):
 
     For example, an irreversible Michaelis-Menten law for reaction `r1: a -> b`:
 
-      SymbolicRateEquation(
+      SymbolicReaction(
           expression="kcat * enzyme * (s / km) / (1 + s / km)",
           species={"s": "a"},
           parameters={
@@ -331,8 +330,6 @@ class SymbolicRateEquation(RateEquation):
     parameters: dict[str, str | dict[str, str]] = eqx.field(
         default_factory=dict
     )
-    water_stoichiometry: float = 0.0
-    water_dgf: float = -150.9
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species the expression uses, in declaration order.
@@ -381,7 +378,7 @@ class SymbolicRateEquation(RateEquation):
             ix_dgf=scope.species_to_dgf_ix[ix_reactant],
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
-            water_dgf=self.water_dgf,
+            water_dgf=scope.water_dgf,
         )
 
     def get_input_indexes(

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import jax
+import pytest
 from jax import numpy as jnp
 
 from enzax.examples import methionine
@@ -150,6 +151,7 @@ def get_methionine_gradient():
     return jax.jacrev(posterior_log_density)(true_parameters)
 
 
+@pytest.mark.slow
 def test_lp_grad():
     gradient = get_methionine_gradient()
     expected_gradient = deserialize_jax_dict(methionine_pldf_grad_file)
@@ -176,6 +178,7 @@ def get_methionine_log_density_and_grad(guess):
     return log_density, gradient
 
 
+@pytest.mark.slow
 def test_log_density_is_guess_invariant():
     """Check that the guess does not change the target grapevine samples.
 

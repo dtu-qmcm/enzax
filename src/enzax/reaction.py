@@ -1,11 +1,11 @@
-"""Module containing rate equations for enzyme-catalysed reactions."""
+"""Provides `Reaction`, a class representing enzyme-catalysed reactions."""
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
-from equinox import Module
+from equinox import Module, field
 from jaxtyping import Bool, Int, PyTree, Scalar
 
 from enzax.array_types import (
@@ -20,10 +20,10 @@ from enzax.parameters import INDEX_DTYPE, SEP
 
 @dataclass(frozen=True)
 class ReactionScope:
-    """What a rate equation needs to know about the reaction it belongs to.
+    """What a reaction needs to know about the reaction it belongs to.
 
     Built once per reaction at model construction and handed to
-    `RateEquation.get_labels` and `RateEquation.get_input_indexes`.
+    `Reaction.get_labels` and `Reaction.get_input_indexes`.
 
     Note that `species`, `stoichiometry` and `species_to_dgf_ix` have length
     n_species, where n_species is the model's total number of species.
@@ -33,6 +33,7 @@ class ReactionScope:
     species: tuple[str, ...]
     stoichiometry: StaticSpeciesArr
     species_to_dgf_ix: SpeciesIx
+    water_dgf: float
 
 
 def get_species_positions(
@@ -140,66 +141,78 @@ def check_species_labels_are_distinct(
         seen[label] = species_id
 
 
-class RateEquationLabels(ABC):
-    """The parameter labels a rate equation refers to, grouped by what they are.
+class ReactionLabels(ABC):
+    """The parameter labels a reaction refers to, grouped by what they are.
 
-    A rate equation defines its own subclass, with one field per group of
+    A reaction defines its own subclass, with one field per group of
     labels it declares, and `by_parameter` says which flat array each group is
     gathered from. That is the only place the correspondence is recorded: a
-    rate equation's `get_input` gathers from the same arrays.
+    reaction's `get_input` gathers from the same arrays.
     """  # noqa: E501
 
     @abstractmethod
     def by_parameter(self) -> ParamLabelling:
         """Regroup the labels by the parameter each one lives in.
 
-        :return: a mapping from parameter to the labels this rate equation
+        :return: a mapping from parameter to the labels this reaction
             gathers from it, in gather order.
         """
         ...
 
 
-class RateEquation(Module, ABC):
-    """Abstract definition of a rate equation.
+class Reaction(Module, ABC):
+    """Abstract definition of a reaction.
 
-    A rate equation is an equinox [Module](https://docs.kidger.site/equinox/api/module/module/) with a `__call__` method that takes in a 1 dimensional array of concentrations and an arbitrary PyTree of other inputs, returning a scalar value representing a single flux.
+    A reaction is an equinox
+    [Module](https://docs.kidger.site/equinox/api/module/module/) with a
+    `stoichiometry` field and a `__call__` method. `stoichiometry` maps
+    species ids to stoichiometric coefficients (negative for substrates and
+    positive for products) and is always passed by keyword. The `__call__`
+    method takes in a 1 dimensional array of concentrations and an arbitrary
+    PyTree of other inputs, returning a scalar value representing the
+    reaction's flux.
 
-    A rate equation refers to its parameters by label. Two rate equations that
+    `water_stoichiometry`, also passed by keyword, says how much water the
+    reaction consumes or produces, since water is not a species.
+
+    A reaction refers to its parameters by label. Two reactions that
     use the same label share a value, allowing sharing of parameter values
     between reactions, or for the same parameter value to be used in different
-    roles in the same rate equation. Labels are resolved to positions in the
-    model's flat parameter arrays once, when the model is constructed:
+    roles in the same reaction. Labels are resolved to positions in the model's
+    flat parameter arrays once, when the model is constructed:
 
-    1. `get_labels` reports every label the rate equation refers to, grouped by
-       what the labels are. The model collects these from all its rate
-       equations, via `get_labels_by_parameter`, to work out its parameter
-       labels.
-    2. `get_input_indexes` turns those labels into index arrays, given the finished
-       labels. The result is static and is stored on the model.
+    1. `get_labels` reports every label the reaction refers to, grouped by
+       what the labels are. The model collects these from all its reactions,
+       via `get_labels_by_parameter`, to work out its parameter labels.
+    2. `get_input_indexes` turns those labels into index arrays, given the
+       finished labels. The result is static and is stored on the model.
     3. `get_input` gathers the actual values, once per flux evaluation.
 
-    `get_input_indexes` must build its index bundle itself rather than leaving the model
-    to assemble one, so that each reaction's ragged `n_rxn_*` axes are bound in
-    their own jaxtyping scope.
-    """  # noqa: E501
+    `get_input_indexes` must build its index bundle itself rather than leaving
+    the model to assemble one, so that each reaction's ragged `n_rxn_*` axes
+    are bound in their own jaxtyping scope.
+    """
+
+    stoichiometry: dict[str, float] = field(kw_only=True)
+    water_stoichiometry: float = field(kw_only=True, default=0.0)
 
     def get_species(self) -> tuple[str, ...]:
-        """Get every species this rate equation names, in declaration order.
+        """Get every species this reaction names, in declaration order.
 
         The model builds its species list from its stoichiometry and this, so
         a species that takes part in no reaction -- an allosteric effector,
-        say -- is still one of the model's species. A rate equation that only
+        say -- is still one of the model's species. A reaction that only
         ever mentions its own reactants has nothing to add.
         """
         return ()
 
     @abstractmethod
-    def get_labels(self, scope: ReactionScope) -> RateEquationLabels:
-        """Get the parameter labels this rate equation refers to."""
+    def get_labels(self, scope: ReactionScope) -> ReactionLabels:
+        """Get the parameter labels this reaction refers to."""
         ...
 
     def get_labels_by_parameter(self, scope: ReactionScope) -> ParamLabelling:
-        """Get the labels this rate equation refers to, keyed by parameter."""
+        """Get the labels this reaction refers to, keyed by parameter."""
         return self.get_labels(scope).by_parameter()
 
     @abstractmethod

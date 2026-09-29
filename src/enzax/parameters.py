@@ -82,7 +82,7 @@ KINETIC_PARAMETERS = (
 STRUCTURAL_PARAMETERS = (
     "dgf",
     "log_conc_unbalanced",
-    "conserved_pools",
+    "moiety_totals",
     "temperature",
 )
 

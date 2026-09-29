@@ -82,7 +82,7 @@ def test_the_model_has_the_shape_of_the_sbml_file():
     # in the fitted julia version of the same model.
     assert len(model.balanced_species) == 18
     assert len(model.unbalanced_species) == 13
-    assert len(model.reactions) == 26
+    assert len(model.reaction_ids) == 26
     # Glucose and lactate are the two compounds in two compartments each.
     assert len(model.parameter_labelling["dgf"]) == 29
 
@@ -99,18 +99,18 @@ def test_transketolase_is_one_enzyme_with_two_turnover_numbers():
 
 def test_transport_reactions_have_no_standard_free_energy_change():
     """Glucose is one compound, so `dgf_glc - dgf_glc` cancels by itself."""
-    ix = glycolysis.model.rate_equation_ix
+    ix = glycolysis.model.reaction_ix
     for reaction in ["GLUT4", "lac_transport"]:
-        position = glycolysis.model.reactions.index(reaction)
+        position = glycolysis.model.reaction_ids.index(reaction)
         dgf_positions = ix[position].ix_dgf
         assert len(set(dgf_positions.tolist())) == 1
 
 
-@pytest.mark.parametrize("reaction", [r for r in glycolysis.model.reactions])
+@pytest.mark.parametrize("reaction", [r for r in glycolysis.model.reaction_ids])
 def test_flux_matches_the_sbml_rate_laws(reaction):
     expected = get_expected()
     flux = get_flux_at_initial_conc(expected)
-    position = glycolysis.model.reactions.index(reaction)
+    position = glycolysis.model.reaction_ids.index(reaction)
     from_sbml = expected["flux"][reaction]
     relative_difference = abs(float(flux[position]) - from_sbml) / abs(
         from_sbml
@@ -131,7 +131,7 @@ def test_the_steady_state_carries_glycolytic_flux():
     flux = model.flux(conc, glycolysis.parameters)
     forwards = ["GLUT4", "PGI", "GAPD", "ENO", "LDHA", "G6PDH"]
     for reaction in forwards:
-        assert flux[glycolysis.model.reactions.index(reaction)] > 0.0
+        assert flux[glycolysis.model.reaction_ids.index(reaction)] > 0.0
 
 
 def test_the_stoichiometry_balances_an_independent_implementation():
@@ -152,7 +152,9 @@ def test_the_stoichiometry_balances_an_independent_implementation():
         flux = json.load(f)["lines"]["CHO-S wt"]["flux"]
     with open(state_file, "r") as f:
         balanced = json.load(f)["lines"]["CHO-S wt"]["concentration"]
-    v = jnp.array([flux[reaction] for reaction in glycolysis.model.reactions])
+    v = jnp.array(
+        [flux[reaction] for reaction in glycolysis.model.reaction_ids]
+    )
     dcdt = glycolysis.model.S @ v
     for species, rate in zip(glycolysis.model.species, dcdt):
         if species in balanced:
@@ -168,7 +170,7 @@ def test_the_fitted_model_reproduces_julias_fluxes():
     """
     expected = get_julia("cho_steady_state_fluxes.json")["flux"]
     flux = glycolysis.model.flux(glycolysis.steady_state, glycolysis.parameters)
-    for position, reaction in enumerate(glycolysis.model.reactions):
+    for position, reaction in enumerate(glycolysis.model.reaction_ids):
         if reaction == "GLUT4":
             continue
         assert float(flux[position]) == pytest.approx(

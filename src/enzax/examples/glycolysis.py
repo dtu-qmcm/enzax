@@ -50,73 +50,13 @@ from jax import numpy as jnp
 
 from enzax.array_types import ParamValueSpec
 from enzax.binding import ONE, dead_end, site
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import (
+from enzax.reactions import (
     MichaelisMenten,
-    SaturableRateEquation,
+    SaturableReaction,
 )
 
-stoichiometry = {
-    "GLUT4": {"glc_e": -1.0, "glc_c": 1.0},
-    "HEX1": {"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
-    "HEX2": {"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
-    "PGI": {"g6p_c": -1.0, "f6p_c": 1.0},
-    "PFKM": {"atp_c": -1.0, "f6p_c": -1.0, "adp_c": 1.0, "fdp_c": 1.0},
-    "PFKL": {"f6p_c": -1.0, "atp_c": -1.0, "fdp_c": 1.0, "adp_c": 1.0},
-    "FBA": {"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
-    "TPI": {"dhap_c": -1.0, "g3p_c": 1.0},
-    "GAPD": {
-        "g3p_c": -1.0,
-        "pi_c": -1.0,
-        "nad_c": -1.0,
-        "nadh_c": 1.0,
-        "dpg_c": 1.0,
-    },
-    "PGK": {"dpg_c": -1.0, "adp_c": -1.0, "p3g_c": 1.0, "atp_c": 1.0},
-    "PGM": {"p3g_c": -1.0, "p2g_c": 1.0},
-    "ENO": {"p2g_c": -1.0, "pep_c": 1.0},
-    "PKM1": {"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0},
-    "PKM2": {"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0},
-    "LDHA": {"pyr_c": -1.0, "nadh_c": -1.0, "lac_c": 1.0, "nad_c": 1.0},
-    "G6PDH": {
-        "g6p_c": -1.0,
-        "nadp_c": -1.0,
-        "pgl6_c": 1.0,
-        "nadph_c": 1.0,
-    },
-    "PGL": {"pgl6_c": -1.0, "pgc6_c": 1.0},
-    "GND": {
-        "pgc6_c": -1.0,
-        "nadp_c": -1.0,
-        "nadph_c": 1.0,
-        "ru5p_c": 1.0,
-        "co2_c": 1.0,
-    },
-    "RPI": {"ru5p_c": -1.0, "r5p_c": 1.0},
-    "RPE": {"ru5p_c": -1.0, "xu5p_c": 1.0},
-    "TKT1": {
-        "r5p_c": -1.0,
-        "xu5p_c": -1.0,
-        "s7p_c": 1.0,
-        "g3p_c": 1.0,
-    },
-    "TKT2": {
-        "e4p_c": -1.0,
-        "xu5p_c": -1.0,
-        "f6p_c": 1.0,
-        "g3p_c": 1.0,
-    },
-    "TALA": {
-        "e4p_c": -1.0,
-        "f6p_c": -1.0,
-        "s7p_c": 1.0,
-        "g3p_c": 1.0,
-    },
-    "r5p_drain": {"r5p_c": -1.0},
-    "pyr_drain": {"pyr_c": -1.0},
-    "lac_transport": {"lac_c": -1.0, "lac_e": 1.0},
-}
 # The SBML file's boundary species are the ones enzax leaves unbalanced, plus
 # cytosolic glucose: the file balances it against glucose transport, but the
 # fitted julia version of this model holds it fixed and has no transport flux,
@@ -150,12 +90,24 @@ compound_to_species = {
     "glc": ["glc_e", "glc_c"],
     "lac": ["lac_c", "lac_e"],
 }
-rate_equations = {
-    "GLUT4": MichaelisMenten(),
-    "HEX1": SaturableRateEquation(
+reactions = {
+    "GLUT4": MichaelisMenten(stoichiometry={"glc_e": -1.0, "glc_c": 1.0}),
+    "HEX1": SaturableReaction(
+        stoichiometry={
+            "glc_c": -1.0,
+            "atp_c": -1.0,
+            "g6p_c": 1.0,
+            "adp_c": 1.0,
+        },
         dead_end_states_expression=dead_end("g6p_c", "glc_c"),
     ),
-    "HEX2": SaturableRateEquation(
+    "HEX2": SaturableReaction(
+        stoichiometry={
+            "glc_c": -1.0,
+            "atp_c": -1.0,
+            "g6p_c": 1.0,
+            "adp_c": 1.0,
+        },
         # A constant factor 1/(1 + L0 * alpha**2): both states are the empty
         # one, and `tc` is the whole of `L0 * alpha**2`.
         dead_end_states_expression=(
@@ -164,8 +116,14 @@ rate_equations = {
         tense_state_expression=ONE,
         relaxed_state_expression=ONE,
     ),
-    "PGI": MichaelisMenten(),
-    "PFKM": SaturableRateEquation(
+    "PGI": MichaelisMenten(stoichiometry={"g6p_c": -1.0, "f6p_c": 1.0}),
+    "PFKM": SaturableReaction(
+        stoichiometry={
+            "atp_c": -1.0,
+            "f6p_c": -1.0,
+            "adp_c": 1.0,
+            "fdp_c": 1.0,
+        },
         subunits=4,
         tense_state_expression=(
             # (1 + 0.7/0.2)(1 + 3) = 18, a constant carried over from the SBML
@@ -176,7 +134,13 @@ rate_equations = {
             * site("f26bp_c")
         ),
     ),
-    "PFKL": SaturableRateEquation(
+    "PFKL": SaturableReaction(
+        stoichiometry={
+            "f6p_c": -1.0,
+            "atp_c": -1.0,
+            "fdp_c": 1.0,
+            "adp_c": 1.0,
+        },
         subunits=4,
         tense_state_expression=(
             18.0 * site({"atp_c": "km|PFKL|atp_c"}) * site("lac_c")
@@ -185,21 +149,51 @@ rate_equations = {
             {"f6p_c": "km|PFKL|f6p_c", "fdp_c": "km|PFKL|fdp_c"}
         ),
     ),
-    "FBA": SaturableRateEquation(
+    "FBA": SaturableReaction(
+        stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
         dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
     ),
-    "TPI": MichaelisMenten(),
-    "GAPD": MichaelisMenten(),
-    "PGK": MichaelisMenten(),
-    "PGM": MichaelisMenten(),
-    # water_dgf is the SBML's own value, not enzax's equilibrator default.
+    "TPI": MichaelisMenten(stoichiometry={"dhap_c": -1.0, "g3p_c": 1.0}),
+    "GAPD": MichaelisMenten(
+        stoichiometry={
+            "g3p_c": -1.0,
+            "pi_c": -1.0,
+            "nad_c": -1.0,
+            "nadh_c": 1.0,
+            "dpg_c": 1.0,
+        }
+    ),
+    "PGK": MichaelisMenten(
+        stoichiometry={"dpg_c": -1.0, "adp_c": -1.0, "p3g_c": 1.0, "atp_c": 1.0}
+    ),
+    "PGM": MichaelisMenten(stoichiometry={"p3g_c": -1.0, "p2g_c": 1.0}),
     # The SBML's driving force for ENO uses 3-phosphoglycerate's formation
     # energy where phosphoenolpyruvate's belongs, which this does not follow.
-    "ENO": MichaelisMenten(water_stoichiometry=1.0, water_dgf=-154.4),
-    "PKM1": MichaelisMenten(),
-    "PKM2": MichaelisMenten(),
-    "LDHA": MichaelisMenten(),
-    "G6PDH": SaturableRateEquation(
+    "ENO": MichaelisMenten(
+        stoichiometry={"p2g_c": -1.0, "pep_c": 1.0},
+        water_stoichiometry=1.0,
+    ),
+    "PKM1": MichaelisMenten(
+        stoichiometry={"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0}
+    ),
+    "PKM2": MichaelisMenten(
+        stoichiometry={"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0}
+    ),
+    "LDHA": MichaelisMenten(
+        stoichiometry={
+            "pyr_c": -1.0,
+            "nadh_c": -1.0,
+            "lac_c": 1.0,
+            "nad_c": 1.0,
+        }
+    ),
+    "G6PDH": SaturableReaction(
+        stoichiometry={
+            "g6p_c": -1.0,
+            "nadp_c": -1.0,
+            "pgl6_c": 1.0,
+            "nadph_c": 1.0,
+        },
         subunits=2,
         # 1/(1 + L0 * (1/(1 + nadp/Km_nadp))**2): the tense state is the empty
         # enzyme and the relaxed one is the NADP site, so more NADP relieves
@@ -207,11 +201,28 @@ rate_equations = {
         tense_state_expression=ONE,
         relaxed_state_expression=site({"nadp_c": "km|G6PDH|nadp_c"}),
     ),
-    "PGL": MichaelisMenten(water_stoichiometry=-1.0, water_dgf=-154.4),
-    "GND": MichaelisMenten(),
-    "RPI": MichaelisMenten(),
-    "RPE": MichaelisMenten(),
+    "PGL": MichaelisMenten(
+        stoichiometry={"pgl6_c": -1.0, "pgc6_c": 1.0},
+        water_stoichiometry=-1.0,
+    ),
+    "GND": MichaelisMenten(
+        stoichiometry={
+            "pgc6_c": -1.0,
+            "nadp_c": -1.0,
+            "nadph_c": 1.0,
+            "ru5p_c": 1.0,
+            "co2_c": 1.0,
+        }
+    ),
+    "RPI": MichaelisMenten(stoichiometry={"ru5p_c": -1.0, "r5p_c": 1.0}),
+    "RPE": MichaelisMenten(stoichiometry={"ru5p_c": -1.0, "xu5p_c": 1.0}),
     "TKT1": MichaelisMenten(
+        stoichiometry={
+            "r5p_c": -1.0,
+            "xu5p_c": -1.0,
+            "s7p_c": 1.0,
+            "g3p_c": 1.0,
+        },
         # One transketolase catalyses both TKT reactions, with one set of
         # Michaelis constants and a turnover number each.
         enzyme="TKT",
@@ -223,6 +234,12 @@ rate_equations = {
         },
     ),
     "TKT2": MichaelisMenten(
+        stoichiometry={
+            "e4p_c": -1.0,
+            "xu5p_c": -1.0,
+            "f6p_c": 1.0,
+            "g3p_c": 1.0,
+        },
         enzyme="TKT",
         michaelis_constants={
             "e4p_c": "km|TKT|e4p_c",
@@ -231,18 +248,32 @@ rate_equations = {
             "g3p_c": "km|TKT|g3p_c",
         },
     ),
-    "TALA": MichaelisMenten(),
+    "TALA": MichaelisMenten(
+        stoichiometry={
+            "e4p_c": -1.0,
+            "f6p_c": -1.0,
+            "s7p_c": 1.0,
+            "g3p_c": 1.0,
+        }
+    ),
     # A drain `v * conc / (conc + eps)` is Michaelis Menten kinetics with one
     # substrate, `kcat * enzyme = v` and `km = eps`.
-    "r5p_drain": MichaelisMenten(reversible=False),
-    "pyr_drain": MichaelisMenten(reversible=False),
-    "lac_transport": MichaelisMenten(),
+    "r5p_drain": MichaelisMenten(
+        stoichiometry={"r5p_c": -1.0}, reversible=False
+    ),
+    "pyr_drain": MichaelisMenten(
+        stoichiometry={"pyr_c": -1.0}, reversible=False
+    ),
+    "lac_transport": MichaelisMenten(
+        stoichiometry={"lac_c": -1.0, "lac_e": 1.0}
+    ),
 }
-model = RateEquationModel(
-    stoichiometry=stoichiometry,
+model = KineticModel(
     balanced_species=balanced_species,
     compound_to_species=compound_to_species,
-    rate_equations=rate_equations,
+    reactions=reactions,
+    # water_dgf is the SBML's own value, not enzax's equilibrator default.
+    water_dgf=-154.4,
 )
 # The values are a maximum a posteriori fit of this model to data from the
 # CHO-S wild type line, reconstructed from the fit's own output.

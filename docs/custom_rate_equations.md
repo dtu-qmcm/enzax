@@ -1,13 +1,15 @@
 # How to make your own rate equation
 
-This page assumes you have read [Getting started](getting_started.md), and in particular that you have seen how to define a `RateEquationModel`, how enzax labels model parameters and how two reactions can share a parameter value by using the same label.
+This page assumes you have read [Getting started](getting_started.md), and in particular that you have seen how to define a `KineticModel`, how enzax labels model parameters and how two reactions can share a parameter value by using the same label.
+
+Enzax represents a reaction using a `Reaction` object that contains a stoichiometry as well as a rate equation. This page is about rate equations: stoichiometry works the same for all rate equations.
 
 A rate equation says how one reaction's flux depends on the concentrations of the model's species and on the model's parameters. Enzax gives you four levels of control, in increasing order of effort:
 
 1. **[Use a built-in rate equation](#use-a-built-in-rate-equation)**, configured with its fields. Covers most reactions.
-2. **[Write your own binding polynomial](#write-your-own-binding-polynomial)** with `SaturableRateEquation`, keeping Michaelis-Menten's thermodynamics and turnover. Covers reactions whose enzyme has states that the stoichiometry does not imply, such as abortive complexes.
-3. **[Write the flux as a formula](#write-the-flux-as-a-formula)** with `SymbolicRateEquation`. This is the best choice for rate laws that don't represent saturating enzymes but can easily be written down in an equation, or for reproducing a rate law from literature equations.
-3. **[Write a rate equation from scratch](#write-a-rate-equation-from-scratch)** by subclassing `RateEquation`. Covers everything else.
+2. **[Write your own binding polynomial](#write-your-own-binding-polynomial)** with `SaturableReaction`, keeping Michaelis-Menten's thermodynamics and turnover. Covers reactions whose enzyme has states that the stoichiometry does not imply, such as abortive complexes.
+3. **[Write the flux as a formula](#write-the-flux-as-a-formula)** with `SymbolicReaction`. This is the best choice for rate laws that don't represent saturating enzymes but can easily be written down in an equation, or for reproducing a rate law from literature equations.
+4. **[Write a rate equation from scratch](#write-a-rate-equation-from-scratch)** by subclassing `Reaction`. Covers everything else.
 
 ## Use a built-in rate equation
 
@@ -16,7 +18,7 @@ Enzax provides two "ready-to-go" rate equations:
 - `MichaelisMenten` covers reversible and irreversible reactions, competitive inhibition and allosteric regulation.
 - `Drain` gives a reaction a constant flux, for representing a process at the edge of your model whose kinetics you do not want to describe.
 
-Enzax's other built-in rate equations are more customisable. `SaturableRateEquation` is mostly the same as `MichaelisMenten`, but with the enzyme's states written out by hand, and `SymbolicRateEquation` gets its flux from a formula.
+Enzax's other built-in rate equations are more customisable. `SaturableReaction` is mostly the same as `MichaelisMenten`, but with the enzyme's states written out by hand, and `SymbolicReaction` gets its flux from a formula.
 
 Every enzyme-catalysed rate equation in enzax has the same shape:
 
@@ -33,8 +35,8 @@ v = enzyme * kcat * numerator / Z * reversibility * allosteric factor
 Each of the fields below either adds a state to `Z`, switches one of the optional factors on, or says which parameter value a quantity should use. The examples all extend the linear pathway model from [Getting started](getting_started.md):
 
 ```python
-from enzax.kinetic_model import RateEquationModel
-from enzax.rate_equations import MichaelisMenten
+from enzax.kinetic_model import KineticModel
+from enzax.reactions import MichaelisMenten
 
 stoichiometry = {
     "r1": {"m1e": -1.0, "m1c": 1.0},
@@ -48,13 +50,12 @@ stoichiometry = {
 `MichaelisMenten()` with nothing declared is a reversible reaction whose substrates bind in one random-order complex and whose products bind in another:
 
 ```python
-model = RateEquationModel(
-    stoichiometry=stoichiometry,
+model = KineticModel(
     balanced_species=["m1c", "m2c"],
-    rate_equations={
-        "r1": MichaelisMenten(),
-        "r2": MichaelisMenten(),
-        "r3": MichaelisMenten(),
+    reactions={
+        "r1": MichaelisMenten(stoichiometry=stoichiometry["r1"]),
+        "r2": MichaelisMenten(stoichiometry=stoichiometry["r2"]),
+        "r3": MichaelisMenten(stoichiometry=stoichiometry["r3"]),
     },
 )
 model.parameter_labelling["log_saturation_constant"]
@@ -71,7 +72,7 @@ Every reactant gets a Michaelis constant, because a reversible reaction's produc
 `reversible=False` drops the driving force, which also means the products no longer bind:
 
 ```python
-"r2": MichaelisMenten(reversible=False),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], reversible=False),
 ...
 model.parameter_labelling["log_saturation_constant"]
 ```
@@ -89,7 +90,7 @@ This is also the simplest way to write a saturating drain, since one-substrate i
 A competitive inhibitor binds the free enzyme and stops it working, adding a state to `Z` but no new pathway to product:
 
 ```python
-"r2": MichaelisMenten(competitive_inhibitors=["m2c"]),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], competitive_inhibitors=["m2c"]),
 ...
 model.parameter_labelling["log_saturation_constant"]
 ```
@@ -103,7 +104,7 @@ The new `ki|r2|m2c` is the inhibition constant. Declaring several inhibitors giv
 An inhibitor does not have to be one of the reaction's reactants, or take part in any reaction at all. A species that enzax meets for the first time here joins the model as an unbalanced species, so it gets a constant concentration to declare and a formation energy of its own:
 
 ```python
-"r2": MichaelisMenten(competitive_inhibitors=["atp_c"]),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], competitive_inhibitors=["atp_c"]),
 ...
 model.parameter_labelling
 ```
@@ -129,7 +130,7 @@ where `tc` is the transfer constant, and `tense` and `relaxed` are binding polyn
 To build a rate equation following this model, you can simply declare the effectors:
 
 ```python
-"r1": MichaelisMenten(allosteric_activators=["m2c"], subunits=4),
+"r1": MichaelisMenten(stoichiometry=stoichiometry["r1"], allosteric_activators=["m2c"], subunits=4),
 model.parameter_labelling
 ```
 
@@ -147,7 +148,7 @@ Enzax considers a rate equation allosteric if it declares an allosteric inhibito
 An allosteric constant can be made equal to a catalytic constant by giving it a `km` label:
 
 ```python
-"r1": MichaelisMenten(allosteric_activators={"m1c": "km|r1|m1c"}),
+"r1": MichaelisMenten(stoichiometry=stoichiometry["r1"], allosteric_activators={"m1c": "km|r1|m1c"}),
 ```
 
 This adds no new position to `log_saturation_constant`: `m1c`'s Michaelis constant now does double duty as its allosteric dissociation constant.
@@ -160,6 +161,7 @@ As an example, consider the two transketolase reactions in `enzax.examples.glyco
 
 ```python
 "TKT1": MichaelisMenten(
+    stoichiometry={"r5p_c": -1.0, "xu5p_c": -1.0, "s7p_c": 1.0, "g3p_c": 1.0},
     enzyme="TKT",
     michaelis_constants={
         "r5p_c": "km|TKT|r5p_c",
@@ -169,6 +171,7 @@ As an example, consider the two transketolase reactions in `enzax.examples.glyco
     },
 ),
 "TKT2": MichaelisMenten(
+    stoichiometry={"e4p_c": -1.0, "xu5p_c": -1.0, "f6p_c": 1.0, "g3p_c": 1.0},
     enzyme="TKT",
     michaelis_constants={
         "e4p_c": "km|TKT|e4p_c",
@@ -184,7 +187,7 @@ As an example, consider the two transketolase reactions in `enzax.examples.glyco
 `michaelis_constants` is partial, so mention only the species whose label you want to change. Its keys have to be species that the reaction actually has a Michaelis constant for. In particular, note that mentioning the substrate of an irreversible reaction will cause an error:
 
 ```python
-"r2": MichaelisMenten(reversible=False, michaelis_constants={"m2c": "km|r2|m2c"}),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], reversible=False, michaelis_constants={"m2c": "km|r2|m2c"}),
 ```
 
 ```
@@ -195,12 +198,12 @@ Note also that `competitive_inhibitors`, `allosteric_inhibitors` and `allosteric
 
 ### Water and formation energies
 
-A reversible reaction's driving force comes from the formation energies of its reactants, which the model works out from its compounds. Two fields handle water, which is not considered a species:
+A reversible reaction's driving force comes from the formation energies of its reactants, which the model works out from its compounds. Water is not considered a species, so it is handled separately:
 
-- `water_stoichiometry`: how much water the reaction consumes or produces. It defaults to zero and only matters to a reversible reaction.
-- `water_dgf`: water's formation energy. The default is [equilibrator's](http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001) value. It is a property of the model rather than of the reaction, so give every reaction that touches water the same value.
+- Each reaction's `water_stoichiometry` indicates how much water the reaction consumes or produces. It defaults to zero and only matters for reversible reactions.
+- The model's `water_dgf` specifies water's formation energy, which every reaction in the model shares. The default is [equilibrator's](http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001) value.
 
-You can also modify a reaction's thermodynamics using the field `dgf_species`, a `{species: compound}` mapping that overrides which formation energy a reactant contributes. This is an escape hatch for reproducing a published model that says something the model's compounds do not; ideally your model's reaction thermodynamics should agree with it's reactants' formation energies!
+You can also modify a reaction's thermodynamics using the field `dgf_species`, a `{species: compound}` mapping that overrides which formation energy a reactant contributes. This is an escape hatch for reproducing a published model that says something the model's compounds do not; ideally your model's reaction thermodynamics should agree with its reactants' formation energies!
 
 ### Checking what you declared
 
@@ -216,9 +219,9 @@ By default the binding polynomial follows from the stoichiometry: substrates bin
 
 ## Write your own binding polynomial
 
-`MichaelisMenten` works out the enzyme's binding polynomial, i.e. `Z` in its rate equation, by constructing states based on the reaction's stoichiometry. This assumes that the substrates bind in one random-order complex, the products in another, and that nothing else happens. Real enzymes often do something different: for example, a substrate and a product may be bound at the same time in a complex that cannot react. To represent cases like this you can use enzax's `SaturableRateEquation` class.
+`MichaelisMenten` works out the enzyme's binding polynomial, i.e. `Z` in its rate equation, by constructing states based on the reaction's stoichiometry. This assumes that the substrates bind in one random-order complex, the products in another, and that nothing else happens. Real enzymes often do something different: for example, a substrate and a product may be bound at the same time in a complex that cannot react. To represent cases like this you can use enzax's `SaturableReaction` class.
 
-`SaturableRateEquation` is `MichaelisMenten` with added functionality for customising the enzyme states that determine its binding polynomial. This means that everything from the previous section still applies: the same fields, labels, thermodynamics and turnover number.
+`SaturableReaction` is `MichaelisMenten` with added functionality for customising the enzyme states that determine its binding polynomial. This means that everything from the previous section still applies: the same fields, labels, thermodynamics and turnover number.
 
 The binding polynomial `Z` is a sum over the states an enzyme can be in, with `1 / Z` being the fraction of enzyme that is unbound. See the [`enzax.binding` API page](api/binding.md) for the underlying theory.
 
@@ -236,7 +239,7 @@ dead_end("a") + dead_end("b")  # a/k_a + b/k_b; two alternative dead-end states
 ONE                            # 1; the unbound enzyme on its own
 ```
 
-It is also possible to multiply a state function by a scalar. This scales the whole polynomial, allowing `SaturableRateEquation` to represent a lumped constant that might appear in a literature rate law.
+It is also possible to multiply a state function by a scalar. This scales the whole polynomial, allowing `SaturableReaction` to represent a lumped constant that might appear in a literature rate law.
 
 Alongside the two functions, `enzax.binding` exports the polynomial `ONE`. This is a value rather than a function, representing just the number 1. Three things make it useful:
 
@@ -263,7 +266,7 @@ The default label's prefix depends on which polynomial the species ends up in: `
 
 ### The four polynomials
 
-`SaturableRateEquation` takes everything `MichaelisMenten` takes, plus four optional expressions. Each defaults to `None`, meaning "derive this one", so you only write out the part that differs.
+`SaturableReaction` takes everything `MichaelisMenten` takes, plus four optional expressions. Each defaults to `None`, meaning "derive this one", so you only write out the part that differs.
 
 | Field | What it replaces |
 | --- | --- |
@@ -281,7 +284,8 @@ These are all taken from `enzax.examples.glycolysis`. In the formulas below, `km
 **A dead-end state.** Hexokinase can hold glucose and glucose-6-phosphate at the same time, in a complex that goes nowhere. That state is not implied by the stoichiometry, since glucose is a substrate and glucose-6-phosphate a product, so the derived polynomial has them in separate complexes:
 
 ```python
-"HEX1": SaturableRateEquation(
+"HEX1": SaturableReaction(
+    stoichiometry={"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
     dead_end_states_expression=dead_end("g6p_c", "glc_c"),
 ),
 ```
@@ -297,7 +301,8 @@ Z = -1 + (1 + glc_c/km_glc_c)(1 + atp_c/km_atp_c)
 Aldolase's abortive complex works the same way with three species bound at once, which is a single `dead_end` with three arguments:
 
 ```python
-"FBA": SaturableRateEquation(
+"FBA": SaturableReaction(
+    stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
     dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
 ),
 ```
@@ -305,7 +310,8 @@ Aldolase's abortive complex works the same way with three species bound at once,
 **Allosteric states that are not effector states.** Glucose-6-phosphate dehydrogenase is inhibited unless NADP is bound, which is not "an activator stabilises the relaxed state" but something more specific: the relaxed state *is* the NADP site, and the tense state is the unbound enzyme.
 
 ```python
-"G6PDH": SaturableRateEquation(
+"G6PDH": SaturableReaction(
+    stoichiometry={"g6p_c": -1.0, "nadp_c": -1.0, "pgl6_c": 1.0, "nadph_c": 1.0},
     subunits=2,
     tense_state_expression=ONE,
     relaxed_state_expression=site({"nadp_c": "km|G6PDH|nadp_c"}),
@@ -323,7 +329,8 @@ so more NADP means a larger relaxed state, a smaller ratio and less inhibition. 
 **Two states written out in full.** Phosphofructokinase is the most involved case. Both states are written by hand, both reuse the reaction's own Michaelis constants, and the tense state carries a constant factor of 18:
 
 ```python
-"PFKM": SaturableRateEquation(
+"PFKM": SaturableReaction(
+    stoichiometry={"atp_c": -1.0, "f6p_c": -1.0, "adp_c": 1.0, "fdp_c": 1.0},
     subunits=4,
     tense_state_expression=(
         18.0 * site({"atp_c": "km|PFKM|atp_c"}) * site("lac_c")
@@ -345,7 +352,8 @@ ATP and lactate stabilise the tense state; fructose-2,6-bisphosphate stabilises 
 **A constant factor.** Sometimes the allosteric machinery is being used to express a number rather than a mechanism. HEX2's two states are both the unbound enzyme, which makes the factor `1 / (1 + tc)`. The overall effect is that `tc` no longer represents an allosteric transfer constant but rather behaves as a (from enzax's point of view) arbitrary constant:
 
 ```python
-"HEX2": SaturableRateEquation(
+"HEX2": SaturableReaction(
+    stoichiometry={"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
     dead_end_states_expression=(
         dead_end("g6p_c", "glc_c") + dead_end("gdp_c", "glc_c")
     ),
@@ -358,7 +366,7 @@ This also shows two dead ends added together, and `gdp_c`, a species that reache
 
 ### Rules to respect
 
-It is possible to write incorrect models using `SaturableRateEquation`! To avoid this, make sure to follow these guidelines.
+It is possible to write incorrect models using `SaturableReaction`! To avoid this, make sure to follow these guidelines.
 
 **Only dead ends belong in `dead_end_states_expression`.** What you write there is added to the derived polynomial, which already counts the unbound enzyme once. A `site` contributes a `1` of its own, so putting one here would count the unbound state twice and understate every saturation.
 
@@ -370,14 +378,15 @@ It is possible to write incorrect models using `SaturableRateEquation`! To avoid
 
 ## Write the flux as a formula
 
-If you can write a flux down as a formula, `SymbolicRateEquation` saves you from writing a subclass. You give it the formula, as a string or a sympy expression, and say what each symbol in it is: a species, a parameter, or one of two symbols that enzax calculates for you. Enzax turns the formula into a JAX function when the model is built.
+If you can write a flux down as a formula, `SymbolicReaction` saves you from writing a subclass. You give it the formula, as a string or a sympy expression, and say what each symbol in it is: a species, a parameter, or one of two symbols that enzax calculates for you. Enzax turns the formula into a JAX function when the model is built.
 
 Here is reaction `r2` from the [mass action example](#a-complete-example) below, written as a formula:
 
 ```python
-from enzax.rate_equations import SymbolicRateEquation
+from enzax.reactions import SymbolicReaction
 
-SymbolicRateEquation(
+SymbolicReaction(
+    stoichiometry={"m1c": -2.0, "m2c": 1.0},
     expression="k * m1c**2",
     species={"m1c": "m1c"},
     parameters={"k": "log_kcat"},
@@ -420,7 +429,8 @@ Both come from the formation energies of the reaction's reactants, so a rate law
 For example, here is a reversible mass action version of `r2`:
 
 ```python
-SymbolicRateEquation(
+SymbolicReaction(
+    stoichiometry={"m1c": -2.0, "m2c": 1.0},
     expression="k * (m1c**2 - m2c / keq)",
     species={"m1c": "m1c", "m2c": "m2c"},
     parameters={"k": "log_kcat"},
@@ -443,11 +453,11 @@ Prefer an existing kind when one fits. It keeps the parameter's meaning visible 
 
 ### Models from SBML
 
-`enzax.sbml.sbml_to_rate_equation_model` builds a `RateEquationModel` from an SBML file, with one `SymbolicRateEquation` per reaction. It is experimental: see its docstring for what it supports.
+`enzax.sbml.sbml_to_rate_equation_model` builds a `KineticModel` from an SBML file, with one `SymbolicReaction` per reaction. It is experimental: see its docstring for what it supports.
 
 ## Write a rate equation from scratch
 
-The rate equations above all describe a saturating enzyme, and a binding polynomial can say a great deal about one. But some fluxes are not of that shape at all: elementary mass action kinetics, a transporter obeying a rate law from a particular paper, or an empirical function fitted to data. If the flux is a formula, `SymbolicRateEquation` is usually less work. Write your own `RateEquation` subclass when one class should work for any reaction, as the mass action example below does by reading its reaction orders from the stoichiometry, or when the flux needs logic that a formula can't express.
+The rate equations above all describe a saturating enzyme, and a binding polynomial can say a great deal about one. But some fluxes are not of that shape at all: elementary mass action kinetics, a transporter obeying a rate law from a particular paper, or an empirical function fitted to data. If the flux is a formula, `SymbolicReaction` is usually less work. Write your own `Reaction` subclass when one class should work for any reaction, as the mass action example below does by reading its reaction orders from the stoichiometry, or when the flux needs logic that a formula can't express.
 
 Be warned that this is more work than writing one function. A rate equation refers to its parameters by label, and labels become positions in the model's flat parameter arrays once, when the model is built, so that evaluating a flux is only array indexing and arithmetic. Getting a parameter value into a flux therefore takes three stages rather than one, and a subclass has to implement each of them.
 
@@ -456,12 +466,14 @@ Be warned that this is more work than writing one function. A rate equation refe
 | Method | When it runs | What it returns |
 | --- | --- | --- |
 | `get_species` | model construction | extra species ids the reaction names but the stoichiometry does not (optional; defaults to `()`) |
-| `get_labels` | model construction | a `RateEquationLabels` subclass listing every label the equation refers to |
+| `get_labels` | model construction | a `ReactionLabels` subclass listing every label the equation refers to |
 | `get_input_indexes` | model construction | a PyTree of positions: where in each parameter's array this reaction's values live |
 | `get_input` | once per flux evaluation | the parameter values, gathered from those positions |
 | `__call__` | once per flux evaluation | the flux, as a scalar |
 
-The `RateEquationLabels` subclass has one field per group of labels the rate equation declares, and its `by_parameter` method says which flat array each group is gathered from. That method is the only record of the correspondence, so all three of `by_parameter`, `get_input_indexes` and `get_input` have to name the same arrays.
+A subclass does not declare a stoichiometry field: it inherits one from `Reaction`, which the model uses to build its stoichiometric matrix. Inside the methods, the reaction's stoichiometry is available through the `ReactionScope`, described below.
+
+The `ReactionLabels` subclass has one field per group of labels the rate equation declares, and its `by_parameter` method says which flat array each group is gathered from. That method is the only record of the correspondence, so all three of `by_parameter`, `get_input_indexes` and `get_input` have to name the same arrays.
 
 Two of these mistakes fail differently, which is worth knowing before you make one. If `get_input_indexes` looks for a position in an array that `by_parameter` did not name, the label is not there and the model raises as it is built:
 
@@ -482,7 +494,7 @@ Note that `get_input_indexes` returns a bundle of its own, rather than positions
 - `stoichiometry`, this reaction's coefficient for every one of those species, mostly zeroes.
 - `species_to_dgf_ix`, where each species' formation energy lives.
 
-Rather than reading these directly, use the helpers in `enzax.rate_equation`: `get_substrates`, `get_products` and `get_reactants` return species ids in the model's order, and `get_species_positions` turns species ids into positions, raising for a species the model does not have.
+Rather than reading these directly, use the helpers in `enzax.reaction`: `get_substrates`, `get_products` and `get_reactants` return species ids in the model's order, and `get_species_positions` turns species ids into positions, raising for a species the model does not have.
 
 Positions matter because `__call__` is handed the concentrations of *all* the model's species, in the model's order, not just the ones this reaction uses. A rate equation picks out what it needs by indexing with the positions that `get_input_indexes` worked out.
 
@@ -506,9 +518,9 @@ from enzax.array_types import (
     SubstrateIx,
 )
 from enzax.parameters import get_parameter_position
-from enzax.rate_equation import (
-    RateEquation,
-    RateEquationLabels,
+from enzax.reaction import (
+    Reaction,
+    ReactionLabels,
     ReactionScope,
     get_reaction_label,
     get_species_positions,
@@ -517,7 +529,7 @@ from enzax.rate_equation import (
 
 
 @dataclass(frozen=True)
-class MassActionLabels(RateEquationLabels):
+class MassActionLabels(ReactionLabels):
     """The labels a mass action reaction refers to."""
 
     rate_constant: str
@@ -540,7 +552,7 @@ class MassActionInput(eqx.Module):
     order: StaticSubstrateArr
 
 
-class MassAction(RateEquation):
+class MassAction(Reaction):
     """Irreversible mass action kinetics.
 
     Fields:
@@ -596,18 +608,13 @@ A few things to notice. The rate constant is stored in `log_kcat`, since a turno
 Using it in a model is no different from using a built-in rate equation. Here reaction `r2` consumes two molecules of `m1c`:
 
 ```python
-model = RateEquationModel(
-    stoichiometry={
-        "r1": {"m1e": -1.0, "m1c": 1.0},
-        "r2": {"m1c": -2.0, "m2c": 1.0},
-        "r3": {"m2c": -1.0, "m2e": 1.0},
+model = KineticModel(
+    reactions={
+        "r1": MichaelisMenten(stoichiometry={"m1e": -1.0, "m1c": 1.0}),
+        "r2": MassAction(stoichiometry={"m1c": -2.0, "m2c": 1.0}),
+        "r3": MichaelisMenten(stoichiometry={"m2c": -1.0, "m2e": 1.0}),
     },
     balanced_species=["m1c", "m2c"],
-    rate_equations={
-        "r1": MichaelisMenten(),
-        "r2": MassAction(),
-        "r3": MichaelisMenten(),
-    },
 )
 model.parameter_labelling
 ```
@@ -633,11 +640,11 @@ model.flux(jnp.array([0.4, 0.2]), parameters)
 Array([0.05263158, 0.4       , 0.07692308], dtype=float64)
 ```
 
-`Drain` in `enzax.rate_equations.drain` is the shortest complete rate equation in enzax, and worth reading as a second example: it declares one label, resolves one position and ignores the concentrations entirely.
+`Drain` in `enzax.reactions.drain` is the shortest complete rate equation in enzax, and worth reading as a second example: it declares one label, resolves one position and ignores the concentrations entirely.
 
 ### What a rate equation may not do
 
-Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, conserved_pools and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
+Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, moiety_totals and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
 
 ```
 ValueError: Unknown parameters: ['log_my_thing'].
@@ -655,7 +662,7 @@ Until then, the way to express a new quantity is to reuse whichever existing par
 
 Whichever of the four routes you took, it is worth checking that the rate equation you declared is the one you meant:
 
-- Is the rate equation registered in the model's `rate_equations` dictionary, under the right reaction id?
+- Is the reaction in the model's `reactions` dictionary, with the right id?
 - Does `model.parameter_labelling` contain the labels you expected, and no others? A label you did not expect usually means a species id typo or a sharing declaration that did not take effect; a missing one means a field that is not doing anything.
 - Does `model.species` contain only species you meant to model? Naming a species anywhere is enough to add it to the model.
 - Does `model.flux` at a known concentration vector agree with the formula worked out by hand? For a binding polynomial, `1 / Z` should be a fraction: if it is bigger than 1 or negative, the polynomial is not counting the unbound enzyme once.

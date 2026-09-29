@@ -4,21 +4,24 @@ import pytest
 import sympy
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equation import ReactionScope
-from enzax.rate_equations import Drain, MichaelisMenten, SymbolicRateEquation
-from enzax.rate_equations.symbolic import parse_expression
+from enzax.reaction import ReactionScope
+from enzax.reactions import Drain, MichaelisMenten, SymbolicReaction
+from enzax.reactions.symbolic import parse_expression
 from enzax.steady_state import get_steady_state_hybrid
 from enzax.thermodynamics import get_flux_at_equilibrium
 
 jax.config.update("jax_enable_x64", True)
+
+R1 = {"a": -1.0, "b": 1.0}
 
 SCOPE = ReactionScope(
     reaction_id="r1",
     species=("a", "b", "e"),
     stoichiometry=np.array([-1.0, 1.0, 0.0]),
     species_to_dgf_ix=np.array([0, 1, 2]),
+    water_dgf=-150.9,
 )
 
 MM_SPECIES = {"s": "a"}
@@ -30,8 +33,11 @@ MM_PARAMETERS = {
 
 
 def get_labels(expression, species=MM_SPECIES, parameters=MM_PARAMETERS):
-    rate_equation = SymbolicRateEquation(
-        expression=expression, species=species, parameters=parameters
+    rate_equation = SymbolicReaction(
+        stoichiometry=R1,
+        expression=expression,
+        species=species,
+        parameters=parameters,
     )
     return rate_equation.get_labels(SCOPE)
 
@@ -74,8 +80,8 @@ def test_explicit_labels_can_be_shared():
 
 
 def test_get_species_reports_every_declared_species():
-    rate_equation = SymbolicRateEquation(
-        expression="s * e", species={"s": "a", "e": "e"}
+    rate_equation = SymbolicReaction(
+        stoichiometry=R1, expression="s * e", species={"s": "a", "e": "e"}
     )
     assert rate_equation.get_species() == ("a", "e")
 
@@ -139,11 +145,10 @@ VALUES = {
 
 
 def get_model_and_parameters(rate_equation):
-    model = RateEquationModel(
-        stoichiometry={"r1": {"a": -1.0, "b": 1.0}},
-        balanced_species=["a", "b", "e"],
-        extra_species=["a", "b", "e"],
-        rate_equations={"r1": rate_equation},
+    named = [*rate_equation.stoichiometry, *rate_equation.get_species()]
+    model = KineticModel(
+        balanced_species=[s for s in ["a", "b", "e"] if s in named],
+        reactions={"r1": rate_equation},
     )
     labelling = model.parameter_labelling
     spec = {
@@ -157,11 +162,15 @@ def get_model_and_parameters(rate_equation):
     return model, pack_parameters(labelling, spec)
 
 
+def get_conc(model):
+    return CONC[jnp.array([["a", "b", "e"].index(s) for s in model.species])]
+
+
 def get_flux_and_gradient(rate_equation):
     model, parameters = get_model_and_parameters(rate_equation)
 
     def flux(parameters):
-        return model.flux(CONC, parameters)[0]
+        return model.flux(get_conc(model), parameters)[0]
 
     return flux(parameters), jax.jit(jax.grad(flux))(parameters)
 
@@ -175,23 +184,27 @@ def assert_same_flux_and_gradient(symbolic, built_in):
 
 
 def test_agrees_with_irreversible_michaelis_menten():
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
+        stoichiometry=R1,
         expression="kcat * enzyme * (s / km) / (1 + s / km)",
         species=MM_SPECIES,
         parameters=MM_PARAMETERS,
     )
-    assert_same_flux_and_gradient(symbolic, MichaelisMenten(reversible=False))
+    assert_same_flux_and_gradient(
+        symbolic, MichaelisMenten(stoichiometry=R1, reversible=False)
+    )
 
 
 def test_agrees_with_drain():
-    symbolic = SymbolicRateEquation(
-        expression="-v", parameters={"v": "log_drain"}
+    symbolic = SymbolicReaction(
+        stoichiometry=R1, expression="v", parameters={"v": "log_drain"}
     )
-    assert_same_flux_and_gradient(symbolic, Drain(sign=-1.0))
+    assert_same_flux_and_gradient(symbolic, Drain(stoichiometry=R1))
 
 
 def test_effectors_custom_parameters_and_temperature():
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
+        stoichiometry=R1,
         expression="kcat * s * (1 + r * e) + c * temperature / 310",
         species={"s": "a", "e": "e"},
         parameters={
@@ -216,18 +229,23 @@ REVERSIBLE_MM_EXPRESSION = (
 
 @pytest.mark.parametrize("water_stoichiometry", [0.0, 1.0])
 def test_agrees_with_reversible_michaelis_menten(water_stoichiometry):
-    symbolic = SymbolicRateEquation(
+    symbolic = SymbolicReaction(
+        stoichiometry=R1,
         expression=REVERSIBLE_MM_EXPRESSION,
         species={"s": "a", "p": "b"},
         parameters=REVERSIBLE_MM_PARAMETERS,
         water_stoichiometry=water_stoichiometry,
     )
-    built_in = MichaelisMenten(water_stoichiometry=water_stoichiometry)
+    built_in = MichaelisMenten(
+        stoichiometry=R1, water_stoichiometry=water_stoichiometry
+    )
     assert_same_flux_and_gradient(symbolic, built_in)
 
 
 def test_keq_comes_from_formation_energies():
-    flux, _ = get_flux_and_gradient(SymbolicRateEquation(expression="keq"))
+    flux, _ = get_flux_and_gradient(
+        SymbolicReaction(stoichiometry=R1, expression="keq")
+    )
     dgr_std = VALUES["dgf"]["b"] - VALUES["dgf"]["a"]
     expected = jnp.exp(-dgr_std / (VALUES["temperature"] * 0.008314))
     assert jnp.isclose(flux, expected, rtol=1e-12)
@@ -235,19 +253,21 @@ def test_keq_comes_from_formation_energies():
 
 def get_flux_at_equilibrium_for(rate_equation):
     model, parameters = get_model_and_parameters(rate_equation)
-    return get_flux_at_equilibrium(model, "r1", CONC, parameters)
+    return get_flux_at_equilibrium(model, "r1", get_conc(model), parameters)
 
 
 @pytest.mark.parametrize(
     "rate_equation",
     [
-        MichaelisMenten(),
-        SymbolicRateEquation(
+        MichaelisMenten(stoichiometry=R1),
+        SymbolicReaction(
+            stoichiometry=R1,
             expression=REVERSIBLE_MM_EXPRESSION,
             species={"s": "a", "p": "b"},
             parameters=REVERSIBLE_MM_PARAMETERS,
         ),
-        SymbolicRateEquation(
+        SymbolicReaction(
+            stoichiometry=R1,
             expression="k * (s - p / keq)",
             species={"s": "a", "p": "b"},
             parameters={"k": "log_kcat"},
@@ -261,8 +281,9 @@ def test_consistent_laws_vanish_at_equilibrium(rate_equation):
 @pytest.mark.parametrize(
     "rate_equation",
     [
-        MichaelisMenten(reversible=False),
-        SymbolicRateEquation(
+        MichaelisMenten(stoichiometry=R1, reversible=False),
+        SymbolicReaction(
+            stoichiometry=R1,
             expression="k * (s - p / 2)",
             species={"s": "a", "p": "b"},
             parameters={"k": "log_kcat"},
@@ -316,28 +337,32 @@ def get_symbolic_michaelis_menten(reaction, substrate, product=None):
             "kcat * enzyme * (s / km_s) / (1 + s / km_s + p / km_p)"
             " * reversibility"
         )
-    return SymbolicRateEquation(
-        expression=expression, species=species, parameters=parameters
+    return SymbolicReaction(
+        stoichiometry=PATHWAY_STOICHIOMETRY[reaction],
+        expression=expression,
+        species=species,
+        parameters=parameters,
     )
 
 
 def get_pathway(symbolic):
     if symbolic:
-        rate_equations = {
+        reactions = {
             "r1": get_symbolic_michaelis_menten("r1", "a_x", "a"),
             "r2": get_symbolic_michaelis_menten("r2", "a", "b"),
             "r3": get_symbolic_michaelis_menten("r3", "b"),
         }
     else:
-        rate_equations = {
-            "r1": MichaelisMenten(),
-            "r2": MichaelisMenten(),
-            "r3": MichaelisMenten(reversible=False),
+        reactions = {
+            "r1": MichaelisMenten(stoichiometry=PATHWAY_STOICHIOMETRY["r1"]),
+            "r2": MichaelisMenten(stoichiometry=PATHWAY_STOICHIOMETRY["r2"]),
+            "r3": MichaelisMenten(
+                stoichiometry=PATHWAY_STOICHIOMETRY["r3"], reversible=False
+            ),
         }
-    model = RateEquationModel(
-        stoichiometry=PATHWAY_STOICHIOMETRY,
+    model = KineticModel(
         balanced_species=["a", "b"],
-        rate_equations=rate_equations,
+        reactions=reactions,
     )
     return model, pack_parameters(model.parameter_labelling, PATHWAY_VALUES)
 

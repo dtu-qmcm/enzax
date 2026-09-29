@@ -7,23 +7,10 @@ https://doi.org/10.1021/acssynbio.3c00662
 
 from jax import numpy as jnp
 
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rate_equations import Drain, MichaelisMenten
+from enzax.reactions import Drain, MichaelisMenten
 
-stoichiometry = {
-    "the_drain": {"met-L": 1.0},
-    "MAT1": {"met-L": -1.0, "atp": -1.0, "pi": 1.0, "ppi": 1.0, "amet": 1.0},
-    "MAT3": {"met-L": -1.0, "atp": -1.0, "pi": 1.0, "ppi": 1.0, "amet": 1.0},
-    "METH-Gen": {"amet": -1.0, "ahcys": 1.0},
-    "GNMT1": {"amet": -1.0, "ahcys": 1.0, "gly": -1.0, "sarcs": 1.0},
-    "AHC1": {"ahcys": -1.0, "hcys-L": 1.0, "adn": 1.0},
-    "MS1": {"hcys-L": -1.0, "thf": 1.0, "met-L": 1.0, "5mthf": -1.0},
-    "BHMT1": {"hcys-L": -1.0, "glyb": -1.0, "met-L": 1.0, "dmgly": 1.0},
-    "CBS1": {"hcys-L": -1.0, "ser-L": -1.0, "cyst-L": 1.0},
-    "MTHFR1": {"5mthf": 1.0, "mlthf": -1.0, "nadp": 1.0, "nadph": -1.0},
-    "PROT1": {"met-L": -1.0},
-}
 balanced_species = [
     "met-L",
     "amet",
@@ -31,25 +18,45 @@ balanced_species = [
     "hcys-L",
     "5mthf",
 ]
-model = RateEquationModel(
-    stoichiometry=stoichiometry,
+model = KineticModel(
     balanced_species=balanced_species,
-    rate_equations={
-        "the_drain": Drain(sign=1.0),  # met-L source
+    reactions={
+        "the_drain": Drain(stoichiometry={"met-L": 1.0}),  # met-L source
         "MAT1": MichaelisMenten(
+            stoichiometry={
+                "met-L": -1.0,
+                "atp": -1.0,
+                "pi": 1.0,
+                "ppi": 1.0,
+                "amet": 1.0,
+            },
             reversible=False,
             competitive_inhibitors=["amet"],
         ),
         "MAT3": MichaelisMenten(
+            stoichiometry={
+                "met-L": -1.0,
+                "atp": -1.0,
+                "pi": 1.0,
+                "ppi": 1.0,
+                "amet": 1.0,
+            },
             reversible=False,
             subunits=2,
             allosteric_activators=["met-L", "amet"],
         ),
         "METH-Gen": MichaelisMenten(
+            stoichiometry={"amet": -1.0, "ahcys": 1.0},
             reversible=False,
             competitive_inhibitors=["ahcys"],
         ),
         "GNMT1": MichaelisMenten(
+            stoichiometry={
+                "amet": -1.0,
+                "ahcys": 1.0,
+                "gly": -1.0,
+                "sarcs": 1.0,
+            },
             reversible=False,
             subunits=4,
             competitive_inhibitors=["ahcys"],
@@ -57,22 +64,48 @@ model = RateEquationModel(
             allosteric_activators=["amet"],
         ),
         "AHC1": MichaelisMenten(
+            stoichiometry={"ahcys": -1.0, "hcys-L": 1.0, "adn": 1.0},
             water_stoichiometry=-1.0,
         ),
-        "MS1": MichaelisMenten(reversible=False),
-        "BHMT1": MichaelisMenten(reversible=False),
+        "MS1": MichaelisMenten(
+            stoichiometry={
+                "hcys-L": -1.0,
+                "thf": 1.0,
+                "met-L": 1.0,
+                "5mthf": -1.0,
+            },
+            reversible=False,
+        ),
+        "BHMT1": MichaelisMenten(
+            stoichiometry={
+                "hcys-L": -1.0,
+                "glyb": -1.0,
+                "met-L": 1.0,
+                "dmgly": 1.0,
+            },
+            reversible=False,
+        ),
         "CBS1": MichaelisMenten(
+            stoichiometry={"hcys-L": -1.0, "ser-L": -1.0, "cyst-L": 1.0},
             reversible=False,
             subunits=2,
             allosteric_inhibitors=["amet"],
         ),
         "MTHFR1": MichaelisMenten(
+            stoichiometry={
+                "5mthf": 1.0,
+                "mlthf": -1.0,
+                "nadp": 1.0,
+                "nadph": -1.0,
+            },
             reversible=False,
             subunits=2,
             allosteric_inhibitors=["amet"],
             allosteric_activators=["ahcys"],
         ),
-        "PROT1": MichaelisMenten(reversible=False),
+        "PROT1": MichaelisMenten(
+            stoichiometry={"met-L": -1.0}, reversible=False
+        ),
     },
 )
 parameters = pack_parameters(

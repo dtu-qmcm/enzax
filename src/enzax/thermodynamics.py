@@ -25,7 +25,7 @@ from enzax.array_types import (
 )
 
 if TYPE_CHECKING:
-    from enzax.kinetic_model import RateEquationModel
+    from enzax.kinetic_model import KineticModel
 
 # The gas constant in kJ/mol/K, the units formation energies are given in.
 GAS_CONSTANT = 0.008314
@@ -85,7 +85,7 @@ def get_keq(
 
 
 def get_flux_at_equilibrium(
-    model: "RateEquationModel",
+    model: "KineticModel",
     reaction_id: str,
     conc: ConcArray,
     parameters: ParamDict,
@@ -95,16 +95,16 @@ def get_flux_at_equilibrium(
     The point is `conc` with the reaction's first product changed so that the
     mass action ratio equals the equilibrium constant. A thermodynamically
     consistent rate law gives zero flux there, so this checks one that is not
-    consistent by construction, such as a `SymbolicRateEquation` with a
+    consistent by construction, such as a `SymbolicReaction` with a
     hand-written equilibrium constant. Irreversible rate laws fail the check,
     as they should.
 
     `conc` holds the concentrations of all the model's species, in the model's
     order, as a rate equation receives them.
     """
-    position = model.reactions.index(reaction_id)
-    rate_equation = model.rate_equations[reaction_id]
-    ix = model.rate_equation_ix[position]
+    position = model.reaction_ids.index(reaction_id)
+    rate_equation = model.reactions[reaction_id]
+    ix = model.reaction_ix[position]
     stoichiometry = model.S[:, position]
     products = np.flatnonzero(stoichiometry > 0.0)
     if len(products) == 0:
@@ -114,15 +114,13 @@ def get_flux_at_equilibrium(
         )
         raise ValueError(msg)
     ix_product = products[0]
-    water_stoichiometry = getattr(rate_equation, "water_stoichiometry", 0.0)
-    water_dgf = getattr(rate_equation, "water_dgf", -150.9)
     ix_reactant = np.flatnonzero(stoichiometry != 0.0)
     keq = get_keq(
         parameters["dgf"][model.species_to_dgf_ix[ix_reactant]],
         parameters["temperature"],
         stoichiometry[ix_reactant],
-        water_stoichiometry,
-        water_dgf,
+        rate_equation.water_stoichiometry,
+        model.water_dgf,
     )
     log_q_without_product = sum(
         stoichiometry[i] * jnp.log(conc[i])

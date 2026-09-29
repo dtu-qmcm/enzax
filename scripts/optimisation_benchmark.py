@@ -881,7 +881,7 @@ def main() -> None:
     n_free = count_free_parameters(problem.split)
     print(
         f"glycolysis: {len(problem.model.independent_species)} balanced "
-        f"species, {len(problem.model.reactions)} reactions, {n_free} free "
+        f"species, {len(problem.model.reaction_ids)} reactions, {n_free} free "
         "parameters"
     )
     print(f"warming up: {N_WARMUP} adaptation draws, {N_SAMPLE} samples")

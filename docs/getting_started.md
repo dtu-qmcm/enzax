@@ -14,40 +14,44 @@ $ pip install git+https://github.com/dtu-qmcm/enzax.git@main
 
 ## Make your own kinetic model
 
-Enzax's main function is to help you describe the dynamics of an enzyme-catalysed reaction network. The first step towards doing this is to define a "kinetic model", that is, a parameterised function that says how to the network's fluxes, and its states' dynamics, depend on its parameters and the present values of its states. Enzax provides an abstract base class `KineticModel` class for this, as well as handy subclasses like `RateEquationModel`.
+Enzax's main function is to help you describe the dynamics of an enzyme-catalysed reaction network. The first step towards doing this is to define a "kinetic model", that is, a parameterised function that says how to the network's fluxes, and its states' dynamics, depend on its parameters and the present values of its states. Enzax provides an abstract base class `KineticModel` class for this, as well as handy subclasses like `KineticModel`.
 
-Here is a simple example of how to specify a `RateEquationModel` describing a simple linear pathway with two state variables, two boundary species and three reactions.
+Here is a simple example of how to specify a `KineticModel` describing a simple linear pathway with two state variables, two boundary species and three reactions.
 
 ```python
 
-from enzax.kinetic_model import RateEquationModel
-from enzax.rate_equations import MichaelisMenten
+from enzax.kinetic_model import KineticModel
+from enzax.reactions import MichaelisMenten
 
-my_model = RateEquationModel(
-    stoichiometry={
-        "r1": {"m1e": -1.0, "m1c": 1.0},
-        "r2": {"m1c": -1.0, "m2c": 1.0},
-        "r3": {"m2c": -1.0, "m2e": 1.0},
+my_model = KineticModel(
+    reactions={
+        "r1": MichaelisMenten(
+            stoichiometry={"m1e": -1.0, "m1c": 1.0},
+            allosteric_activators=["m2c"],
+        ),
+        "r2": MichaelisMenten(
+            stoichiometry={"m1c": -1.0, "m2c": 1.0},
+            allosteric_inhibitors=["m1c"],
+            competitive_inhibitors=["m1c"],
+        ),
+        "r3": MichaelisMenten(
+            stoichiometry={"m2c": -1.0, "m2e": 1.0},
+            water_stoichiometry=0.0,
+        ),
     },
     balanced_species=["m1c", "m2c"],
     compound_to_species={"m1": ["m1e", "m1c"], "m2": ["m2c", "m2e"]},
-    rate_equations = {
-        "r1": MichaelisMenten(allosteric_activators=["m2c"]),
-        "r2": MichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
-        "r3": MichaelisMenten(water_stoichiometry=0.0),
-    },
 )
 
 ```
-The first statement imports `RateEquationModel`.
+The first statement imports `KineticModel`.
 
-The second statement imports the rate equaiton class `MichaelisMenten`. Instances of this class define rate equations that determine the flux of a reaction.
+The second statement imports the reaction class `MichaelisMenten`, which can hold a reaction's stoichiometry and calculate its flux according to Michaelis-Menten kinetics.
 
-The third statement initialises a `RateEquationModel` instance. Let's go through the arguments:
-- the `stoichiometry` argument specifies, for every reaction, the stoichiometric coefficient of each of its reactants.
-- the `balanced_species` argument indicates which of the species mentioned in `stoichiometry` (i.e. `"m1e"`, `"m1c"`, `"m2c"` and `"m2e"`) are assumed to have potentially-changing abundances, i.e. are "balanced". The model assumes that other unbalanced species have constant concentrations, helping to determine the system's boundary conditions.
+The third statement initialises a `KineticModel` instance. Let's go through the arguments:
+- the `reactions` argument maps reaction ids to reactions. Each reaction's stoichiometry gives the stoichiometric coefficient of each of its reactants, and its other fields configure its rate equation. For example, reaction `"r2"` obeys allosteric Michaelis-Menten kinetics, allosterically and competitively inhibited by `"m1c"`.
+- the `balanced_species` argument indicates which of the species the reactions mention (i.e. `"m1e"`, `"m1c"`, `"m2c"` and `"m2e"`) are assumed to have potentially-changing abundances, i.e. are "balanced". The model assumes that other unbalanced species have constant concentrations, helping to determine the system's boundary conditions.
 - `compound_to_species` maps ids of compounds to ids of their species: for example `"m1e"` and `"m1c"` belong to the compound `"m1"`. This is important for correctly representing the thermodynamics of single-compound reactions like `"r1"` and `"r2"`. Note that not every compound has to appear here: an unmentioned species is assumed to be its own singleton compound.
-- `rate_equations` maps reaction ids to rate equation instances. For example, reaction `"r2"` obeys allosteric Michaelis-Menten kinetics, allosterically and competitively inhibited by `"m1c"`.
 
 ### Parameters and their labels
 
@@ -191,15 +195,21 @@ jacobian["log_kcat"][:,  position]
 Two rate equations that use the same label use the same value --- one position in one array, one thing to infer. Say `r1` and `r3` were catalysed by the same enzyme and had the same Michaelis constant for their substrates:
 
 ```python
-shared_rate_equations = {
+shared_reactions = {
     "r1": MichaelisMenten(
+        stoichiometry={"m1e": -1.0, "m1c": 1.0},
         allosteric_activators=["m2c"],
         subunits=1,
         enzyme="E1",
         michaelis_constants={"m1e": "km|E1|substrate"},
     ),
-    "r2": MichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
+    "r2": MichaelisMenten(
+        stoichiometry={"m1c": -1.0, "m2c": 1.0},
+        allosteric_inhibitors=["m1c"],
+        competitive_inhibitors=["m1c"],
+    ),
     "r3": MichaelisMenten(
+        stoichiometry={"m2c": -1.0, "m2e": 1.0},
         water_stoichiometry=0.0,
         enzyme="E1",
         michaelis_constants={"m2c": "km|E1|substrate"},
@@ -219,7 +229,7 @@ from enzax.sbml import load_libsbml_model_from_file, sbml_to_enzax
 
 path = Path("path") / "to" / "sbml_file.xml"
 libsbml_model = load_libsbml_model_from_file(path)
-model = sbml_to_enzax(libsbml_model)
+model, parameters = sbml_to_enzax(libsbml_model)
 ```
 
 or from a url:
@@ -229,7 +239,7 @@ from enzax.sbml import load_libsbml_model_from_url, sbml_to_enzax
 
 url = "https://raw.githubusercontent.com/dtu-qmcm/enzax/refs/heads/main/tests/data/exampleode.xml"
 libsbml_model = load_libsbml_model_from_url(url)
-model = sbml_to_enzax(libsbml_model)
+model, parameters = sbml_to_enzax(libsbml_model)
 ```
 
 !!! note

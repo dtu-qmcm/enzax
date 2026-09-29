@@ -6,16 +6,16 @@ from jaxtyping import Scalar
 
 from enzax.array_types import ConcArray, ParamDict, ParamLabelling
 from enzax.parameters import get_parameter_position
-from enzax.rate_equation import (
-    RateEquation,
-    RateEquationLabels,
+from enzax.reaction import (
+    Reaction,
+    ReactionLabels,
     ReactionScope,
     get_reaction_label,
 )
 
 
 @dataclass(frozen=True)
-class DrainLabels(RateEquationLabels):
+class DrainLabels(ReactionLabels):
     """The labels a drain reaction refers to."""
 
     drain: str
@@ -32,17 +32,18 @@ class DrainInput(eqx.Module):
     abs_v: Scalar
 
 
-class Drain(RateEquation):
-    """A drain reaction.
+class Drain(Reaction):
+    """A reaction with constant flux.
+
+    The flux is the drain's absolute rate, so whether the reaction makes or
+    consumes its species follows from its stoichiometry: `{"x": 1.0}` is a
+    source of `x` and `{"x": -1.0}` is a sink.
 
     Fields:
 
-    * `sign`: 1.0 for a reaction that produces its species, -1.0 for one that
-      consumes them.
     * `drain`: label of the drain's absolute rate. Defaults to the reaction id.
     """
 
-    sign: float
     drain: str | None = None
 
     def get_labels(self, scope: ReactionScope) -> DrainLabels:
@@ -63,4 +64,4 @@ class Drain(RateEquation):
 
     def __call__(self, conc: ConcArray, drain_input: DrainInput) -> Scalar:
         """Get the flux of a drain reaction."""
-        return self.sign * drain_input.abs_v
+        return drain_input.abs_v

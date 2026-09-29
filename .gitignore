@@ -1,5 +1,6 @@
 llm_plans
 uv.lock
+.jax_cache/
 .aider*
 .DS_Store
 

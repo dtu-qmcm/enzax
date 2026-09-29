@@ -8,7 +8,7 @@ from jax.scipy.stats import multivariate_normal, norm
 from jaxtyping import PyTree, Scalar
 
 from enzax.array_types import IndConcArr, ParamDict
-from enzax.kinetic_model import RateEquationModel
+from enzax.kinetic_model import KineticModel
 from enzax.parameter_split import ParameterSplit, combine_parameters
 from enzax.steady_state import get_steady_state_hybrid
 
@@ -175,7 +175,7 @@ _STATIC_SOLVE_ARGUMENTS = (
 
 def _log_density_and_steady_state(
     free_parameters: PyTree,
-    model: RateEquationModel,
+    model: KineticModel,
     measurements: PyTree,
     prior: PyTree,
     split: ParameterSplit | None = None,
@@ -283,7 +283,7 @@ enzax_log_density_grapevine = partial(
 @partial(jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS)
 def enzax_log_density(
     free_parameters: PyTree,
-    model: RateEquationModel,
+    model: KineticModel,
     measurements: PyTree,
     prior: PyTree,
     split: ParameterSplit | None = None,
