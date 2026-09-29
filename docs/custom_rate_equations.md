@@ -644,7 +644,7 @@ Array([0.05263158, 0.4       , 0.07692308], dtype=float64)
 
 ### What a rate equation may not do
 
-Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, conserved_pools and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
+Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, moiety_totals and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
 
 ```
 ValueError: Unknown parameters: ['log_my_thing'].

@@ -21,7 +21,7 @@ Two features of the model:
 - The cofactors X1_c and X2_c form a conserved moiety `X`: reactions r3
   and regX interconvert them, so their total is constant. X2_c is therefore
   declared a dependent species, leaving five independent species to solve for,
-  and the total X1_c + X2_c is the parameter `conserved_pools`.
+  and the total X1_c + X2_c is the parameter `moiety_totals`.
 
 """
 
@@ -131,7 +131,7 @@ parameters = pack_parameters(
             "D_e": jnp.log(0.05),
             "Z_c": jnp.log(0.2),
         },
-        "conserved_pools": {"X2_c": 1.0},  # X1_c + X2_c
+        "moiety_totals": {"X2_c": 1.0},  # X1_c + X2_c
         "temperature": 298.15,
     },
 )

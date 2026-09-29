@@ -392,7 +392,7 @@ class KineticModel(eqx.Module):
         if self.unbalanced_species:
             from_structure["log_conc_unbalanced"] = self.unbalanced_species
         if self.dependent_species:
-            from_structure["conserved_pools"] = self.dependent_species
+            from_structure["moiety_totals"] = self.dependent_species
         from_structure["temperature"] = ()
         return merge_labels(*from_rate_equations, from_structure)
 
@@ -460,11 +460,11 @@ class KineticModel(eqx.Module):
         """Get the conserved moiety totals from a PyTree of parameters.
 
         Models with no dependent species have no moiety totals, so in that
-        case the parameters do not need a "conserved_pools" entry.
+        case the parameters do not need a "moiety_totals" entry.
         """
         if not self.dependent_species:
             return jnp.zeros(0)
-        return parameters["conserved_pools"]
+        return parameters["moiety_totals"]
 
     def get_balanced_conc(
         self,

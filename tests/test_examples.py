@@ -61,7 +61,7 @@ def test_dcdt_at_a_solved_steady_state(model, steady_state, parameters):
 
 
 def test_conserved_moiety_is_conserved():
-    pool: ParamLeaf = conserved_moiety.parameters["conserved_pools"]
+    pool: ParamLeaf = conserved_moiety.parameters["moiety_totals"]
     log_unbalanced: ParamLeaf = conserved_moiety.parameters[
         "log_conc_unbalanced"
     ]

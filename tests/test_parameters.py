@@ -104,10 +104,10 @@ def test_a_parameter_with_nothing_to_label_is_left_out():
     """Every species is balanced and none is dependent, so neither exists."""
     labelling = SEPARATE.parameter_labelling
     assert "log_conc_unbalanced" not in labelling
-    assert "conserved_pools" not in labelling
+    assert "moiety_totals" not in labelling
     parameters = get_parameters(SEPARATE)
     assert "log_drain" not in parameters
-    assert "conserved_pools" not in parameters
+    assert "moiety_totals" not in parameters
 
 
 def test_labels_and_packed_parameters_have_the_same_keys():
