@@ -11,14 +11,11 @@ from enzax.reactions import MichaelisMenten
 from enzax.steady_state import get_steady_state_hybrid
 
 
-def get_model(
-    stoichiometry, balanced_species, dependent_species, extra_species=()
-):
+def get_model(stoichiometry, balanced_species, dependent_species):
     """Make a model with no rate equations, for testing structure only."""
     return KineticModel(
         balanced_species=balanced_species,
         dependent_species=dependent_species,
-        extra_species=list(extra_species),
         reactions={
             reaction: MichaelisMenten(stoichiometry=coefficients)
             for reaction, coefficients in stoichiometry.items()
@@ -76,10 +73,9 @@ def test_validate_kinetic_model_valid(structure, dependent_species):
     [
         (
             dict(
-                stoichiometry=CYCLE["stoichiometry"],
+                # C is a species of the model, but not a balanced one.
+                stoichiometry=CYCLE["stoichiometry"] | {"make_c": {"C": 1.0}},
                 balanced_species=["A", "B"],
-                # C takes part in no reaction, so nothing else names it.
-                extra_species=["C"],
             ),
             ["C"],
             "Dependent species must be balanced species",

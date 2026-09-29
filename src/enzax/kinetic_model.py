@@ -188,8 +188,7 @@ class KineticModel(eqx.Module):
     The field `reactions` maps each reaction id to a `Reaction` object which
     says which species the reaction consumes and produces (i.e. its
     stoichiometry), and how to calculate its flux. The model's species are
-    assembled from the reactions' stoichiometries and effectors, as well as
-    the model's `extra_species` field.
+    assembled from the reactions' stoichiometries and effectors.
 
     A model's balanced species are the ones whose concentrations are state
     variables. They are split into dependent and independent species: a
@@ -221,7 +220,6 @@ class KineticModel(eqx.Module):
     compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
     )
-    extra_species: list[str] = eqx.field(static=True, default_factory=list)
     water_dgf: float = eqx.field(static=True, default=-150.9)
     stoichiometry: dict[str, dict[str, float]] = eqx.field(
         static=True, init=False
@@ -345,8 +343,7 @@ class KineticModel(eqx.Module):
 
         The stoichiometry names most of them. A species that takes part in no
         reaction, such as an allosteric effector or a dead-end binder, is
-        named by the reaction that uses it, via its `get_species`, or by
-        `extra_species`.
+        named by the reaction that uses it, via its `get_species`.
         """
         from_stoichiometry = [
             species_id
@@ -358,11 +355,7 @@ class KineticModel(eqx.Module):
             for reaction in self.reaction_ids
             for species_id in self.reactions[reaction].get_species()
         ]
-        return list(
-            dict.fromkeys(
-                from_stoichiometry + list(self.extra_species) + from_reactions
-            )
-        )
+        return list(dict.fromkeys(from_stoichiometry + from_reactions))
 
     def _build_parameter_labelling(self) -> ParamLabelling:
         """Collect parameter labels from the rate equations and the structure.

@@ -35,17 +35,21 @@ FBA_CONC = jnp.array([0.2, 0.15, 0.35])
 
 
 def get_model(species, reaction_ids, reactions):
-    """Build a model whose species are `species`, whatever it binds.
-
-    The model works its own species out, so `extra_species` is what keeps the
-    concentration vectors here the same length for every rate equation under
-    test, including the ones that name no effector at all.
-    """
+    """Build a model whose balanced species are those of `species` it names."""
+    named = {
+        species_id
+        for reaction in reactions
+        for species_id in [*reaction.stoichiometry, *reaction.get_species()]
+    }
     return KineticModel(
-        balanced_species=species,
-        extra_species=species,
+        balanced_species=[s for s in species if s in named],
         reactions=dict(zip(reaction_ids, reactions)),
     )
+
+
+def get_conc(model, species, conc):
+    """Pick out the concentrations of a model's species from `conc`."""
+    return conc[jnp.array([species.index(s) for s in model.balanced_species])]
 
 
 def get_parameters(model, k_values, tc=1.0):
@@ -350,8 +354,12 @@ def get_allosteric_factor(
         [MichaelisMenten(stoichiometry=stoichiometry[reaction])],
     )
     fancy = get_model(species, [reaction], [allosteric])
-    plain_flux = plain.flux(conc, get_parameters(plain, k))
-    fancy_flux = fancy.flux(conc, get_parameters(fancy, k, tc))
+    plain_flux = plain.flux(
+        get_conc(plain, species, conc), get_parameters(plain, k)
+    )
+    fancy_flux = fancy.flux(
+        get_conc(fancy, species, conc), get_parameters(fancy, k, tc)
+    )
     return fancy_flux[0] / plain_flux[0]
 
 

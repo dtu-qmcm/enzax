@@ -145,9 +145,9 @@ VALUES = {
 
 
 def get_model_and_parameters(rate_equation):
+    named = [*rate_equation.stoichiometry, *rate_equation.get_species()]
     model = KineticModel(
-        balanced_species=["a", "b", "e"],
-        extra_species=["a", "b", "e"],
+        balanced_species=[s for s in ["a", "b", "e"] if s in named],
         reactions={"r1": rate_equation},
     )
     labelling = model.parameter_labelling
@@ -162,11 +162,15 @@ def get_model_and_parameters(rate_equation):
     return model, pack_parameters(labelling, spec)
 
 
+def get_conc(model):
+    return CONC[jnp.array([["a", "b", "e"].index(s) for s in model.species])]
+
+
 def get_flux_and_gradient(rate_equation):
     model, parameters = get_model_and_parameters(rate_equation)
 
     def flux(parameters):
-        return model.flux(CONC, parameters)[0]
+        return model.flux(get_conc(model), parameters)[0]
 
     return flux(parameters), jax.jit(jax.grad(flux))(parameters)
 
@@ -249,7 +253,7 @@ def test_keq_comes_from_formation_energies():
 
 def get_flux_at_equilibrium_for(rate_equation):
     model, parameters = get_model_and_parameters(rate_equation)
-    return get_flux_at_equilibrium(model, "r1", CONC, parameters)
+    return get_flux_at_equilibrium(model, "r1", get_conc(model), parameters)
 
 
 @pytest.mark.parametrize(

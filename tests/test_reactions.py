@@ -32,12 +32,9 @@ def get_flux(rate_equation, enzyme_label="r1"):
     The parameter values come from `EXAMPLE_K` and friends, but which of them
     are needed is decided by the rate equation, via the model's labels.
     """
+    named = [*rate_equation.stoichiometry, *rate_equation.get_species()]
     model = KineticModel(
-        balanced_species=EXAMPLE_SPECIES,
-        # `c` takes part in no reaction, so only a rate equation that names it
-        # as an effector would put it in the model. It is a species here
-        # whether or not the rate equation under test wants it.
-        extra_species=EXAMPLE_SPECIES,
+        balanced_species=[s for s in EXAMPLE_SPECIES if s in named],
         compound_to_species=EXAMPLE_COMPOUND_TO_SPECIES,
         reactions={"r1": rate_equation},
     )
@@ -49,13 +46,18 @@ def get_flux(rate_equation, enzyme_label="r1"):
         },
         "log_kcat": {"r1": -0.1},
         "log_enzyme": {enzyme_label: EXAMPLE_ENZYME[enzyme_label]},
-        "dgf": {"a": -3.0, "c": 1.0},
+        "dgf": {
+            label: {"a": -3.0, "c": 1.0}[label] for label in labelling["dgf"]
+        },
         "temperature": 310.0,
     }
     if "log_tc" in labelling:
         spec["log_tc"] = {"r1": -0.2}
     parameters = pack_parameters(labelling, spec)
-    return model.flux(EXAMPLE_CONC, parameters)[0]
+    conc = EXAMPLE_CONC[
+        jnp.array([EXAMPLE_SPECIES.index(s) for s in model.balanced_species])
+    ]
+    return model.flux(conc, parameters)[0]
 
 
 def test_irreversible_michaelis_menten():
