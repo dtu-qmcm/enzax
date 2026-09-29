@@ -344,35 +344,25 @@ class KineticModel(eqx.Module):
         """Work out the model's species, in the order they are first named.
 
         The stoichiometry names most of them. A species that takes part in no
-        reaction is named by whatever does use it -- a rate equation, via
-        `_declared_species`, or `extra_species` when there is no rate equation
-        to ask.
+        reaction, such as an allosteric effector or a dead-end binder, is
+        named by the reaction that uses it, via its `get_species`, or by
+        `extra_species`.
         """
-        from_reactions = [
+        from_stoichiometry = [
             species_id
             for reaction in self.reaction_ids
             for species_id in self.stoichiometry[reaction]
         ]
-        return list(
-            dict.fromkeys(
-                from_reactions
-                + list(self.extra_species)
-                + list(self._declared_species())
-            )
-        )
-
-    def _declared_species(self) -> list[str]:
-        """Get the species the rate equations name, in reaction order.
-
-        An allosteric effector or a dead-end binder takes part in no reaction,
-        so the stoichiometry does not mention it, but it is a species of the
-        model all the same.
-        """
-        return [
+        from_reactions = [
             species_id
             for reaction in self.reaction_ids
             for species_id in self.reactions[reaction].get_species()
         ]
+        return list(
+            dict.fromkeys(
+                from_stoichiometry + list(self.extra_species) + from_reactions
+            )
+        )
 
     def _build_parameter_labelling(self) -> ParamLabelling:
         """Collect parameter labels from the rate equations and the structure.
