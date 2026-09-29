@@ -33,6 +33,7 @@ class ReactionScope:
     species: tuple[str, ...]
     stoichiometry: StaticSpeciesArr
     species_to_dgf_ix: SpeciesIx
+    water_dgf: float
 
 
 def get_species_positions(
@@ -190,6 +191,7 @@ class Reaction(Module, ABC):
     """
 
     stoichiometry: dict[str, float] = field(kw_only=True)
+    water_stoichiometry: float = field(kw_only=True, default=0.0)
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species this reaction names, in declaration order.

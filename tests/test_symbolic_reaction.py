@@ -21,6 +21,7 @@ SCOPE = ReactionScope(
     species=("a", "b", "e"),
     stoichiometry=np.array([-1.0, 1.0, 0.0]),
     species_to_dgf_ix=np.array([0, 1, 2]),
+    water_dgf=-150.9,
 )
 
 MM_SPECIES = {"s": "a"}

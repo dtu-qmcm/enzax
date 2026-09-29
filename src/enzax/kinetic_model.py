@@ -222,6 +222,7 @@ class KineticModel(eqx.Module):
         static=True, default=None
     )
     extra_species: list[str] = eqx.field(static=True, default_factory=list)
+    water_dgf: float = eqx.field(static=True, default=-150.9)
     stoichiometry: dict[str, dict[str, float]] = eqx.field(
         static=True, init=False
     )
@@ -403,6 +404,7 @@ class KineticModel(eqx.Module):
                 species=tuple(self.species),
                 stoichiometry=self.S[:, ix_reaction],
                 species_to_dgf_ix=self.species_to_dgf_ix,
+                water_dgf=self.water_dgf,
             )
             for ix_reaction, reaction in enumerate(self.reaction_ids)
         ]

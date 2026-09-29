@@ -280,6 +280,7 @@ def test_species_positions_reject_a_species_the_model_does_not_have():
         species=tuple(FBA_SPECIES),
         stoichiometry=np.array([-1.0, 1.0, 1.0]),
         species_to_dgf_ix=np.array([0, 1, 2], dtype=np.int16),
+        water_dgf=-150.9,
     )
     with pytest.raises(ValueError, match="which are not in the model"):
         get_species_positions(scope, ["not_a_species"])

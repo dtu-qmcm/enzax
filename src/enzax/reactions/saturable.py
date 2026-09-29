@@ -287,10 +287,6 @@ class MichaelisMenten(Reaction):
     * `reversible`: whether the rate law has a thermodynamic driving force.
     * `water_stoichiometry`: how much water the reaction consumes or produces,
       which only a reversible reaction cares about.
-    * `water_dgf`: water's formation energy, which the default is
-      [equilibrator's](http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001).
-      It belongs to the model rather than to the reaction, so give every
-      reaction that touches water the same value.
     * `dgf_species`: `{species: compound}` for a reaction whose standard free
       energy change does not follow from the model's compounds.
       It is an escape hatch for reproducing a model that says otherwise, not
@@ -313,8 +309,6 @@ class MichaelisMenten(Reaction):
     michaelis_constants: dict[str, str] | None = None
     competitive_inhibitors: list[str] | dict[str, str] | None = None
     reversible: bool = True
-    water_stoichiometry: float = 0.0
-    water_dgf: float = -150.9
     dgf_species: dict[str, str] | None = None
     tc: str | None = None
     allosteric_inhibitors: list[str] | dict[str, str] | None = None
@@ -562,7 +556,7 @@ class MichaelisMenten(Reaction):
             ix_dgf=self.get_dgf_positions(scope, labelling, ix_reactant),
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
-            water_dgf=self.water_dgf,
+            water_dgf=scope.water_dgf,
             binding_polynomial=get_polynomial_indexes(
                 self.get_expression(scope), scope, labelling, "km"
             ),

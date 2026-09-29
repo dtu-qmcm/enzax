@@ -114,15 +114,13 @@ def get_flux_at_equilibrium(
         )
         raise ValueError(msg)
     ix_product = products[0]
-    water_stoichiometry = getattr(rate_equation, "water_stoichiometry", 0.0)
-    water_dgf = getattr(rate_equation, "water_dgf", -150.9)
     ix_reactant = np.flatnonzero(stoichiometry != 0.0)
     keq = get_keq(
         parameters["dgf"][model.species_to_dgf_ix[ix_reactant]],
         parameters["temperature"],
         stoichiometry[ix_reactant],
-        water_stoichiometry,
-        water_dgf,
+        rate_equation.water_stoichiometry,
+        model.water_dgf,
     )
     log_q_without_product = sum(
         stoichiometry[i] * jnp.log(conc[i])

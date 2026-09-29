@@ -167,13 +167,11 @@ reactions = {
         stoichiometry={"dpg_c": -1.0, "adp_c": -1.0, "p3g_c": 1.0, "atp_c": 1.0}
     ),
     "PGM": MichaelisMenten(stoichiometry={"p3g_c": -1.0, "p2g_c": 1.0}),
-    # water_dgf is the SBML's own value, not enzax's equilibrator default.
     # The SBML's driving force for ENO uses 3-phosphoglycerate's formation
     # energy where phosphoenolpyruvate's belongs, which this does not follow.
     "ENO": MichaelisMenten(
         stoichiometry={"p2g_c": -1.0, "pep_c": 1.0},
         water_stoichiometry=1.0,
-        water_dgf=-154.4,
     ),
     "PKM1": MichaelisMenten(
         stoichiometry={"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0}
@@ -206,7 +204,6 @@ reactions = {
     "PGL": MichaelisMenten(
         stoichiometry={"pgl6_c": -1.0, "pgc6_c": 1.0},
         water_stoichiometry=-1.0,
-        water_dgf=-154.4,
     ),
     "GND": MichaelisMenten(
         stoichiometry={
@@ -275,6 +272,8 @@ model = KineticModel(
     balanced_species=balanced_species,
     compound_to_species=compound_to_species,
     reactions=reactions,
+    # water_dgf is the SBML's own value, not enzax's equilibrator default.
+    water_dgf=-154.4,
 )
 # The values are a maximum a posteriori fit of this model to data from the
 # CHO-S wild type line, reconstructed from the fit's own output.
