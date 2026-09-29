@@ -20,6 +20,10 @@ $ pip install enzax'[dev]'
 
 You can see what these dependencies are by checking the `[dependencies]` table in enzax's [`pyproject.toml` file](https://github.com/dtu-qmcm/enzax/blob/main/pyproject.toml).
 
+The full test suite takes several minutes. For a quicker check while
+working, skip the slowest tests with `uv run pytest -m "not slow"`; CI and
+the full suite still run them.
+
 ## Releasing new versions of enzax
 
 To release a new version of enzax, edit the field `version` in `pyproject.toml`, e.g. to `0.2.1` then make a pull request with this change.

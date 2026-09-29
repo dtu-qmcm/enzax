@@ -37,6 +37,9 @@ build-backend = "hatchling.build"
 distribution = true
 
 [tool.pytest.ini_options]
+markers = [
+  "slow: takes more than about 20 seconds; deselect with -m 'not slow'",
+]
 # equinox warnings that enzax triggers on purpose.
 # src/enzax/__init__.py suppresses the same two for running enzax outside
 # pytest; pytest resets the warning filters for every test, so import-time

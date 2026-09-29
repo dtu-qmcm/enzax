@@ -27,7 +27,7 @@ EXAMPLES = [
     ("methionine", methionine),
     ("linear", linear),
     ("conserved_moiety", conserved_moiety),
-    ("glycolysis", glycolysis),
+    pytest.param("glycolysis", glycolysis, marks=pytest.mark.slow),
 ]
 
 
