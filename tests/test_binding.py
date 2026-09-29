@@ -34,7 +34,7 @@ FBA_STOICHIOMETRY = {"FBA": {"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0}}
 FBA_CONC = jnp.array([0.2, 0.15, 0.35])
 
 
-def get_model(species, stoichiometry, reactions, rate_equations):
+def get_model(species, reaction_ids, reactions):
     """Build a model whose species are `species`, whatever it binds.
 
     The model works its own species out, so `extra_species` is what keeps the
@@ -42,10 +42,9 @@ def get_model(species, stoichiometry, reactions, rate_equations):
     test, including the ones that name no effector at all.
     """
     return KineticModel(
-        stoichiometry=stoichiometry,
         balanced_species=species,
         extra_species=species,
-        rate_equations=dict(zip(reactions, rate_equations)),
+        reactions=dict(zip(reaction_ids, reactions)),
     )
 
 
@@ -78,11 +77,15 @@ def test_default_expression_is_the_old_hard_coded_one():
     """A reversible reaction's default polynomial, term by term."""
     model = get_model(
         HEX_SPECIES,
-        HEX_STOICHIOMETRY,
         ["HEX1"],
-        [MichaelisMenten(competitive_inhibitors=["gdp_c"])],
+        [
+            MichaelisMenten(
+                stoichiometry=HEX_STOICHIOMETRY["HEX1"],
+                competitive_inhibitors=["gdp_c"],
+            )
+        ],
     )
-    expression = model.rate_equations["HEX1"].get_expression(model._scopes()[0])
+    expression = model.reactions["HEX1"].get_expression(model._scopes()[0])
     assert expression == BindingPolynomialExpression(
         (
             NamedTerm(-1.0, ()),
@@ -140,10 +143,10 @@ def test_hex1_abortive_complexes():
     """HEX1's binding polynomial, against the formula in spec.tex."""
     model = get_model(
         HEX_SPECIES,
-        HEX_STOICHIOMETRY,
         ["HEX1"],
         [
             SaturableRateEquation(
+                stoichiometry=HEX_STOICHIOMETRY["HEX1"],
                 dead_end_states_expression=(
                     dead_end("glc_c", "g6p_c") + dead_end("glc_c", "gdp_c")
                 ),
@@ -181,13 +184,14 @@ def test_hex2_can_borrow_hex1s_constant():
     }
     model = get_model(
         HEX_SPECIES,
-        stoichiometry,
         ["HEX1", "HEX2"],
         [
             SaturableRateEquation(
+                stoichiometry=stoichiometry["HEX1"],
                 dead_end_states_expression=dead_end("glc_c", "gdp_c"),
             ),
             SaturableRateEquation(
+                stoichiometry=stoichiometry["HEX2"],
                 dead_end_states_expression=dead_end(
                     {"glc_c": "km|HEX2|glc_c", "gdp_c": "km|HEX1|gdp_c"}
                 ),
@@ -206,10 +210,10 @@ def test_fba_ternary_abortive_complex():
     """FBA's dead end binds three species at once."""
     model = get_model(
         FBA_SPECIES,
-        FBA_STOICHIOMETRY,
         ["FBA"],
         [
             SaturableRateEquation(
+                stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
             )
         ],
@@ -236,10 +240,10 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
     """HEX1's abortive complex divides glc by the Michaelis constant it has."""
     model = get_model(
         FBA_SPECIES,
-        FBA_STOICHIOMETRY,
         ["FBA"],
         [
             SaturableRateEquation(
+                stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 dead_end_states_expression=dead_end("fdp_c", "g3p_c"),
             )
         ],
@@ -254,10 +258,10 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
 def test_an_expression_can_name_a_species_no_reaction_touches():
     """A species is whatever the model's parts name, expressions included."""
     model = KineticModel(
-        stoichiometry=FBA_STOICHIOMETRY,
         balanced_species=FBA_SPECIES,
-        rate_equations={
+        reactions={
             "FBA": SaturableRateEquation(
+                stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
                 dead_end_states_expression=dead_end("fdp_c", "gdp_c"),
             )
         },
@@ -285,10 +289,10 @@ def test_a_non_positive_polynomial_is_an_error():
     """The guard matters because a hand-written polynomial can subtract."""
     model = get_model(
         FBA_SPECIES,
-        FBA_STOICHIOMETRY,
         ["FBA"],
         [
             SaturableRateEquation(
+                stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 binding_polynomial_expression=-1.0 * ONE,
             )
         ],
@@ -339,8 +343,12 @@ def get_allosteric_factor(
     Whatever the rest of the rate law does, it does the same in both, so what
     is left is the Monod Wyman Changeux factor on its own.
     """
-    plain = get_model(species, stoichiometry, [reaction], [MichaelisMenten()])
-    fancy = get_model(species, stoichiometry, [reaction], [allosteric])
+    plain = get_model(
+        species,
+        [reaction],
+        [MichaelisMenten(stoichiometry=stoichiometry[reaction])],
+    )
+    fancy = get_model(species, [reaction], [allosteric])
     plain_flux = plain.flux(conc, get_parameters(plain, k))
     fancy_flux = fancy.flux(conc, get_parameters(fancy, k, tc))
     return fancy_flux[0] / plain_flux[0]
@@ -354,6 +362,7 @@ def test_g6pdh_reuses_a_catalytic_constant_allosterically():
         "G6PDH",
         G6PDH_CONC,
         SaturableRateEquation(
+            stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
             subunits=2,
             tense_state_expression=site({"nadph_c": "km|G6PDH|nadph_c"}),
             relaxed_state_expression=ONE,
@@ -374,6 +383,7 @@ def test_pfkm_ratio_of_two_products_of_sites():
         "PFKM",
         PFK_CONC,
         SaturableRateEquation(
+            stoichiometry=PFK_STOICHIOMETRY["PFKM"],
             subunits=4,
             tense_state_expression=(
                 14.0 * site({"atp_c": "km|PFKM|atp_c"}) * site("lac_c")
@@ -401,6 +411,7 @@ def test_a_constant_allosteric_factor():
         "G6PDH",
         G6PDH_CONC,
         SaturableRateEquation(
+            stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
             tense_state_expression=ONE,
             relaxed_state_expression=ONE,
         ),
@@ -418,13 +429,13 @@ def test_declaring_a_state_makes_a_reaction_allosteric():
     what enzax has to go on.
     """
     rate_equation = SaturableRateEquation(
+        stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
         tense_state_expression=ONE,
         relaxed_state_expression=ONE,
     )
     assert rate_equation.is_allosteric()
     model = get_model(
         G6PDH_SPECIES,
-        G6PDH_STOICHIOMETRY,
         ["G6PDH"],
         [rate_equation],
     )
@@ -433,12 +444,14 @@ def test_declaring_a_state_makes_a_reaction_allosteric():
 
 def test_declaring_an_effector_makes_a_reaction_allosteric():
     """An effector is enough on its own, with the states left to default."""
-    rate_equation = MichaelisMenten(allosteric_activators=["nadp_c"])
+    rate_equation = MichaelisMenten(
+        stoichiometry=G6PDH_STOICHIOMETRY["G6PDH"],
+        allosteric_activators=["nadp_c"],
+    )
     assert rate_equation.is_allosteric()
     assert rate_equation.get_species() == ("nadp_c",)
     model = get_model(
         G6PDH_SPECIES,
-        G6PDH_STOICHIOMETRY,
         ["G6PDH"],
         [rate_equation],
     )
@@ -451,8 +464,10 @@ def test_declaring_an_effector_makes_a_reaction_allosteric():
 
 def test_a_michaelis_menten_reaction_declares_no_polynomial():
     """The two classes differ by whether the polynomial can be written out."""
-    assert not MichaelisMenten().is_allosteric()
+    stoichiometry = FBA_STOICHIOMETRY["FBA"]
+    assert not MichaelisMenten(stoichiometry=stoichiometry).is_allosteric()
     with pytest.raises(TypeError, match="unexpected keyword argument"):
         MichaelisMenten(  # pyright: ignore
-            dead_end_states_expression=dead_end("fdp_c", "g3p_c")
+            stoichiometry=stoichiometry,
+            dead_end_states_expression=dead_end("fdp_c", "g3p_c"),
         )

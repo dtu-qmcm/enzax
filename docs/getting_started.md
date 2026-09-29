@@ -24,18 +24,23 @@ from enzax.kinetic_model import KineticModel
 from enzax.rate_equations import MichaelisMenten
 
 my_model = KineticModel(
-    stoichiometry={
-        "r1": {"m1e": -1.0, "m1c": 1.0},
-        "r2": {"m1c": -1.0, "m2c": 1.0},
-        "r3": {"m2c": -1.0, "m2e": 1.0},
+    reactions={
+        "r1": MichaelisMenten(
+            stoichiometry={"m1e": -1.0, "m1c": 1.0},
+            allosteric_activators=["m2c"],
+        ),
+        "r2": MichaelisMenten(
+            stoichiometry={"m1c": -1.0, "m2c": 1.0},
+            allosteric_inhibitors=["m1c"],
+            competitive_inhibitors=["m1c"],
+        ),
+        "r3": MichaelisMenten(
+            stoichiometry={"m2c": -1.0, "m2e": 1.0},
+            water_stoichiometry=0.0,
+        ),
     },
     balanced_species=["m1c", "m2c"],
     compound_to_species={"m1": ["m1e", "m1c"], "m2": ["m2c", "m2e"]},
-    rate_equations = {
-        "r1": MichaelisMenten(allosteric_activators=["m2c"]),
-        "r2": MichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
-        "r3": MichaelisMenten(water_stoichiometry=0.0),
-    },
 )
 
 ```
@@ -191,15 +196,21 @@ jacobian["log_kcat"][:,  position]
 Two rate equations that use the same label use the same value --- one position in one array, one thing to infer. Say `r1` and `r3` were catalysed by the same enzyme and had the same Michaelis constant for their substrates:
 
 ```python
-shared_rate_equations = {
+shared_reactions = {
     "r1": MichaelisMenten(
+        stoichiometry={"m1e": -1.0, "m1c": 1.0},
         allosteric_activators=["m2c"],
         subunits=1,
         enzyme="E1",
         michaelis_constants={"m1e": "km|E1|substrate"},
     ),
-    "r2": MichaelisMenten(allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]),
+    "r2": MichaelisMenten(
+        stoichiometry={"m1c": -1.0, "m2c": 1.0},
+        allosteric_inhibitors=["m1c"],
+        competitive_inhibitors=["m1c"],
+    ),
     "r3": MichaelisMenten(
+        stoichiometry={"m2c": -1.0, "m2e": 1.0},
         water_stoichiometry=0.0,
         enzyme="E1",
         michaelis_constants={"m2c": "km|E1|substrate"},

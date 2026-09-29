@@ -49,12 +49,11 @@ stoichiometry = {
 
 ```python
 model = KineticModel(
-    stoichiometry=stoichiometry,
     balanced_species=["m1c", "m2c"],
-    rate_equations={
-        "r1": MichaelisMenten(),
-        "r2": MichaelisMenten(),
-        "r3": MichaelisMenten(),
+    reactions={
+        "r1": MichaelisMenten(stoichiometry=stoichiometry["r1"]),
+        "r2": MichaelisMenten(stoichiometry=stoichiometry["r2"]),
+        "r3": MichaelisMenten(stoichiometry=stoichiometry["r3"]),
     },
 )
 model.parameter_labelling["log_saturation_constant"]
@@ -71,7 +70,7 @@ Every reactant gets a Michaelis constant, because a reversible reaction's produc
 `reversible=False` drops the driving force, which also means the products no longer bind:
 
 ```python
-"r2": MichaelisMenten(reversible=False),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], reversible=False),
 ...
 model.parameter_labelling["log_saturation_constant"]
 ```
@@ -89,7 +88,7 @@ This is also the simplest way to write a saturating drain, since one-substrate i
 A competitive inhibitor binds the free enzyme and stops it working, adding a state to `Z` but no new pathway to product:
 
 ```python
-"r2": MichaelisMenten(competitive_inhibitors=["m2c"]),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], competitive_inhibitors=["m2c"]),
 ...
 model.parameter_labelling["log_saturation_constant"]
 ```
@@ -103,7 +102,7 @@ The new `ki|r2|m2c` is the inhibition constant. Declaring several inhibitors giv
 An inhibitor does not have to be one of the reaction's reactants, or take part in any reaction at all. A species that enzax meets for the first time here joins the model as an unbalanced species, so it gets a constant concentration to declare and a formation energy of its own:
 
 ```python
-"r2": MichaelisMenten(competitive_inhibitors=["atp_c"]),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], competitive_inhibitors=["atp_c"]),
 ...
 model.parameter_labelling
 ```
@@ -129,7 +128,7 @@ where `tc` is the transfer constant, and `tense` and `relaxed` are binding polyn
 To build a rate equation following this model, you can simply declare the effectors:
 
 ```python
-"r1": MichaelisMenten(allosteric_activators=["m2c"], subunits=4),
+"r1": MichaelisMenten(stoichiometry=stoichiometry["r1"], allosteric_activators=["m2c"], subunits=4),
 model.parameter_labelling
 ```
 
@@ -147,7 +146,7 @@ Enzax considers a rate equation allosteric if it declares an allosteric inhibito
 An allosteric constant can be made equal to a catalytic constant by giving it a `km` label:
 
 ```python
-"r1": MichaelisMenten(allosteric_activators={"m1c": "km|r1|m1c"}),
+"r1": MichaelisMenten(stoichiometry=stoichiometry["r1"], allosteric_activators={"m1c": "km|r1|m1c"}),
 ```
 
 This adds no new position to `log_saturation_constant`: `m1c`'s Michaelis constant now does double duty as its allosteric dissociation constant.
@@ -160,6 +159,7 @@ As an example, consider the two transketolase reactions in `enzax.examples.glyco
 
 ```python
 "TKT1": MichaelisMenten(
+    stoichiometry={"r5p_c": -1.0, "xu5p_c": -1.0, "s7p_c": 1.0, "g3p_c": 1.0},
     enzyme="TKT",
     michaelis_constants={
         "r5p_c": "km|TKT|r5p_c",
@@ -169,6 +169,7 @@ As an example, consider the two transketolase reactions in `enzax.examples.glyco
     },
 ),
 "TKT2": MichaelisMenten(
+    stoichiometry={"e4p_c": -1.0, "xu5p_c": -1.0, "f6p_c": 1.0, "g3p_c": 1.0},
     enzyme="TKT",
     michaelis_constants={
         "e4p_c": "km|TKT|e4p_c",
@@ -184,7 +185,7 @@ As an example, consider the two transketolase reactions in `enzax.examples.glyco
 `michaelis_constants` is partial, so mention only the species whose label you want to change. Its keys have to be species that the reaction actually has a Michaelis constant for. In particular, note that mentioning the substrate of an irreversible reaction will cause an error:
 
 ```python
-"r2": MichaelisMenten(reversible=False, michaelis_constants={"m2c": "km|r2|m2c"}),
+"r2": MichaelisMenten(stoichiometry=stoichiometry["r2"], reversible=False, michaelis_constants={"m2c": "km|r2|m2c"}),
 ```
 
 ```
@@ -282,6 +283,7 @@ These are all taken from `enzax.examples.glycolysis`. In the formulas below, `km
 
 ```python
 "HEX1": SaturableRateEquation(
+    stoichiometry={"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
     dead_end_states_expression=dead_end("g6p_c", "glc_c"),
 ),
 ```
@@ -298,6 +300,7 @@ Aldolase's abortive complex works the same way with three species bound at once,
 
 ```python
 "FBA": SaturableRateEquation(
+    stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
     dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
 ),
 ```
@@ -306,6 +309,7 @@ Aldolase's abortive complex works the same way with three species bound at once,
 
 ```python
 "G6PDH": SaturableRateEquation(
+    stoichiometry={"g6p_c": -1.0, "nadp_c": -1.0, "pgl6_c": 1.0, "nadph_c": 1.0},
     subunits=2,
     tense_state_expression=ONE,
     relaxed_state_expression=site({"nadp_c": "km|G6PDH|nadp_c"}),
@@ -324,6 +328,7 @@ so more NADP means a larger relaxed state, a smaller ratio and less inhibition. 
 
 ```python
 "PFKM": SaturableRateEquation(
+    stoichiometry={"atp_c": -1.0, "f6p_c": -1.0, "adp_c": 1.0, "fdp_c": 1.0},
     subunits=4,
     tense_state_expression=(
         18.0 * site({"atp_c": "km|PFKM|atp_c"}) * site("lac_c")
@@ -346,6 +351,7 @@ ATP and lactate stabilise the tense state; fructose-2,6-bisphosphate stabilises 
 
 ```python
 "HEX2": SaturableRateEquation(
+    stoichiometry={"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
     dead_end_states_expression=(
         dead_end("g6p_c", "glc_c") + dead_end("gdp_c", "glc_c")
     ),
@@ -378,6 +384,7 @@ Here is reaction `r2` from the [mass action example](#a-complete-example) below,
 from enzax.rate_equations import SymbolicRateEquation
 
 SymbolicRateEquation(
+    stoichiometry={"m1c": -2.0, "m2c": 1.0},
     expression="k * m1c**2",
     species={"m1c": "m1c"},
     parameters={"k": "log_kcat"},
@@ -421,6 +428,7 @@ For example, here is a reversible mass action version of `r2`:
 
 ```python
 SymbolicRateEquation(
+    stoichiometry={"m1c": -2.0, "m2c": 1.0},
     expression="k * (m1c**2 - m2c / keq)",
     species={"m1c": "m1c", "m2c": "m2c"},
     parameters={"k": "log_kcat"},
@@ -597,17 +605,12 @@ Using it in a model is no different from using a built-in rate equation. Here re
 
 ```python
 model = KineticModel(
-    stoichiometry={
-        "r1": {"m1e": -1.0, "m1c": 1.0},
-        "r2": {"m1c": -2.0, "m2c": 1.0},
-        "r3": {"m2c": -1.0, "m2e": 1.0},
+    reactions={
+        "r1": MichaelisMenten(stoichiometry={"m1e": -1.0, "m1c": 1.0}),
+        "r2": MassAction(stoichiometry={"m1c": -2.0, "m2c": 1.0}),
+        "r3": MichaelisMenten(stoichiometry={"m2c": -1.0, "m2e": 1.0}),
     },
     balanced_species=["m1c", "m2c"],
-    rate_equations={
-        "r1": MichaelisMenten(),
-        "r2": MassAction(),
-        "r3": MichaelisMenten(),
-    },
 )
 model.parameter_labelling
 ```

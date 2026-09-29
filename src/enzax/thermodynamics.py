@@ -102,8 +102,8 @@ def get_flux_at_equilibrium(
     `conc` holds the concentrations of all the model's species, in the model's
     order, as a rate equation receives them.
     """
-    position = model.reactions.index(reaction_id)
-    rate_equation = model.rate_equations[reaction_id]
+    position = model.reaction_ids.index(reaction_id)
+    rate_equation = model.reactions[reaction_id]
     ix = model.rate_equation_ix[position]
     stoichiometry = model.S[:, position]
     products = np.flatnonzero(stoichiometry > 0.0)

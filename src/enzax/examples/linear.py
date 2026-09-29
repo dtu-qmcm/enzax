@@ -6,24 +6,26 @@ from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
 
-stoichiometry = {
-    "r1": {"m1e": -1.0, "m1c": 1.0},
-    "r2": {"m1c": -1.0, "m2c": 1.0},
-    "r3": {"m2c": -1.0, "m2e": 1.0},
-}
 balanced_species = ["m1c", "m2c"]
-rate_equations = {
-    "r1": MichaelisMenten(allosteric_activators=["m2c"], subunits=1),
-    "r2": MichaelisMenten(
-        allosteric_inhibitors=["m1c"], competitive_inhibitors=["m1c"]
+reactions = {
+    "r1": MichaelisMenten(
+        stoichiometry={"m1e": -1.0, "m1c": 1.0},
+        allosteric_activators=["m2c"],
+        subunits=1,
     ),
-    "r3": MichaelisMenten(water_stoichiometry=0.0),
+    "r2": MichaelisMenten(
+        stoichiometry={"m1c": -1.0, "m2c": 1.0},
+        allosteric_inhibitors=["m1c"],
+        competitive_inhibitors=["m1c"],
+    ),
+    "r3": MichaelisMenten(
+        stoichiometry={"m2c": -1.0, "m2e": 1.0}, water_stoichiometry=0.0
+    ),
 }
 model = KineticModel(
-    stoichiometry=stoichiometry,
     balanced_species=balanced_species,
     compound_to_species={"m1": ["m1e", "m1c"], "m2": ["m2c", "m2e"]},
-    rate_equations=rate_equations,
+    reactions=reactions,
 )
 parameters = pack_parameters(
     model.parameter_labelling,

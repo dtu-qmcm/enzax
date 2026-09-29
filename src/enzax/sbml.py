@@ -161,6 +161,7 @@ def get_initial_values(model: libsbml.Model) -> dict[str, float]:
 def get_symbolic_rate_equation(
     reaction: libsbml.Reaction,
     law: sympy.Expr,
+    stoichiometry: dict[str, float],
     species_ids: set[str],
     values: Mapping[str, float],
     parameter_kinds: Mapping[str, str],
@@ -207,7 +208,10 @@ def get_symbolic_rate_equation(
             math.log(value) if kind == "log_custom" else value,
         )
     rate_equation = SymbolicRateEquation(
-        expression=law, species=species, parameters=parameters
+        stoichiometry=stoichiometry,
+        expression=law,
+        species=species,
+        parameters=parameters,
     )
     return rate_equation, parameter_values
 
@@ -294,7 +298,7 @@ def sbml_to_enzax(
         )
         raise ValueError(msg)
     stoichiometry = {}
-    rate_equations = {}
+    reactions = {}
     custom_values: dict[str, dict[str, float]] = {
         "log_custom": {},
         "custom": {},
@@ -302,13 +306,18 @@ def sbml_to_enzax(
     for reaction in libsbml_model.getListOfReactions():
         law = math_to_sympy(reaction.getKineticLaw().getMath())
         law = law.xreplace(rule_symbols)
-        rate_equation, parameter_values = get_symbolic_rate_equation(
-            reaction, law, species_ids, values, parameter_kinds
-        )
         stoichiometry[reaction.getId()] = get_stoichiometry(
             reaction, set(rules)
         )
-        rate_equations[reaction.getId()] = rate_equation
+        rate_equation, parameter_values = get_symbolic_rate_equation(
+            reaction,
+            law,
+            stoichiometry[reaction.getId()],
+            species_ids,
+            values,
+            parameter_kinds,
+        )
+        reactions[reaction.getId()] = rate_equation
         for label, (kind, value) in parameter_values.items():
             custom_values[kind][label] = value
     in_a_reaction = {s for r in stoichiometry.values() for s in r}
@@ -318,9 +327,8 @@ def sbml_to_enzax(
         if not s.getBoundaryCondition() and s.getId() in in_a_reaction
     ]
     model = KineticModel(
-        stoichiometry=stoichiometry,
         balanced_species=balanced_species,
-        rate_equations=rate_equations,
+        reactions=reactions,
     )
     labelling = model.parameter_labelling
     spec = {

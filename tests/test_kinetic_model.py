@@ -16,12 +16,12 @@ def get_model(
 ):
     """Make a model with no rate equations, for testing structure only."""
     return KineticModel(
-        stoichiometry=stoichiometry,
         balanced_species=balanced_species,
         dependent_species=dependent_species,
         extra_species=list(extra_species),
-        rate_equations={
-            reaction: MichaelisMenten() for reaction in stoichiometry
+        reactions={
+            reaction: MichaelisMenten(stoichiometry=coefficients)
+            for reaction, coefficients in stoichiometry.items()
         },
     )
 
@@ -129,28 +129,6 @@ def test_link_matrix(structure, dependent_species, expected_L0):
     assert np.allclose(model.L0, expected_L0)
 
 
-def test_every_reaction_needs_a_rate_equation():
-    with pytest.raises(ValueError, match="have no rate equation"):
-        KineticModel(
-            stoichiometry=CYCLE["stoichiometry"],
-            balanced_species=["A", "B"],
-            rate_equations={"f": MichaelisMenten()},
-        )
-
-
-def test_a_rate_equation_needs_a_reaction():
-    with pytest.raises(ValueError, match="which the stoichiometry does not"):
-        KineticModel(
-            stoichiometry=CYCLE["stoichiometry"],
-            balanced_species=["A", "B"],
-            rate_equations={
-                "f": MichaelisMenten(),
-                "b": MichaelisMenten(),
-                "not_a_reaction": MichaelisMenten(),
-            },
-        )
-
-
 def test_independently_built_models_have_equal_tree_structures():
     a = get_model(**TWO_MOIETIES, dependent_species=["B", "X2"])
     b = get_model(**TWO_MOIETIES, dependent_species=["B", "X2"])
@@ -159,11 +137,12 @@ def test_independently_built_models_have_equal_tree_structures():
 
 def get_two_reaction_model(kcat_label):
     model = KineticModel(
-        stoichiometry={"r1": {"x": -1.0, "a": 1.0}, "r2": {"a": -1.0}},
         balanced_species=["a"],
-        rate_equations={
-            "r1": MichaelisMenten(),
-            "r2": MichaelisMenten(reversible=False, kcat=kcat_label),
+        reactions={
+            "r1": MichaelisMenten(stoichiometry={"x": -1.0, "a": 1.0}),
+            "r2": MichaelisMenten(
+                stoichiometry={"a": -1.0}, reversible=False, kcat=kcat_label
+            ),
         },
     )
     labelling = model.parameter_labelling

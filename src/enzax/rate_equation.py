@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
-from equinox import Module
+from equinox import Module, field
 from jaxtyping import Bool, Int, PyTree, Scalar
 
 from enzax.array_types import (
@@ -182,6 +182,8 @@ class RateEquation(Module, ABC):
     to assemble one, so that each reaction's ragged `n_rxn_*` axes are bound in
     their own jaxtyping scope.
     """  # noqa: E501
+
+    stoichiometry: dict[str, float] = field(kw_only=True)
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species this rate equation names, in declaration order.

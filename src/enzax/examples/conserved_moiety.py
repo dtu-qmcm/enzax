@@ -31,43 +31,40 @@ from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rate_equations import MichaelisMenten
 
-stoichiometry = {
-    "transA": {"A_e": -1.0, "A_c": 1.0},
-    "r1": {"A_c": -1.0, "B_c": 1.0},
-    "r2A": {"A_c": -1.0, "C_c": 1.0},
-    "r2B": {"A_c": -1.0, "C_c": 1.0},
-    "r3": {"B_c": -1.0, "X1_c": -1.0, "D_c": 1.0, "X2_c": 1.0},
-    "r4": {"C_c": -1.0, "D_c": 1.0},
-    "transD": {"D_c": -1.0, "D_e": 1.0},
-    "regX": {"Z_c": -1.0, "X2_c": -1.0, "X1_c": 1.0},
-}
 balanced_species = ["A_c", "B_c", "C_c", "D_c", "X1_c", "X2_c"]
 dependent_species = ["X2_c"]
 # A and D each live in two compartments, so they share a formation energy.
 # Every other species is a compound of its own, so it needs no entry here.
 compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
-rate_equations = {
-    "transA": MichaelisMenten(),
-    "r1": MichaelisMenten(competitive_inhibitors=["D_c"]),
+reactions = {
+    "transA": MichaelisMenten(stoichiometry={"A_e": -1.0, "A_c": 1.0}),
+    "r1": MichaelisMenten(
+        stoichiometry={"A_c": -1.0, "B_c": 1.0}, competitive_inhibitors=["D_c"]
+    ),
     "r2A": MichaelisMenten(
+        stoichiometry={"A_c": -1.0, "C_c": 1.0},
         allosteric_activators=["C_c"],
         subunits=1,
     ),
     "r2B": MichaelisMenten(
+        stoichiometry={"A_c": -1.0, "C_c": 1.0},
         allosteric_inhibitors=["C_c"],
         subunits=1,
     ),
-    "r3": MichaelisMenten(),
-    "r4": MichaelisMenten(),
-    "transD": MichaelisMenten(),
-    "regX": MichaelisMenten(),
+    "r3": MichaelisMenten(
+        stoichiometry={"B_c": -1.0, "X1_c": -1.0, "D_c": 1.0, "X2_c": 1.0}
+    ),
+    "r4": MichaelisMenten(stoichiometry={"C_c": -1.0, "D_c": 1.0}),
+    "transD": MichaelisMenten(stoichiometry={"D_c": -1.0, "D_e": 1.0}),
+    "regX": MichaelisMenten(
+        stoichiometry={"Z_c": -1.0, "X2_c": -1.0, "X1_c": 1.0}
+    ),
 }
 model = KineticModel(
-    stoichiometry=stoichiometry,
     balanced_species=balanced_species,
     dependent_species=dependent_species,
     compound_to_species=compound_to_species,
-    rate_equations=rate_equations,
+    reactions=reactions,
 )
 parameters = pack_parameters(
     model.parameter_labelling,

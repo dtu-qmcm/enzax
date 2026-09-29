@@ -109,29 +109,6 @@ def get_species_to_compound(
     return {s: species_to_compound.get(s, s) for s in species}
 
 
-def check_rate_equations_cover_reactions(
-    reactions: Sequence[str],
-    rate_equations: Mapping[str, RateEquation],
-) -> None:
-    """Raise unless there is exactly one rate equation per reaction.
-
-    A reaction with no rate equation has no flux, and a rate equation keyed by
-    something that is not a reaction is a typo, so both are errors rather than
-    something to work around.
-    """
-    missing = [r for r in reactions if r not in rate_equations]
-    if missing:
-        msg = f"Reactions {missing} have no rate equation."
-        raise ValueError(msg)
-    unknown = [r for r in rate_equations if r not in reactions]
-    if unknown:
-        msg = (
-            f"rate_equations names {unknown}, which the stoichiometry does "
-            f"not: its reactions are {list(reactions)}."
-        )
-        raise ValueError(msg)
-
-
 def validate_kinetic_model(model: "KineticModel") -> None:
     """Raise a ValueError if a kinetic model is not well formed.
 
@@ -242,18 +219,18 @@ class KineticModel(eqx.Module):
     and stored in `rate_equation_ix`, in reaction order.
     """
 
-    stoichiometry: dict[str, dict[str, float]] = eqx.field(static=True)
+    reactions: dict[str, RateEquation] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
     dependent_species: list[str] = eqx.field(static=True, default_factory=list)
     compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
     )
     extra_species: list[str] = eqx.field(static=True, default_factory=list)
-    rate_equations: Mapping[str, RateEquation] = eqx.field(
-        static=True, default_factory=dict
+    stoichiometry: dict[str, dict[str, float]] = eqx.field(
+        static=True, init=False
     )
     species: list[str] = eqx.field(static=True, init=False)
-    reactions: list[str] = eqx.field(static=True, init=False)
+    reaction_ids: list[str] = eqx.field(static=True, init=False)
     independent_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
@@ -268,10 +245,11 @@ class KineticModel(eqx.Module):
     rate_equation_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
 
     def __post_init__(self):
-        check_rate_equations_cover_reactions(
-            list(self.stoichiometry), self.rate_equations
-        )
-        self.reactions = list(self.stoichiometry)
+        self.stoichiometry = {
+            reaction_id: dict(reaction.stoichiometry)
+            for reaction_id, reaction in self.reactions.items()
+        }
+        self.reaction_ids = list(self.reactions)
         self.species = self._build_species()
         named = dict.fromkeys(self.balanced_species + self.dependent_species)
         not_species = [s for s in named if s not in self.species]
@@ -310,8 +288,8 @@ class KineticModel(eqx.Module):
         self._dependent_species_ix = freeze_array(
             [get_ix_from_list(s, self.species) for s in self.dependent_species]
         )
-        S = np.zeros(shape=(len(self.species), len(self.reactions)))
-        for ix_reaction, reaction in enumerate(self.reactions):
+        S = np.zeros(shape=(len(self.species), len(self.reaction_ids)))
+        for ix_reaction, reaction in enumerate(self.reaction_ids):
             for species_i, coeff in self.stoichiometry[reaction].items():
                 ix_species = get_ix_from_list(species_i, self.species)
                 S[ix_species, ix_reaction] = coeff
@@ -324,14 +302,14 @@ class KineticModel(eqx.Module):
         )
         for species_i in self.species:
             check_id_has_no_separator(species_i, "Species")
-        for reaction in self.reactions:
+        for reaction in self.reaction_ids:
             check_id_has_no_separator(reaction, "Reaction")
         for compound in self._dgf_labels():
             check_id_has_no_separator(compound, "Compound")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
         self.rate_equation_ix = [
-            self.rate_equations[scope.reaction_id].get_input_indexes(
+            self.reactions[scope.reaction_id].get_input_indexes(
                 scope, self.parameter_labelling
             )
             for scope in self._scopes()
@@ -375,7 +353,7 @@ class KineticModel(eqx.Module):
         """
         from_reactions = [
             species_id
-            for reaction in self.reactions
+            for reaction in self.reaction_ids
             for species_id in self.stoichiometry[reaction]
         ]
         return list(
@@ -395,8 +373,8 @@ class KineticModel(eqx.Module):
         """
         return [
             species_id
-            for reaction in self.reactions
-            for species_id in self.rate_equations[reaction].get_species()
+            for reaction in self.reaction_ids
+            for species_id in self.reactions[reaction].get_species()
         ]
 
     def _build_parameter_labelling(self) -> ParamLabelling:
@@ -410,9 +388,7 @@ class KineticModel(eqx.Module):
         piece.
         """
         from_rate_equations = [
-            self.rate_equations[scope.reaction_id].get_labels_by_parameter(
-                scope
-            )
+            self.reactions[scope.reaction_id].get_labels_by_parameter(scope)
             for scope in self._scopes()
         ]
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
@@ -432,7 +408,7 @@ class KineticModel(eqx.Module):
                 stoichiometry=self.S[:, ix_reaction],
                 species_to_dgf_ix=self.species_to_dgf_ix,
             )
-            for ix_reaction, reaction in enumerate(self.reactions)
+            for ix_reaction, reaction in enumerate(self.reaction_ids)
         ]
 
     def _dgf_labels(self) -> list[str]:
@@ -465,8 +441,8 @@ class KineticModel(eqx.Module):
             conc_balanced, self.get_log_conc_unbalanced(parameters)
         )
         flux_list = []
-        for reaction, ix in zip(self.reactions, self.rate_equation_ix):
-            rate_equation = self.rate_equations[reaction]
+        for reaction, ix in zip(self.reaction_ids, self.rate_equation_ix):
+            rate_equation = self.reactions[reaction]
             ipt = rate_equation.get_input(parameters, ix)
             flux_list.append(rate_equation(conc, ipt))
         return jnp.array(flux_list)

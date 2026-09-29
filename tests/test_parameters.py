@@ -20,7 +20,8 @@ from enzax.rate_equation import get_species_labels
 from enzax.rate_equations import MichaelisMenten
 
 SPECIES = ["a", "b", "c"]
-STOICHIOMETRY = {"r1": {"a": -1.0, "b": 1.0}, "r2": {"a": -1.0, "c": 1.0}}
+R1 = {"a": -1.0, "b": 1.0}
+R2 = {"a": -1.0, "c": 1.0}
 CONC = jnp.array([0.5, 0.2, 0.1])
 VALUES = {
     "km|r1|a": 0.1,
@@ -32,11 +33,10 @@ VALUES = {
 }
 
 
-def get_model(rate_equations, **kwargs):
+def get_model(reactions, **kwargs):
     return KineticModel(
-        stoichiometry=STOICHIOMETRY,
         balanced_species=SPECIES,
-        rate_equations=dict(zip(STOICHIOMETRY, rate_equations)),
+        reactions=dict(zip(["r1", "r2"], reactions)),
         **kwargs,
     )
 
@@ -62,11 +62,17 @@ def get_parameters(model, **overrides):
     return pack_parameters(labelling, spec)
 
 
-SEPARATE = get_model([MichaelisMenten(), MichaelisMenten()])
+SEPARATE = get_model(
+    [MichaelisMenten(stoichiometry=R1), MichaelisMenten(stoichiometry=R2)]
+)
 SHARED = get_model(
     [
-        MichaelisMenten(michaelis_constants={"a": "km|shared|a"}),
-        MichaelisMenten(michaelis_constants={"a": "km|shared|a"}),
+        MichaelisMenten(
+            stoichiometry=R1, michaelis_constants={"a": "km|shared|a"}
+        ),
+        MichaelisMenten(
+            stoichiometry=R2, michaelis_constants={"a": "km|shared|a"}
+        ),
     ]
 )
 
@@ -229,9 +235,10 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
     model = get_model(
         [
             MichaelisMenten(
+                stoichiometry=R1,
                 allosteric_activators={"b": "km|r1|b"},
             ),
-            MichaelisMenten(),
+            MichaelisMenten(stoichiometry=R2),
         ]
     )
     labelling = model.parameter_labelling
@@ -252,9 +259,10 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
 def test_separator_is_rejected_in_an_id():
     with pytest.raises(ValueError, match="separate the parts"):
         KineticModel(
-            stoichiometry={"r1": {"a|b": -1.0, "c": 1.0}},
             balanced_species=["a|b", "c"],
-            rate_equations={"r1": MichaelisMenten()},
+            reactions={
+                "r1": MichaelisMenten(stoichiometry={"a|b": -1.0, "c": 1.0})
+            },
         )
 
 
@@ -262,8 +270,10 @@ def test_log_k_labels_must_have_a_known_prefix():
     with pytest.raises(ValueError, match="must start with one of"):
         get_model(
             [
-                MichaelisMenten(michaelis_constants={"a": "bogus|r1|a"}),
-                MichaelisMenten(),
+                MichaelisMenten(
+                    stoichiometry=R1, michaelis_constants={"a": "bogus|r1|a"}
+                ),
+                MichaelisMenten(stoichiometry=R2),
             ]
         )
 
@@ -296,7 +306,10 @@ def test_custom_parameters_pack_and_unpack():
 def test_compounds_must_belong_to_species():
     with pytest.raises(ValueError, match="not one of the model's species"):
         get_model(
-            [MichaelisMenten(), MichaelisMenten()],
+            [
+                MichaelisMenten(stoichiometry=R1),
+                MichaelisMenten(stoichiometry=R2),
+            ],
             compound_to_species={"ab": ["a", "not_a_species"]},
         )
 
@@ -304,7 +317,10 @@ def test_compounds_must_belong_to_species():
 def test_a_species_can_only_belong_to_one_compound():
     with pytest.raises(ValueError, match="claimed by two compounds"):
         get_model(
-            [MichaelisMenten(), MichaelisMenten()],
+            [
+                MichaelisMenten(stoichiometry=R1),
+                MichaelisMenten(stoichiometry=R2),
+            ],
             compound_to_species={"ab": ["a", "b"], "ac": ["a", "c"]},
         )
 
@@ -312,7 +328,10 @@ def test_a_species_can_only_belong_to_one_compound():
 def test_a_compound_cannot_share_a_name_with_another_species():
     with pytest.raises(ValueError, match="two compounds the same label"):
         get_model(
-            [MichaelisMenten(), MichaelisMenten()],
+            [
+                MichaelisMenten(stoichiometry=R1),
+                MichaelisMenten(stoichiometry=R2),
+            ],
             compound_to_species={"a": ["b", "c"]},
         )
 

@@ -276,7 +276,7 @@ def test_a_failed_solve_gives_a_nan_log_density_rather_than_raising():
         for shape in [
             (len(model.species),),
             (len(model.parameter_labelling["log_enzyme"]),),
-            (len(model.reactions),),
+            (len(model.reaction_ids),),
         ]
     )
     guess = cold_guess(methionine)

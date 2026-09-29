@@ -43,7 +43,7 @@ def test_converted_glycolysis_reproduces_the_file_fluxes():
         [expected["initial_concentration"][s] for s in model.balanced_species]
     )
     flux = model.flux(conc, parameters)
-    for position, reaction in enumerate(model.reactions):
+    for position, reaction in enumerate(model.reaction_ids):
         assert jnp.isclose(
             flux[position], expected["flux"][reaction], rtol=1e-10, atol=0.0
         )
@@ -74,7 +74,7 @@ def test_converted_smallbone_matches_the_retired_kinetic_model_sbml():
         )
     }
     flux = model.flux(conc, parameters)
-    for position, reaction in enumerate(model.reactions):
+    for position, reaction in enumerate(model.reaction_ids):
         assert jnp.isclose(
             flux[position], expected["flux"][reaction], rtol=1e-10
         )
