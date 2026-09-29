@@ -192,9 +192,9 @@ def test_agrees_with_irreversible_michaelis_menten():
 
 def test_agrees_with_drain():
     symbolic = SymbolicReaction(
-        stoichiometry=R1, expression="-v", parameters={"v": "log_drain"}
+        stoichiometry=R1, expression="v", parameters={"v": "log_drain"}
     )
-    assert_same_flux_and_gradient(symbolic, Drain(stoichiometry=R1, sign=-1.0))
+    assert_same_flux_and_gradient(symbolic, Drain(stoichiometry=R1))
 
 
 def test_effectors_custom_parameters_and_temperature():

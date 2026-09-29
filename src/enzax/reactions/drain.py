@@ -37,12 +37,9 @@ class Drain(Reaction):
 
     Fields:
 
-    * `sign`: 1.0 for a reaction that produces its species, -1.0 for one that
-      consumes them.
     * `drain`: label of the drain's absolute rate. Defaults to the reaction id.
     """
 
-    sign: float
     drain: str | None = None
 
     def get_labels(self, scope: ReactionScope) -> DrainLabels:
@@ -63,4 +60,4 @@ class Drain(Reaction):
 
     def __call__(self, conc: ConcArray, drain_input: DrainInput) -> Scalar:
         """Get the flux of a drain reaction."""
-        return self.sign * drain_input.abs_v
+        return drain_input.abs_v

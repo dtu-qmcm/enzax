@@ -21,9 +21,7 @@ balanced_species = [
 model = KineticModel(
     balanced_species=balanced_species,
     reactions={
-        "the_drain": Drain(
-            stoichiometry={"met-L": 1.0}, sign=1.0
-        ),  # met-L source
+        "the_drain": Drain(stoichiometry={"met-L": 1.0}),  # met-L source
         "MAT1": MichaelisMenten(
             stoichiometry={
                 "met-L": -1.0,
