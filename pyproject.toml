@@ -53,6 +53,10 @@ filterwarnings = [
   # that jax.grad differentiates with respect to. Every `init=False` field in
   # enzax is static too, so none of them is a leaf.
   'ignore:Using `field\(init=False\)` on `equinox.Module`:UserWarning',
+  # Toy models in the tests often have conserved moieties they don't declare,
+  # because they only test rate laws. The tests of the warning itself
+  # override this filter.
+  'ignore::enzax.kinetic_model.UndeclaredMoietyWarning',
 ]
 
 [tool.ruff]

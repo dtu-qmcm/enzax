@@ -113,9 +113,9 @@ def test_refine_never_returns_a_non_physical_state(name, example):
     `RESULTS.successful` is not enough on its own: a Newton solver has no
     notion of a physical concentration, and the steady state event would fire
     on a non-physical root too, since it only tests whether `dcdt` is near
-    zero. The check is on the *balanced* concentrations, so that a dependent
-    species whose concentration is `moiety_total + L0 @ conc_ind` is covered
-    as well.
+    zero. The check is on the *balanced* concentrations, so that a moiety
+    pivot species whose concentration is `moiety_total + L0 @ conc_ind` is
+    covered as well.
 
     No shipped example is known to reach that branch, and the reason looks
     structural rather than lucky: `KineticModel.dcdt` clips concentrations at

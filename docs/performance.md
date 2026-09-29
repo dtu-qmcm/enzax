@@ -8,7 +8,7 @@ While, thanks to its modular design, enzax is useful for many other problems, it
 
 The best algorithm for fitting such a model is a gradient-based Markov chain Monte Carlo sampler like Hamiltonian Monte Carlo. HMC and its variants achieve good performance by numerically simulating Hamiltonian trajectories to choose new points in parameter space. These simulations require repeatedly evaluating the target probability density and its parameter gradients: in a typical run with four chains, 2000 iterations and 125 evaluations per iteration, the target density must be evaluated and differentiated one million times!
 
-For steady state metabolic network models, by far the most costly part of a gradient evaluation is solving and differentiating a steady state problem, i.e. finding a set of independent balanced species concentrations that do not change under the model's flux. Most of enzax's optimisations therefore target this problem.
+For steady state metabolic network models, by far the most costly part of a gradient evaluation is solving and differentiating a steady state problem, i.e. finding a set of ODE state species concentrations that do not change under the model's flux. Most of enzax's optimisations therefore target this problem.
 
 ## The four optimisations
 

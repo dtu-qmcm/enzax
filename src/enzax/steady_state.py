@@ -18,7 +18,7 @@ import optimistix as optx
 from jax import numpy as jnp
 from jaxtyping import PyTree
 
-from enzax.array_types import IndConcArr
+from enzax.array_types import OdeStateArr
 from enzax.kinetic_model import KineticModel
 
 # The step count a steady state solve is allowed before it is called a
@@ -36,7 +36,7 @@ NEWTON_LINEAR_SOLVER = lx.AutoLinearSolver(well_posed=False)
 @eqx.filter_jit()
 def get_steady_state(
     rhs,
-    guess: IndConcArr,
+    guess: OdeStateArr,
     parameters: PyTree,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
@@ -46,7 +46,7 @@ def get_steady_state(
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
     adjoint: diffrax.AbstractAdjoint | None = None,
-) -> IndConcArr:
+) -> OdeStateArr:
     """Get the steady state of a kinetic model, using diffrax.
 
     Returns NaN if no steady state was found, so that a sampler treats the
@@ -136,12 +136,12 @@ def get_steady_state(
 @eqx.filter_jit()
 def refine_guess_newton(
     model: KineticModel,
-    guess: IndConcArr,
+    guess: OdeStateArr,
     parameters: PyTree,
     newton_max_steps: int = 10,
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
-) -> IndConcArr:
+) -> OdeStateArr:
     """Improve a steady state guess with a bounded Newton root find on `dcdt`.
 
     Returns the root Newton found if it converged to finite, positive
@@ -152,7 +152,7 @@ def refine_guess_newton(
 
     :param model: the kinetic model whose `dcdt` is being solved.
 
-    :param guess: the concentrations of the independent species to start from,
+    :param guess: the concentrations of the ODE state species to start from,
     and to fall back to.
 
     :param parameters: a PyTree of parameters.
@@ -191,7 +191,7 @@ def refine_guess_newton(
 @eqx.filter_jit()
 def get_steady_state_hybrid(
     model: KineticModel,
-    guess: IndConcArr,
+    guess: OdeStateArr,
     parameters: PyTree,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
@@ -204,7 +204,7 @@ def get_steady_state_hybrid(
     newton_max_steps: int = 10,
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
-) -> IndConcArr:
+) -> OdeStateArr:
     """Get a steady state, trying Newton first and integrating from its answer.
 
     Takes `get_steady_state`'s arguments plus `refine_guess_newton`'s. The

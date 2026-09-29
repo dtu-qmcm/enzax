@@ -880,7 +880,7 @@ def main() -> None:
     problem, _ = build_problem(glycolysis, SEED)
     n_free = count_free_parameters(problem.split)
     print(
-        f"glycolysis: {len(problem.model.independent_species)} balanced "
+        f"glycolysis: {len(problem.model.ode_state_species)} balanced "
         f"species, {len(problem.model.reaction_ids)} reactions, {n_free} free "
         "parameters"
     )
@@ -916,7 +916,7 @@ def main() -> None:
         rows,
         f"{OUT_PREFIX}.png",
         subtitle=(
-            f"glycolysis: {len(problem.model.independent_species)} balanced "
+            f"glycolysis: {len(problem.model.ode_state_species)} balanced "
             f"species, {n_free} free parameters, {n_step} leapfrog steps per "
             f"iteration. Each row adds one optimisation to the row above."
         ),

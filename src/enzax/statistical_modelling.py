@@ -7,7 +7,7 @@ from jax import numpy as jnp
 from jax.scipy.stats import multivariate_normal, norm
 from jaxtyping import PyTree, Scalar
 
-from enzax.array_types import IndConcArr, ParamDict
+from enzax.array_types import OdeStateArr, ParamDict
 from enzax.kinetic_model import KineticModel
 from enzax.parameter_split import ParameterSplit, combine_parameters
 from enzax.steady_state import get_steady_state_hybrid
@@ -179,14 +179,14 @@ def _log_density_and_steady_state(
     measurements: PyTree,
     prior: PyTree,
     split: ParameterSplit | None = None,
-    guess: IndConcArr | None = None,
+    guess: OdeStateArr | None = None,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
-) -> tuple[Scalar, IndConcArr]:
+) -> tuple[Scalar, OdeStateArr]:
     """Get the log posterior density of a kinetic model's parameters.
 
     :param free_parameters: the parameters being inferred. With a `split`,
@@ -224,7 +224,7 @@ def _log_density_and_steady_state(
     integration usually takes no steps.
     """
     if guess is None:
-        guess = jnp.full((len(model.independent_species_ix)), 0.01)
+        guess = jnp.full((len(model.ode_state_species_ix)), 0.01)
     # A NaN guess is what a previous failed solve hands back under grapevine.
     # Nothing can start from one -- the solve returns NaN again, and the rate
     # laws raise on a NaN concentration rather than propagate it -- so it is
@@ -287,7 +287,7 @@ def enzax_log_density(
     measurements: PyTree,
     prior: PyTree,
     split: ParameterSplit | None = None,
-    guess: IndConcArr | None = None,
+    guess: OdeStateArr | None = None,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,

@@ -1,5 +1,6 @@
 """Module containing enzax's definition of a kinetic model."""
 
+import warnings
 from collections.abc import Mapping, Sequence
 
 import equinox as eqx
@@ -12,11 +13,11 @@ from enzax.array_types import (
     BalancedConcArr,
     BalancedSpeciesIx,
     ConcArray,
-    DepSpeciesIx,
+    MoietyPivotSpeciesIx,
     Flux,
-    IndConcArr,
-    IndRateArr,
-    IndSpeciesIx,
+    OdeStateArr,
+    OdeStateRateArr,
+    OdeStateSpeciesIx,
     LinkMatrix,
     MoietyTotalsArr,
     ParamLabelling,
@@ -39,27 +40,27 @@ def get_ix_from_list(s: str, list_of_strings: list[str]):
 
 def get_link_matrix(
     S: StoichiometricMatrix,
-    independent_species_ix: IndSpeciesIx,
-    dependent_species_ix: DepSpeciesIx,
+    ode_state_species_ix: OdeStateSpeciesIx,
+    moiety_pivot_species_ix: MoietyPivotSpeciesIx,
 ) -> LinkMatrix:
-    """Get the link matrix L0 relating dependent to independent species.
+    """Get the link matrix L0 relating moiety pivot species to the ODE state.
 
     L0 is the matrix satisfying `S_dep = L0 @ S_ind`, where `S_dep` and
     `S_ind` are the rows of the stoichiometric matrix belonging to,
-    respectively, the dependent and the independent species.
+    respectively, the moiety pivot species and the ODE state species.
 
     Since `d/dt conc_dep = L0 @ d/dt conc_ind`, the quantity
     `conc_dep - L0 @ conc_ind` is conserved: these are the moiety totals.
 
-    L0 only exists if the dependent and independent species satisfy the
+    L0 only exists if the moiety pivot species and ODE state species satisfy the
     conditions checked by `validate_kinetic_model`, so validate a model
     before calling this function.
     """
-    n_ind = len(independent_species_ix)
-    if len(dependent_species_ix) == 0:
+    n_ind = len(ode_state_species_ix)
+    if len(moiety_pivot_species_ix) == 0:
         return np.zeros(shape=(0, n_ind), dtype=np.float64)
-    S_ind = sympy.Matrix(S[independent_species_ix, :])
-    S_dep = sympy.Matrix(S[dependent_species_ix, :])
+    S_ind = sympy.Matrix(S[ode_state_species_ix, :])
+    S_dep = sympy.Matrix(S[moiety_pivot_species_ix, :])
     # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
     L0_T = S_ind.T.solve_least_squares(S_dep.T)
     return np.array(L0_T.T, dtype=np.float64)
@@ -114,52 +115,120 @@ def validate_kinetic_model(model: "KineticModel") -> None:
 
     The checks are:
 
-    - every dependent species is a balanced species;
-    - the independent species' stoichiometries are linearly independent;
-    - every dependent species' stoichiometry is a linear combination of the
-      independent species' stoichiometries, i.e. every dependent species
-      takes part in a conservation relation with the independent species.
+    - every moiety pivot species is a balanced species;
+    - the ODE state species' stoichiometries are linearly independent;
+    - every moiety pivot species' stoichiometry is a linear combination of
+      the ODE state species' stoichiometries, i.e. every moiety pivot
+      species takes part in a conservation relation with the ODE state
+      species.
 
     The last two conditions are what makes the model's link matrix exist. A
-    model with no dependent species does not need them, so they are only
-    checked when there is at least one dependent species.
+    model with no moiety pivot species does not need them, so they are
+    only checked when there is at least one moiety pivot species.
 
     :param model: a KineticModel whose fields have all been set except L0.
 
     """
     not_balanced = [
-        s for s in model.dependent_species if s not in model.balanced_species
+        s for s in model.moiety_pivot_species if s not in model.balanced_species
     ]
     if not_balanced:
         msg = (
-            "Dependent species must be balanced species, but these are "
+            "Moiety pivot species must be balanced species, but these are "
             f"not: {not_balanced}."
         )
         raise ValueError(msg)
-    if not model.dependent_species:
+    if not model.moiety_pivot_species:
         return
-    if not model.independent_species:
+    if not model.ode_state_species:
         msg = (
-            "A model with dependent species must have at least one "
-            "independent species, but this one has none."
+            "A model with moiety pivot species must have at least one "
+            "ODE state species, but this one has none."
         )
         raise ValueError(msg)
-    S_ind = model.S[model.independent_species_ix, :]
-    S_dep = model.S[model.dependent_species_ix, :]
+    S_ind = model.S[model.ode_state_species_ix, :]
+    S_dep = model.S[model.moiety_pivot_species_ix, :]
     rank_ind = np.linalg.matrix_rank(S_ind)
-    if rank_ind < len(model.independent_species):
+    if rank_ind < len(model.ode_state_species):
         msg = (
-            "The independent species' stoichiometries must be linearly "
+            "The ODE state species' stoichiometries must be linearly "
             "independent, but they are not."
         )
         raise ValueError(msg)
     if np.linalg.matrix_rank(np.vstack((S_ind, S_dep))) > rank_ind:
         msg = (
-            "Every dependent species must take part in a conservation "
-            "relation with the independent species, but at least one does "
+            "Every moiety pivot species must take part in a conservation "
+            "relation with the ODE state species, but at least one does "
             "not."
         )
         raise ValueError(msg)
+
+
+class UndeclaredMoietyWarning(UserWarning):
+    """Warn that a model has conserved moieties that it does not declare."""
+
+
+def format_linear_combination(
+    coefficients: Sequence[sympy.Rational], names: Sequence[str]
+) -> str:
+    """Write a linear combination of names, such as `A + 2 B - C`.
+
+    Zero coefficients are left out.
+    """
+    terms = [(c, name) for c, name in zip(coefficients, names) if c != 0]
+    out = ""
+    for position, (c, name) in enumerate(terms):
+        term = name if abs(c) == 1 else f"{abs(c)} {name}"
+        if position == 0:
+            out = f"-{term}" if c < 0 else term
+        else:
+            out += f" - {term}" if c < 0 else f" + {term}"
+    return out
+
+
+def get_conserved_moieties(
+    S: StoichiometricMatrix, species: Sequence[str]
+) -> list[str]:
+    """Get the conserved moieties of a stoichiometric matrix.
+
+    Each moiety is a linear combination of species. They are a basis of
+    `S`'s left null space in reduced row echelon form, so each moiety's first
+    species has coefficient 1 and appears in no other moiety.
+    """
+    basis = sympy.Matrix(S).applyfunc(sympy.nsimplify).T.nullspace()
+    if not basis:
+        return []
+    rows, _ = sympy.Matrix.hstack(*basis).T.rref()
+    return [
+        format_linear_combination(list(rows.row(i)), species)
+        for i in range(rows.rows)
+    ]
+
+
+def warn_about_undeclared_moieties(model: "KineticModel") -> None:
+    """Warn if a model has conserved moieties but declares none.
+
+    `validate_kinetic_model` already requires a model that declares any
+    moieties to declare all of them, so only an empty `moiety_pivot_species`
+    needs a warning.
+    """
+    if model.moiety_pivot_species:
+        return
+    S_balanced = model.S[model.balanced_species_ix, :]
+    if np.linalg.matrix_rank(S_balanced) == len(model.balanced_species):
+        return
+    moieties = get_conserved_moieties(S_balanced, model.balanced_species)
+    if len(moieties) == 1:
+        described = f"1 conserved moiety, {moieties[0]},"
+    else:
+        listed = ", ".join(moieties[:-1]) + f" and {moieties[-1]}"
+        described = f"{len(moieties)} conserved moieties, {listed},"
+    msg = (
+        f"The balanced species form {described} but `moiety_pivot_species` "
+        "is empty, so the model's steady states are not unique. Name one "
+        "species from each moiety in `moiety_pivot_species`."
+    )
+    warnings.warn(msg, UndeclaredMoietyWarning)
 
 
 # A pair (shape, values) for a static field
@@ -191,13 +260,13 @@ class KineticModel(eqx.Module):
     assembled from the reactions' stoichiometries and effectors.
 
     A model's balanced species are the ones whose concentrations are state
-    variables. They are split into dependent and independent species: a
-    dependent species' concentration is determined by the independent species'
-    concentrations together with a conserved moiety total, so only the
-    independent species need to be solved for.
+    variables. They are split into moiety pivot species and ODE state
+    species: a moiety pivot species' concentration is determined by the ODE
+    state species' concentrations together with a conserved moiety total,
+    so only the ODE state species need to be solved for.
 
-    `dependent_species` is therefore a subset of `balanced_species`, and
-    `independent_species` is the rest of `balanced_species`. Instantiating a
+    `moiety_pivot_species` is therefore a subset of `balanced_species`, and
+    `ode_state_species` is the rest of `balanced_species`. Instantiating a
     model checks this, along with the other conditions listed in
     `validate_kinetic_model`.
 
@@ -221,7 +290,9 @@ class KineticModel(eqx.Module):
 
     reactions: dict[str, Reaction] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
-    dependent_species: list[str] = eqx.field(static=True, default_factory=list)
+    moiety_pivot_species: list[str] = eqx.field(
+        static=True, default_factory=list
+    )
     compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
     )
@@ -231,14 +302,14 @@ class KineticModel(eqx.Module):
     )
     species: list[str] = eqx.field(static=True, init=False)
     reaction_ids: list[str] = eqx.field(static=True, init=False)
-    independent_species: list[str] = eqx.field(static=True, init=False)
+    ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
     _species_to_dgf_ix: FrozenArray = eqx.field(static=True, init=False)
     _balanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _unbalanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
-    _independent_species_ix: FrozenArray = eqx.field(static=True, init=False)
-    _dependent_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _ode_state_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _moiety_pivot_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _S: FrozenArray = eqx.field(static=True, init=False)
     _L0: FrozenArray = eqx.field(static=True, init=False)
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
@@ -251,7 +322,7 @@ class KineticModel(eqx.Module):
         }
         self.reaction_ids = list(self.reactions)
         self.species = self._build_species()
-        named = dict.fromkeys(self.balanced_species + self.dependent_species)
+        named = dict.fromkeys(self.balanced_species + self.moiety_pivot_species)
         not_species = [s for s in named if s not in self.species]
         if not_species:
             msg = (
@@ -276,17 +347,19 @@ class KineticModel(eqx.Module):
         self._unbalanced_species_ix = freeze_array(
             [get_ix_from_list(s, self.species) for s in self.unbalanced_species]
         )
-        self.independent_species = [
-            s for s in self.balanced_species if s not in self.dependent_species
+        self.ode_state_species = [
+            s
+            for s in self.balanced_species
+            if s not in self.moiety_pivot_species
         ]
-        self._independent_species_ix = freeze_array(
+        self._ode_state_species_ix = freeze_array(
+            [get_ix_from_list(s, self.species) for s in self.ode_state_species]
+        )
+        self._moiety_pivot_species_ix = freeze_array(
             [
                 get_ix_from_list(s, self.species)
-                for s in self.independent_species
+                for s in self.moiety_pivot_species
             ]
-        )
-        self._dependent_species_ix = freeze_array(
-            [get_ix_from_list(s, self.species) for s in self.dependent_species]
         )
         S = np.zeros(shape=(len(self.species), len(self.reaction_ids)))
         for ix_reaction, reaction in enumerate(self.reaction_ids):
@@ -295,9 +368,10 @@ class KineticModel(eqx.Module):
                 S[ix_species, ix_reaction] = coeff
         self._S = freeze_array(S)
         validate_kinetic_model(self)
+        warn_about_undeclared_moieties(self)
         self._L0 = freeze_array(
             get_link_matrix(
-                self.S, self.independent_species_ix, self.dependent_species_ix
+                self.S, self.ode_state_species_ix, self.moiety_pivot_species_ix
             )
         )
         for species_i in self.species:
@@ -328,12 +402,12 @@ class KineticModel(eqx.Module):
         return unfreeze_array(self._unbalanced_species_ix, np.int16)
 
     @property
-    def independent_species_ix(self) -> IndSpeciesIx:
-        return unfreeze_array(self._independent_species_ix, np.int16)
+    def ode_state_species_ix(self) -> OdeStateSpeciesIx:
+        return unfreeze_array(self._ode_state_species_ix, np.int16)
 
     @property
-    def dependent_species_ix(self) -> DepSpeciesIx:
-        return unfreeze_array(self._dependent_species_ix, np.int16)
+    def moiety_pivot_species_ix(self) -> MoietyPivotSpeciesIx:
+        return unfreeze_array(self._moiety_pivot_species_ix, np.int16)
 
     @property
     def S(self) -> StoichiometricMatrix:
@@ -379,8 +453,8 @@ class KineticModel(eqx.Module):
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
         if self.unbalanced_species:
             from_structure["log_conc_unbalanced"] = self.unbalanced_species
-        if self.dependent_species:
-            from_structure["moiety_totals"] = self.dependent_species
+        if self.moiety_pivot_species:
+            from_structure["moiety_totals"] = self.moiety_pivot_species
         from_structure["temperature"] = ()
         return merge_labels(*from_rate_equations, from_structure)
 
@@ -447,28 +521,30 @@ class KineticModel(eqx.Module):
     def get_moiety_totals(self, parameters: PyTree) -> MoietyTotalsArr:
         """Get the conserved moiety totals from a PyTree of parameters.
 
-        Models with no dependent species have no moiety totals, so in that
+        Models with no moiety pivot species have no moiety totals, so in that
         case the parameters do not need a "moiety_totals" entry.
         """
-        if not self.dependent_species:
+        if not self.moiety_pivot_species:
             return jnp.zeros(0)
         return parameters["moiety_totals"]
 
     def get_balanced_conc(
         self,
-        conc_ind: IndConcArr,
+        conc_ind: OdeStateArr,
         moiety_totals: MoietyTotalsArr,
     ) -> BalancedConcArr:
         conc_dep = moiety_totals + self.L0 @ conc_ind
         conc = jnp.zeros(len(self.species))
-        conc = conc.at[self.independent_species_ix].set(conc_ind)
-        conc = conc.at[self.dependent_species_ix].set(conc_dep)
+        conc = conc.at[self.ode_state_species_ix].set(conc_ind)
+        conc = conc.at[self.moiety_pivot_species_ix].set(conc_dep)
         return conc[self.balanced_species_ix]
 
-    def dcdt(self, conc_ind: IndConcArr, parameters: PyTree) -> IndRateArr:
+    def dcdt(
+        self, conc_ind: OdeStateArr, parameters: PyTree
+    ) -> OdeStateRateArr:
         """Get the rate of change of balanced species concentrations.
 
-        :param conc_ind: a one dimensional array of positive floats representing concentrations of independent balanced species. Must have same size as self.independent_species.
+        :param conc_ind: a one dimensional array of positive floats representing concentrations of the ODE state species. Must have same size as self.ode_state_species.
 
         :param parameters: A PyTree of parameters.
 
@@ -478,9 +554,9 @@ class KineticModel(eqx.Module):
         conc_balanced = self.get_balanced_conc(conc_ind, moiety_totals)
         v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
         sv = self.S @ v
-        return jnp.array(sv[self.independent_species_ix])
+        return jnp.array(sv[self.ode_state_species_ix])
 
     def __call__(
-        self, t: ScalarLike, y: IndConcArr, parameters: PyTree
-    ) -> IndRateArr:
+        self, t: ScalarLike, y: OdeStateArr, parameters: PyTree
+    ) -> OdeStateRateArr:
         return self.dcdt(y, parameters)
