@@ -33,7 +33,11 @@ class DrainInput(eqx.Module):
 
 
 class Drain(Reaction):
-    """A drain reaction.
+    """A reaction with constant flux.
+
+    The flux is the drain's absolute rate, so whether the reaction makes or
+    consumes its species follows from its stoichiometry: `{"x": 1.0}` is a
+    source of `x` and `{"x": -1.0}` is a sink.
 
     Fields:
 

@@ -198,12 +198,12 @@ Note also that `competitive_inhibitors`, `allosteric_inhibitors` and `allosteric
 
 ### Water and formation energies
 
-A reversible reaction's driving force comes from the formation energies of its reactants, which the model works out from its compounds. Two fields handle water, which is not considered a species:
+A reversible reaction's driving force comes from the formation energies of its reactants, which the model works out from its compounds. Water is not considered a species, so it is handled separately:
 
-- `water_stoichiometry`: how much water the reaction consumes or produces. It defaults to zero and only matters to a reversible reaction.
-- `water_dgf`: water's formation energy. The default is [equilibrator's](http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001) value. It is a property of the model rather than of the reaction, so give every reaction that touches water the same value.
+- Each reaction's `water_stoichiometry` indicates how much water the reaction consumes or produces. It defaults to zero and only matters for reversible reactions.
+- The model's `water_dgf` specifies water's formation energy, which every reaction in the model shares. The default is [equilibrator's](http://equilibrator.weizmann.ac.il/metabolite?compoundId=C00001) value.
 
-You can also modify a reaction's thermodynamics using the field `dgf_species`, a `{species: compound}` mapping that overrides which formation energy a reactant contributes. This is an escape hatch for reproducing a published model that says something the model's compounds do not; ideally your model's reaction thermodynamics should agree with it's reactants' formation energies!
+You can also modify a reaction's thermodynamics using the field `dgf_species`, a `{species: compound}` mapping that overrides which formation energy a reactant contributes. This is an escape hatch for reproducing a published model that says something the model's compounds do not; ideally your model's reaction thermodynamics should agree with its reactants' formation energies!
 
 ### Checking what you declared
 

@@ -172,6 +172,9 @@ class Reaction(Module, ABC):
     PyTree of other inputs, returning a scalar value representing the
     reaction's flux.
 
+    `water_stoichiometry`, also passed by keyword, says how much water the
+    reaction consumes or produces, since water is not a species.
+
     A reaction refers to its parameters by label. Two reactions that
     use the same label share a value, allowing sharing of parameter values
     between reactions, or for the same parameter value to be used in different

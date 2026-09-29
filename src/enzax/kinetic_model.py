@@ -208,6 +208,11 @@ class KineticModel(eqx.Module):
     claims is a compound of its own, so only compounds with more than one
     species need mentioning.
 
+    Water is not treated as a species. Reactions say how much of it they
+    consume or produce with `water_stoichiometry`, and `water_dgf` is its
+    formation energy, which every reversible reaction in the model uses. The
+    default is equilibrator's value.
+
     The model owns the parameter labelling built from its reactions'
     labels, plus the labels implied by its own structure. Each reaction's
     labels are resolved to positions in the flat parameter arrays once, here,
