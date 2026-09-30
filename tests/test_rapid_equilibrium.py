@@ -1,6 +1,7 @@
 """Unit tests for rapid equilibrium reactions."""
 
 import warnings
+from fractions import Fraction
 
 import jax
 import numpy as np
@@ -10,7 +11,8 @@ from jax import numpy as jnp
 from enzax.kinetic_model import KineticModel, UndeclaredMoietyWarning
 from enzax.rapid_equilibrium import (
     RapidEquilibriumReaction,
-    UnusedFastMoietyPivotWarning,
+    UnusedFastMoietyLabelWarning,
+    get_extreme_conservation_relations,
     solve_rapid_equilibria,
 )
 from enzax.parameters import pack_parameters
@@ -87,25 +89,25 @@ def test_reaction_ids_must_not_clash():
         )
 
 
-def test_fast_moiety_pivot_species_must_be_balanced():
+def test_fast_moiety_label_species_must_be_balanced():
     with pytest.raises(ValueError, match="must be balanced species"):
         KineticModel(
             reactions=MAKE_AND_USE_ATP,
             rapid_equilibrium_reactions=BIND_MG,
             balanced_species=["atp", "adp", "mgatp"],
-            fast_moiety_pivot_species=["mg"],
+            fast_moiety_label_species=["mg"],
         )
 
 
-def test_a_fast_moiety_pivot_species_in_no_rapid_equilibrium_warns():
-    with pytest.warns(UnusedFastMoietyPivotWarning, match=r"\['adp'\]"):
-        KineticModel(**MG_ATP, fast_moiety_pivot_species=["adp"])
+def test_a_fast_moiety_label_species_in_no_rapid_equilibrium_warns():
+    with pytest.warns(UnusedFastMoietyLabelWarning, match=r"\['adp'\]"):
+        KineticModel(**MG_ATP, fast_moiety_label_species=["adp"])
 
 
-def test_a_fast_moiety_pivot_species_in_a_rapid_equilibrium_does_not_warn():
+def test_a_fast_moiety_label_species_in_a_rapid_equilibrium_does_not_warn():
     with warnings.catch_warnings():
-        warnings.simplefilter("error", UnusedFastMoietyPivotWarning)
-        KineticModel(**MG_ATP, fast_moiety_pivot_species=["mg"])
+        warnings.simplefilter("error", UnusedFastMoietyLabelWarning)
+        KineticModel(**MG_ATP, fast_moiety_label_species=["mg"])
 
 
 def get_fast_only_model(stoichiometry, balanced_species, **kwargs):
@@ -120,7 +122,7 @@ def get_fast_only_model(stoichiometry, balanced_species, **kwargs):
     )
 
 
-# a <-> b <-> c, whose one fast moiety a + b + c can take any pivot.
+# a <-> b <-> c, whose one fast moiety a + b + c can take any label.
 CHAIN = dict(
     stoichiometry={"ab": {"a": -1.0, "b": 1.0}, "bc": {"b": -1.0, "c": 1.0}},
     balanced_species=["a", "b", "c"],
@@ -131,7 +133,7 @@ def test_without_rapid_equilibria_each_species_is_a_fast_moiety():
     model = KineticModel(
         reactions=MAKE_AND_USE_ATP, balanced_species=["atp", "adp"]
     )
-    assert model.rapid_equilibria.fast_moiety_pivots == ("atp", "adp")
+    assert model.rapid_equilibria.fast_moiety_labels == ("atp", "adp")
     assert np.array_equal(model.rapid_equilibria.fast_moiety_matrix, np.eye(2))
     assert np.array_equal(model.S_reduced, model.S[model.balanced_species_ix])
 
@@ -167,7 +169,7 @@ def test_competing_ligands_share_one_mg_moiety():
             ),
         },
         balanced_species=["atp", "adp", "mg", "mgatp", "mgadp"],
-        moiety_pivot_species=["mg"],
+        moiety_label_species=["mg"],
     )
     assert model.rapid_equilibria.fast_moiety_coefficients == {
         "atp": {"atp": 1.0, "mgatp": 1.0},
@@ -177,7 +179,7 @@ def test_competing_ligands_share_one_mg_moiety():
     assert len(model.rapid_equilibria.subnetworks) == 1
 
 
-def test_pivots_are_chosen_to_avoid_negative_coefficients():
+def test_labels_prefer_species_in_the_fewest_fast_moieties():
     model = get_fast_only_model(
         stoichiometry={"split": {"a": -1.0, "b": 1.0, "c": 1.0}},
         balanced_species=["a", "b", "c"],
@@ -199,46 +201,32 @@ def test_fast_moiety_coefficients_can_be_fractional():
     }
 
 
-def test_by_default_pivots_follow_species_order():
+def test_by_default_labels_follow_species_order():
     model = get_fast_only_model(**CHAIN)
-    assert model.rapid_equilibria.fast_moiety_pivots == ("a",)
+    assert model.rapid_equilibria.fast_moiety_labels == ("a",)
 
 
-def test_fast_moiety_pivot_species_choose_the_labels():
-    model = get_fast_only_model(**CHAIN, fast_moiety_pivot_species=["c"])
+def test_fast_moiety_label_species_choose_the_labels():
+    model = get_fast_only_model(**CHAIN, fast_moiety_label_species=["c"])
     assert model.rapid_equilibria.fast_moiety_coefficients == {
         "c": {"a": 1.0, "b": 1.0, "c": 1.0}
     }
 
 
-def test_two_fast_moiety_pivots_in_one_fast_moiety_are_rejected():
-    with pytest.raises(ValueError, match=r"in which \['a', 'c'\] are pivots"):
-        get_fast_only_model(**CHAIN, fast_moiety_pivot_species=["a", "c"])
+def test_two_fast_moiety_labels_in_one_fast_moiety_are_rejected():
+    with pytest.raises(ValueError, match=r"that \['a', 'c'\] can label"):
+        get_fast_only_model(**CHAIN, fast_moiety_label_species=["a", "c"])
 
 
-def test_a_fast_moiety_pivot_needing_negative_coefficients_is_rejected():
-    with pytest.raises(ValueError, match=r"in which \['a'\] are pivots"):
-        get_fast_only_model(
-            stoichiometry={"split": {"a": -1.0, "b": 1.0, "c": 1.0}},
-            balanced_species=["a", "b", "c"],
-            fast_moiety_pivot_species=["a"],
-        )
-
-
-def test_a_moiety_pivot_species_is_a_fast_moiety_pivot():
-    model = KineticModel(**MG_ATP, moiety_pivot_species=["mg"])
-    assert "mg" in model.rapid_equilibria.fast_moiety_pivots
+def test_a_moiety_label_species_labels_a_fast_moiety():
+    model = KineticModel(**MG_ATP, moiety_label_species=["mg"])
+    assert "mg" in model.rapid_equilibria.fast_moiety_labels
     assert model.ode_state_species == ["atp", "adp"]
 
 
 def test_the_link_matrix_is_computed_over_fast_moieties():
-    model = KineticModel(**MG_ATP, moiety_pivot_species=["mg"])
+    model = KineticModel(**MG_ATP, moiety_label_species=["mg"])
     assert np.array_equal(model.L0, np.zeros((1, 2)))
-
-
-def test_a_moiety_pivot_species_that_cannot_be_a_pivot_is_rejected():
-    with pytest.raises(ValueError, match=r"in which \['mgatp'\] are pivots"):
-        KineticModel(**MG_ATP, moiety_pivot_species=["mgatp"])
 
 
 def test_an_undeclared_moiety_through_rapid_equilibria_warns():
@@ -254,7 +242,7 @@ def test_a_subnetwork_can_have_no_fast_moieties():
         },
         balanced_species=["a"],
     )
-    assert model.rapid_equilibria.fast_moiety_pivots == ()
+    assert model.rapid_equilibria.fast_moiety_labels == ()
     assert model.ode_state_species == []
 
 
@@ -353,7 +341,7 @@ COMPETING = dict(
         ),
     },
     balanced_species=["atp", "adp", "mg", "mgatp", "mgadp"],
-    moiety_pivot_species=["mg"],
+    moiety_label_species=["mg"],
 )
 
 
@@ -505,7 +493,7 @@ ENERGY = KineticModel(
         ),
     },
     balanced_species=["atp", "adp", "amp", "mg", "mgatp", "mgadp"],
-    moiety_pivot_species=["mg", "amp"],
+    moiety_label_species=["mg", "amp"],
 )
 
 
@@ -601,3 +589,43 @@ def test_steady_state_gradients_match_finite_differences():
         2 * h
     )
     assert np.isclose(jax.grad(free_mg_at_steady_state)(x), fd, rtol=1e-5)
+
+
+def test_a_label_in_several_fast_moieties_labels_one_of_them():
+    model = get_fast_only_model(
+        stoichiometry={"split": {"a": -1.0, "b": 1.0, "c": 1.0}},
+        balanced_species=["a", "b", "c"],
+        fast_moiety_label_species=["a"],
+    )
+    assert model.rapid_equilibria.fast_moiety_coefficients == {
+        "a": {"a": 1.0, "c": 1.0},
+        "b": {"a": 1.0, "b": 1.0},
+    }
+
+
+def test_extreme_conservation_relations_have_minimal_support():
+    # a -> b + c, as a 3 x 1 stoichiometric matrix
+    S = [[Fraction(-1)], [Fraction(1)], [Fraction(1)]]
+    relations = get_extreme_conservation_relations(S)
+    assert sorted(relations) == sorted([[1, 1, 0], [1, 0, 1]])
+
+
+def test_fast_moieties_need_not_have_a_species_of_their_own():
+    # Glycolysis from FDP to lactate, with NAD and the adenylates, has no
+    # basis in which every fast moiety has a species that no other contains.
+    reactions = {
+        "ALD": {"fdp": -1.0, "dhap": 1.0, "ga3p": 1.0},
+        "GAPDH": {"ga3p": -1.0, "nad": -1.0, "dpg13": 1.0, "nadh": 1.0},
+        "PGK": {"dpg13": -1.0, "adp": -1.0, "pg3": 1.0, "atp": 1.0},
+        "LDH": {"pyr": -1.0, "nadh": -1.0, "lac": 1.0, "nad": 1.0},
+        "ApK": {"adp": -2.0, "amp": 1.0, "atp": 1.0},
+    }
+    species = sorted({s for r in reactions.values() for s in r})
+    model = get_fast_only_model(
+        stoichiometry=reactions, balanced_species=species
+    )
+    P = model.rapid_equilibria.fast_moiety_matrix
+    assert P.shape[0] == len(species) - len(reactions)
+    assert np.all(P >= 0)
+    S_fb = model.S_fast[model.balanced_species_ix, :]
+    assert np.allclose(P @ S_fb, 0.0)

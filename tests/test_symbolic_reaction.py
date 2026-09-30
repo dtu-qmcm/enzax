@@ -1,3 +1,5 @@
+import re
+
 import jax
 import numpy as np
 import pytest
@@ -400,3 +402,68 @@ def test_flux_works_under_vmap():
     expected = jax.vmap(lambda k: flux(expected_model, k))(log_kcat)
     assert batched.shape == (5, 3)
     assert jnp.allclose(batched, expected, rtol=1e-12)
+
+
+def test_species_can_be_a_list_of_species_ids():
+    as_list = SymbolicReaction(
+        stoichiometry=R1,
+        expression="kcat * enzyme * (a / km) / (1 + a / km)",
+        species=["a"],
+        parameters=MM_PARAMETERS,
+    )
+    assert as_list.species == {"a": "a"}
+    assert_same_flux_and_gradient(
+        as_list, MichaelisMenten(stoichiometry=R1, reversible=False)
+    )
+
+
+def test_species_cannot_be_a_string():
+    with pytest.raises(ValueError, match="list of species ids"):
+        SymbolicReaction(stoichiometry=R1, expression="k * a", species="a")
+
+
+def test_undeclared_symbols_get_the_default_parameter_kind():
+    rate_equation = SymbolicReaction(
+        stoichiometry=R1,
+        expression="kcat * v * a / (km + a)",
+        species=["a"],
+        parameters={"kcat": "log_kcat"},
+        default_parameter_kind="log_custom",
+    )
+    labels = rate_equation.get_labels(SCOPE).by_parameter()
+    assert labels == {
+        "log_kcat": ("r1",),
+        "log_custom": ("cu|r1|km", "cu|r1|v"),
+    }
+
+
+def test_a_default_kind_with_one_label_per_reaction_is_ambiguous():
+    rate_equation = SymbolicReaction(
+        stoichiometry=R1,
+        expression="k1 * a + k2 * b",
+        species=["a", "b"],
+        default_parameter_kind="log_kcat",
+    )
+    with pytest.raises(ValueError, match="both default to"):
+        rate_equation.get_labels(SCOPE)
+
+
+def test_a_misspelt_symbol_is_caught_when_parameters_are_packed():
+    model = KineticModel(
+        balanced_species=["a", "b"],
+        reactions={
+            "r1": SymbolicReaction(
+                stoichiometry=R1,
+                expression="vmax * a / (kmm + a)",
+                species=["a"],
+                default_parameter_kind="log_custom",
+            )
+        },
+    )
+    spec = {
+        "log_custom": {"cu|r1|vmax": 0.0},
+        "dgf": {"a": 0.0, "b": 0.0},
+        "temperature": 310.0,
+    }
+    with pytest.raises(ValueError, match=re.escape("cu|r1|kmm")):
+        pack_parameters(model.parameter_labelling, spec)

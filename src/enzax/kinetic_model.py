@@ -15,7 +15,7 @@ from enzax.array_types import (
     BalancedConcArr,
     BalancedSpeciesIx,
     ConcArray,
-    MoietyPivotSpeciesIx,
+    MoietyLabelSpeciesIx,
     Flux,
     OdeStateArr,
     OdeStateRateArr,
@@ -51,26 +51,26 @@ def get_ix_from_list(s: str, list_of_strings: list[str]):
 def get_link_matrix(
     S: StoichiometricMatrix,
     ode_state_species_ix: OdeStateSpeciesIx,
-    moiety_pivot_species_ix: MoietyPivotSpeciesIx,
+    moiety_label_species_ix: MoietyLabelSpeciesIx,
 ) -> LinkMatrix:
-    """Get the link matrix L0 relating moiety pivot species to the ODE state.
+    """Get the link matrix L0 relating moiety label species to the ODE state.
 
     L0 is the matrix satisfying `S_dep = L0 @ S_ind`, where `S_dep` and
     `S_ind` are the rows of the stoichiometric matrix belonging to,
-    respectively, the moiety pivot species and the ODE state species.
+    respectively, the moiety label species and the ODE state species.
 
     Since `d/dt conc_dep = L0 @ d/dt conc_ind`, the quantity
     `conc_dep - L0 @ conc_ind` is conserved: these are the moiety totals.
 
-    L0 only exists if the moiety pivot species and ODE state species satisfy the
+    L0 only exists if the moiety label species and ODE state species satisfy the
     conditions checked by `validate_kinetic_model`, so validate a model
     before calling this function.
     """
     n_ind = len(ode_state_species_ix)
-    if len(moiety_pivot_species_ix) == 0:
+    if len(moiety_label_species_ix) == 0:
         return np.zeros(shape=(0, n_ind), dtype=np.float64)
     S_ind = sympy.Matrix(S[ode_state_species_ix, :])
-    S_dep = sympy.Matrix(S[moiety_pivot_species_ix, :])
+    S_dep = sympy.Matrix(S[moiety_label_species_ix, :])
     # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
     L0_T = S_ind.T.solve_least_squares(S_dep.T)
     return np.array(L0_T.T, dtype=np.float64)
@@ -138,39 +138,39 @@ def validate_kinetic_model(model: "KineticModel") -> None:
 
     The checks are:
 
-    - every moiety pivot species is a balanced species;
+    - every moiety label species is a balanced species;
     - the ODE state species' stoichiometries are linearly independent;
-    - every moiety pivot species' stoichiometry is a linear combination of
-      the ODE state species' stoichiometries, i.e. every moiety pivot
+    - every moiety label species' stoichiometry is a linear combination of
+      the ODE state species' stoichiometries, i.e. every moiety label
       species takes part in a conservation relation with the ODE state
       species.
 
     The last two conditions are what makes the model's link matrix exist. A
-    model with no moiety pivot species does not need them, so they are
-    only checked when there is at least one moiety pivot species.
+    model with no moiety label species does not need them, so they are
+    only checked when there is at least one moiety label species.
 
     :param model: a KineticModel whose fields have all been set except L0.
 
     """
     not_balanced = [
-        s for s in model.moiety_pivot_species if s not in model.balanced_species
+        s for s in model.moiety_label_species if s not in model.balanced_species
     ]
     if not_balanced:
         msg = (
-            "Moiety pivot species must be balanced species, but these are "
+            "Moiety label species must be balanced species, but these are "
             f"not: {not_balanced}."
         )
         raise ValueError(msg)
-    if not model.moiety_pivot_species:
+    if not model.moiety_label_species:
         return
     if not model.ode_state_species:
         msg = (
-            "A model with moiety pivot species must have at least one "
+            "A model with moiety label species must have at least one "
             "ODE state species, but this one has none."
         )
         raise ValueError(msg)
     S_ind = model.S_reduced[model.fast_moiety_rows(model.ode_state_species)]
-    S_dep = model.S_reduced[model.fast_moiety_rows(model.moiety_pivot_species)]
+    S_dep = model.S_reduced[model.fast_moiety_rows(model.moiety_label_species)]
     rank_ind = np.linalg.matrix_rank(S_ind)
     if rank_ind < len(model.ode_state_species):
         msg = (
@@ -180,7 +180,7 @@ def validate_kinetic_model(model: "KineticModel") -> None:
         raise ValueError(msg)
     if np.linalg.matrix_rank(np.vstack((S_ind, S_dep))) > rank_ind:
         msg = (
-            "Every moiety pivot species must take part in a conservation "
+            "Every moiety label species must take part in a conservation "
             "relation with the ODE state species, but at least one does "
             "not."
         )
@@ -234,9 +234,9 @@ def warn_about_undeclared_moieties(model: "KineticModel") -> None:
 
     `validate_kinetic_model` already requires a model that declares any
     conserved moieties to declare all of them, so only an empty
-    `moiety_pivot_species` needs a warning.
+    `moiety_label_species` needs a warning.
     """
-    if model.moiety_pivot_species:
+    if model.moiety_label_species:
         return
     S_balanced = np.hstack(
         (
@@ -253,9 +253,9 @@ def warn_about_undeclared_moieties(model: "KineticModel") -> None:
         listed = ", ".join(moieties[:-1]) + f" and {moieties[-1]}"
         described = f"{len(moieties)} conserved moieties, {listed},"
     msg = (
-        f"The balanced species form {described} but `moiety_pivot_species` "
+        f"The balanced species form {described} but `moiety_label_species` "
         "is empty, so the model's steady states are not unique. Name one "
-        "species from each conserved moiety in `moiety_pivot_species`."
+        "species from each conserved moiety in `moiety_label_species`."
     )
     warnings.warn(msg, UndeclaredMoietyWarning)
 
@@ -272,15 +272,15 @@ class KineticModel(eqx.Module):
     determines, rather than taking them as parameters. Reactions in
     `rapid_equilibrium_reactions` have no rate law: they are always at
     equilibrium, so the model tracks the fast moieties they conserve rather
-    than the species they involve. Each fast moiety is labelled by a pivot
-    species, which `fast_moiety_pivot_species` can choose. Without rapid
+    than the species they involve. Each fast moiety is labelled by one of its
+    species, which `fast_moiety_label_species` can choose. Without rapid
     equilibrium reactions, every balanced species is a fast moiety of its own.
 
     Each conserved moiety is a combination of fast moieties.
-    `moiety_pivot_species` names one fast moiety for each conserved moiety,
+    `moiety_label_species` names one fast moiety for each conserved moiety,
     and that fast moiety's total is worked out from the conserved moiety's
     total, which is the parameter `moiety_totals`. The remaining fast moiety
-    pivots are `ode_state_species`, whose totals are the ODE state.
+    labels are `ode_state_species`, whose totals are the ODE state.
     Instantiating a model checks this, along with the other conditions listed
     in `validate_kinetic_model`.
 
@@ -304,13 +304,13 @@ class KineticModel(eqx.Module):
 
     reactions: dict[str, Reaction] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
-    moiety_pivot_species: list[str] = eqx.field(
+    moiety_label_species: list[str] = eqx.field(
         static=True, default_factory=list
     )
     rapid_equilibrium_reactions: dict[str, RapidEquilibriumReaction] = (
         eqx.field(static=True, default_factory=dict)
     )
-    fast_moiety_pivot_species: list[str] = eqx.field(
+    fast_moiety_label_species: list[str] = eqx.field(
         static=True, default_factory=list
     )
     compound_to_species: dict[str, list[str]] | None = eqx.field(
@@ -330,7 +330,7 @@ class KineticModel(eqx.Module):
     _balanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _unbalanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _ode_state_species_ix: FrozenArray = eqx.field(static=True, init=False)
-    _moiety_pivot_species_ix: FrozenArray = eqx.field(static=True, init=False)
+    _moiety_label_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _S: FrozenArray = eqx.field(static=True, init=False)
     _L0: FrozenArray = eqx.field(static=True, init=False)
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
@@ -354,8 +354,8 @@ class KineticModel(eqx.Module):
         self.species = self._build_species()
         named = dict.fromkeys(
             self.balanced_species
-            + self.moiety_pivot_species
-            + self.fast_moiety_pivot_species
+            + self.moiety_label_species
+            + self.fast_moiety_label_species
         )
         not_species = [s for s in named if s not in self.species]
         if not_species:
@@ -395,21 +395,21 @@ class KineticModel(eqx.Module):
             ),
             self.species,
             self.balanced_species,
-            self.moiety_pivot_species,
-            self.fast_moiety_pivot_species,
+            self.moiety_label_species,
+            self.fast_moiety_label_species,
         )
         self.ode_state_species = [
             s
-            for s in self.rapid_equilibria.fast_moiety_pivots
-            if s not in self.moiety_pivot_species
+            for s in self.rapid_equilibria.fast_moiety_labels
+            if s not in self.moiety_label_species
         ]
         self._ode_state_species_ix = freeze_array(
             [get_ix_from_list(s, self.species) for s in self.ode_state_species]
         )
-        self._moiety_pivot_species_ix = freeze_array(
+        self._moiety_label_species_ix = freeze_array(
             [
                 get_ix_from_list(s, self.species)
-                for s in self.moiety_pivot_species
+                for s in self.moiety_label_species
             ]
         )
         validate_kinetic_model(self)
@@ -418,7 +418,7 @@ class KineticModel(eqx.Module):
             get_link_matrix(
                 self.S_reduced,
                 self.fast_moiety_rows(self.ode_state_species),
-                self.fast_moiety_rows(self.moiety_pivot_species),
+                self.fast_moiety_rows(self.moiety_label_species),
             )
         )
         for species_i in self.species:
@@ -455,8 +455,8 @@ class KineticModel(eqx.Module):
         return unfreeze_array(self._ode_state_species_ix, np.int16)
 
     @property
-    def moiety_pivot_species_ix(self) -> MoietyPivotSpeciesIx:
-        return unfreeze_array(self._moiety_pivot_species_ix, np.int16)
+    def moiety_label_species_ix(self) -> MoietyLabelSpeciesIx:
+        return unfreeze_array(self._moiety_label_species_ix, np.int16)
 
     @property
     def S(self) -> StoichiometricMatrix:
@@ -477,10 +477,10 @@ class KineticModel(eqx.Module):
 
     def fast_moiety_rows(self, species: Sequence[str]) -> np.ndarray:
         """Get the rows of `S_reduced` that belong to the fast moieties with
-        these pivot species."""
+        these labels."""
         return np.array(
             [
-                self.rapid_equilibria.fast_moiety_pivots.index(s)
+                self.rapid_equilibria.fast_moiety_labels.index(s)
                 for s in species
             ],
             dtype=np.int16,
@@ -537,8 +537,8 @@ class KineticModel(eqx.Module):
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
         if self.unbalanced_species:
             from_structure["log_conc_unbalanced"] = self.unbalanced_species
-        if self.moiety_pivot_species:
-            from_structure["moiety_totals"] = self.moiety_pivot_species
+        if self.moiety_label_species:
+            from_structure["moiety_totals"] = self.moiety_label_species
         from_structure["temperature"] = ()
         return merge_labels(*from_rate_equations, from_structure)
 
@@ -605,10 +605,10 @@ class KineticModel(eqx.Module):
     def get_moiety_totals(self, parameters: PyTree) -> MoietyTotalsArr:
         """Get the conserved moiety totals from a PyTree of parameters.
 
-        Models with no moiety pivot species have no moiety totals, so in that
+        Models with no moiety label species have no moiety totals, so in that
         case the parameters do not need a "moiety_totals" entry.
         """
-        if not self.moiety_pivot_species:
+        if not self.moiety_label_species:
             return jnp.zeros(0)
         return parameters["moiety_totals"]
 
@@ -619,12 +619,12 @@ class KineticModel(eqx.Module):
         the ones that belong to conserved moieties from the conserved moiety
         totals."""
         dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
-        totals = jnp.zeros(len(self.rapid_equilibria.fast_moiety_pivots))
+        totals = jnp.zeros(len(self.rapid_equilibria.fast_moiety_labels))
         totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
             ode_state
         )
         totals = totals.at[
-            self.fast_moiety_rows(self.moiety_pivot_species)
+            self.fast_moiety_rows(self.moiety_label_species)
         ].set(dependent)
         return totals
 

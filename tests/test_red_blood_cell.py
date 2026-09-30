@@ -52,3 +52,44 @@ def test_the_steady_state_is_close_to_part_iv():
         if reaction_id == "ApK":
             continue
         assert np.isclose(fluxes[reaction_id], expected, rtol=0.06)
+
+
+def test_rapid_equilibria_shrink_the_ode_state():
+    assert len(rbc.rapid_equilibrium_model.ode_state_species) == 22
+
+
+def test_every_fast_moiety_has_non_negative_coefficients():
+    matrix = rbc.rapid_equilibrium_model.rapid_equilibria.fast_moiety_matrix
+    assert np.all(matrix >= 0)
+
+
+@pytest.mark.slow
+def test_the_stiff_formulation_converges_to_the_rapid_equilibrium_one():
+    model, parameters = (
+        rbc.rapid_equilibrium_model,
+        rbc.rapid_equilibrium_parameters,
+    )
+    steady = get_steady_state_hybrid(
+        model, rbc.rapid_equilibrium_steady_state, parameters
+    )
+    expected = model.get_balanced_conc(steady, parameters)
+    part_iv = rbc.get_steady_state_conc()
+    assert np.allclose(
+        expected, [part_iv[s] for s in model.balanced_species], rtol=0.09
+    )
+    ratios = np.array([1e3, 1e4])
+    errors = []
+    for ratio in ratios:
+        stiff_parameters = rbc.get_parameters(rbc.model, ratio)
+        stiff = get_steady_state_hybrid(
+            rbc.model,
+            rbc.steady_state,
+            stiff_parameters,
+            steady_state_rtol=1e-9,
+            steady_state_atol=1e-9,
+        )
+        conc = rbc.model.get_balanced_conc(stiff, stiff_parameters)
+        errors.append(float(jnp.max(jnp.abs(conc / expected - 1.0))))
+    errors = np.array(errors)
+    assert np.allclose(errors * ratios, errors[0] * ratios[0], rtol=0.05)
+    assert errors[-1] < 1e-3

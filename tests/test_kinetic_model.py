@@ -18,11 +18,11 @@ from enzax.reactions import MichaelisMenten
 from enzax.steady_state import get_steady_state_hybrid
 
 
-def get_model(stoichiometry, balanced_species, moiety_pivot_species):
+def get_model(stoichiometry, balanced_species, moiety_label_species):
     """Make a model with no rate equations, for testing structure only."""
     return KineticModel(
         balanced_species=balanced_species,
-        moiety_pivot_species=moiety_pivot_species,
+        moiety_label_species=moiety_label_species,
         reactions={
             reaction: MichaelisMenten(stoichiometry=coefficients)
             for reaction, coefficients in stoichiometry.items()
@@ -55,7 +55,7 @@ TWO_MOIETIES = dict(
 
 
 @pytest.mark.parametrize(
-    ["structure", "moiety_pivot_species"],
+    ["structure", "moiety_label_species"],
     [
         (CYCLE, []),
         (CYCLE, ["B"]),
@@ -63,20 +63,20 @@ TWO_MOIETIES = dict(
         (TWO_DRAINS, []),
     ],
     ids=[
-        "cycle-no-moiety-pivot-species",
-        "cycle-pivot-b",
-        "cycle-pivot-a",
-        "unrelated-species-no-moiety-pivot-species",
+        "cycle-no-moiety-label-species",
+        "cycle-label-b",
+        "cycle-label-a",
+        "unrelated-species-no-moiety-label-species",
     ],
 )
-def test_validate_kinetic_model_valid(structure, moiety_pivot_species):
+def test_validate_kinetic_model_valid(structure, moiety_label_species):
     """Test that valid models pass validation."""
-    model = get_model(**structure, moiety_pivot_species=moiety_pivot_species)
+    model = get_model(**structure, moiety_label_species=moiety_label_species)
     assert validate_kinetic_model(model) is None
 
 
 @pytest.mark.parametrize(
-    ["structure", "moiety_pivot_species", "expected_msg"],
+    ["structure", "moiety_label_species", "expected_msg"],
     [
         (
             dict(
@@ -85,7 +85,7 @@ def test_validate_kinetic_model_valid(structure, moiety_pivot_species):
                 balanced_species=["A", "B"],
             ),
             ["C"],
-            "Moiety pivot species must be balanced species",
+            "Moiety label species must be balanced species",
         ),
         (CYCLE, ["A", "B"], "must have at least one ODE state species"),
         (
@@ -100,34 +100,34 @@ def test_validate_kinetic_model_valid(structure, moiety_pivot_species):
         ),
     ],
     ids=[
-        "moiety-pivot-species-is-not-balanced",
+        "moiety-label-species-is-not-balanced",
         "no-ode-state-species",
         "ode-state-species-are-not-independent",
         "no-conservation-relation",
     ],
 )
 def test_validate_kinetic_model_invalid(
-    structure, moiety_pivot_species, expected_msg
+    structure, moiety_label_species, expected_msg
 ):
     """Test that invalid models are rejected when they are instantiated."""
     with pytest.raises(ValueError, match=expected_msg):
-        get_model(**structure, moiety_pivot_species=moiety_pivot_species)
+        get_model(**structure, moiety_label_species=moiety_label_species)
 
 
 @pytest.mark.parametrize(
-    ["structure", "moiety_pivot_species", "expected_L0"],
+    ["structure", "moiety_label_species", "expected_L0"],
     [
         (CYCLE, [], np.zeros(shape=(0, 2))),
         (CYCLE, ["B"], np.array([[-1.0]])),
     ],
     ids=[
-        "cycle-no-moiety-pivot-species",
-        "cycle-pivot-b",
+        "cycle-no-moiety-label-species",
+        "cycle-label-b",
     ],
 )
-def test_link_matrix(structure, moiety_pivot_species, expected_L0):
+def test_link_matrix(structure, moiety_label_species, expected_L0):
     """Test that valid models get the expected link matrix."""
-    model = get_model(**structure, moiety_pivot_species=moiety_pivot_species)
+    model = get_model(**structure, moiety_label_species=moiety_label_species)
     assert model.L0.shape == expected_L0.shape
     assert np.allclose(model.L0, expected_L0)
 
@@ -156,25 +156,25 @@ SPLIT = dict(
 )
 def test_undeclared_moieties_warn(structure, expected_msg):
     with pytest.warns(UndeclaredMoietyWarning, match=re.escape(expected_msg)):
-        get_model(**structure, moiety_pivot_species=[])
+        get_model(**structure, moiety_label_species=[])
 
 
 @pytest.mark.parametrize(
-    ["structure", "moiety_pivot_species"],
+    ["structure", "moiety_label_species"],
     [(CYCLE, ["B"]), (TWO_MOIETIES, ["B", "X2"]), (TWO_DRAINS, [])],
-    ids=["cycle-pivot-b", "two-moieties", "no-moieties"],
+    ids=["cycle-label-b", "two-moieties", "no-moieties"],
 )
 def test_declared_or_absent_moieties_do_not_warn(
-    structure, moiety_pivot_species
+    structure, moiety_label_species
 ):
     with warnings.catch_warnings():
         warnings.simplefilter("error", UndeclaredMoietyWarning)
-        get_model(**structure, moiety_pivot_species=moiety_pivot_species)
+        get_model(**structure, moiety_label_species=moiety_label_species)
 
 
 def test_independently_built_models_have_equal_tree_structures():
-    a = get_model(**TWO_MOIETIES, moiety_pivot_species=["B", "X2"])
-    b = get_model(**TWO_MOIETIES, moiety_pivot_species=["B", "X2"])
+    a = get_model(**TWO_MOIETIES, moiety_label_species=["B", "X2"])
+    b = get_model(**TWO_MOIETIES, moiety_label_species=["B", "X2"])
     assert jax.tree.structure(a) == jax.tree.structure(b)
 
 

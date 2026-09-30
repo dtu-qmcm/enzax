@@ -81,7 +81,7 @@ SpeciesIx = Int[np.ndarray, " n_species"]  # values index n_dgf
 BalancedSpeciesIx = Int[np.ndarray, " n_balanced"]  # values index n_species
 UnbalancedSpeciesIx = Int[np.ndarray, " n_unbalanced"]  # values index n_species
 OdeStateSpeciesIx = Int[np.ndarray, " n_ode_state"]  # values index n_species
-MoietyPivotSpeciesIx = Int[np.ndarray, " n_moiety"]  # values index n_species
+MoietyLabelSpeciesIx = Int[np.ndarray, " n_moiety"]  # values index n_species
 
 # --------------------------------------------------------------------------
 # Reaction-level, traced

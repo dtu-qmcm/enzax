@@ -4,7 +4,7 @@ moieties they conserve."""
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from itertools import combinations
+from fractions import Fraction
 
 import jax
 import jax.numpy as jnp
@@ -40,8 +40,8 @@ class RapidEquilibriumReaction(Module):
     water_stoichiometry: float = field(kw_only=True, default=0.0)
 
 
-class UnusedFastMoietyPivotWarning(UserWarning):
-    """Warn that a fast moiety pivot species is in no rapid equilibrium
+class UnusedFastMoietyLabelWarning(UserWarning):
+    """Warn that a fast moiety label species is in no rapid equilibrium
     reaction, so it is a fast moiety of its own anyway."""
 
 
@@ -60,9 +60,10 @@ class RapidEquilibria:
     fast moieties.
 
     A fast moiety is a combination of balanced species that every rapid
-    equilibrium reaction conserves. Each fast moiety is labelled by its pivot
-    species, which has coefficient 1 in it and 0 in the others. Without rapid
-    equilibrium reactions, every balanced species is a fast moiety of its own.
+    equilibrium reaction conserves. Each fast moiety is labelled by one of its
+    species, whose coefficient in it is 1, and no two fast moieties share a
+    label. Without rapid equilibrium reactions, every balanced species is a
+    fast moiety of its own.
     """
 
     reaction_ids: tuple[str, ...]
@@ -71,7 +72,7 @@ class RapidEquilibria:
     balanced_species_ix: tuple[int, ...]
     unbalanced_species_ix: tuple[int, ...]
     subnetworks: tuple[FastSubnetwork, ...]
-    fast_moiety_pivots: tuple[str, ...]
+    fast_moiety_labels: tuple[str, ...]
     _S: FrozenArray
     _fast_moiety_matrix: FrozenArray
 
@@ -84,53 +85,53 @@ class RapidEquilibria:
     @property
     def fast_moiety_matrix(self) -> FastMoietyMatrix:
         """The fast moieties' coefficients, with one row per fast moiety, in
-        pivot order, and one column per balanced species."""
+        label order, and one column per balanced species."""
         return unfreeze_array(self._fast_moiety_matrix, np.float64)
 
     @property
     def fast_moiety_coefficients(self) -> dict[str, dict[str, float]]:
-        """Each fast moiety's non-zero coefficients, keyed by pivot species."""
+        """Each fast moiety's non-zero coefficients, keyed by label."""
         return {
-            pivot: {
+            label: {
                 species: coefficient
                 for species, coefficient in zip(self.balanced_species, row)
                 if coefficient != 0.0
             }
-            for pivot, row in zip(
-                self.fast_moiety_pivots, self.fast_moiety_matrix.tolist()
+            for label, row in zip(
+                self.fast_moiety_labels, self.fast_moiety_matrix.tolist()
             )
         }
 
 
-def check_fast_moiety_pivot_species(
-    fast_moiety_pivot_species: Sequence[str],
+def check_fast_moiety_label_species(
+    fast_moiety_label_species: Sequence[str],
     balanced_species: Sequence[str],
     species: Sequence[str],
     S_fast: StoichiometricMatrix,
 ) -> None:
-    """Raise a ValueError if a fast moiety pivot species is not balanced, and
+    """Raise a ValueError if a fast moiety label species is not balanced, and
     warn if one is in no rapid equilibrium reaction."""
     not_balanced = [
-        s for s in fast_moiety_pivot_species if s not in balanced_species
+        s for s in fast_moiety_label_species if s not in balanced_species
     ]
     if not_balanced:
         msg = (
-            "Fast moiety pivot species must be balanced species, but these "
+            "Fast moiety label species must be balanced species, but these "
             f"are not: {not_balanced}."
         )
         raise ValueError(msg)
     unused = [
         s
-        for s in fast_moiety_pivot_species
+        for s in fast_moiety_label_species
         if not np.any(S_fast[species.index(s), :])
     ]
     if unused:
         msg = (
             f"Species {unused} take part in no rapid equilibrium reaction, so "
             "each is a fast moiety of its own, and listing them in "
-            "`fast_moiety_pivot_species` has no effect."
+            "`fast_moiety_label_species` has no effect."
         )
-        warnings.warn(msg, UnusedFastMoietyPivotWarning)
+        warnings.warn(msg, UnusedFastMoietyLabelWarning)
 
 
 def check_fast_moieties(
@@ -186,34 +187,130 @@ def get_fast_subnetworks(S_fb: StoichiometricMatrix) -> list[FastSubnetwork]:
     ]
 
 
+def get_extreme_conservation_relations(
+    S_subnetwork: Sequence[Sequence[Fraction]],
+) -> list[list[Fraction]]:
+    """Find the extreme non-negative conservation relations of a network.
+
+    These are the non-negative combinations of species, with minimal support,
+    that every reaction conserves (Schuster & Höfer, 1991). They are computed
+    exactly, with a tableau that eliminates one reaction at a time.
+    """
+    n_species = len(S_subnetwork)
+    n_reactions = len(S_subnetwork[0]) if n_species else 0
+    rows = [
+        (
+            list(S_subnetwork[i]),
+            [Fraction(int(i == k)) for k in range(n_species)],
+        )
+        for i in range(n_species)
+    ]
+    for j in range(n_reactions):
+        candidates = [row for row in rows if row[0][j] == 0]
+        positive = [row for row in rows if row[0][j] > 0]
+        negative = [row for row in rows if row[0][j] < 0]
+        for c_p, e_p in positive:
+            for c_q, e_q in negative:
+                a, b = -c_q[j], c_p[j]
+                candidates.append(
+                    (
+                        [a * x + b * y for x, y in zip(c_p, c_q)],
+                        [a * x + b * y for x, y in zip(e_p, e_q)],
+                    )
+                )
+        supports = [
+            frozenset(k for k, x in enumerate(e) if x != 0)
+            for _, e in candidates
+        ]
+        kept, seen = [], set()
+        for row, support in zip(candidates, supports):
+            if support in seen or any(other < support for other in supports):
+                continue
+            seen.add(support)
+            kept.append(row)
+        rows = kept
+    return [e for _, e in rows]
+
+
 def get_subnetwork_fast_moieties(
-    S_subnetwork: sympy.Matrix,
+    S_subnetwork: Sequence[Sequence[Fraction]],
     preference: Sequence[int],
     required: Sequence[int],
-) -> tuple[sympy.Matrix, list[int]] | None:
-    """Find a subnetwork's fast moieties with non-negative coefficients, whose
-    pivots include `required`.
+) -> tuple[list[list[Fraction]], list[int]] | None:
+    """Find a subnetwork's fast moieties with non-negative coefficients, each
+    labelled by a different one of its species, with `required` among the
+    labels.
 
-    Other pivots are tried in order of `preference`. Returns None if there is
-    no such choice.
+    The fast moieties are chosen from the extreme non-negative conservation
+    relations, preferring those that contain required labels and then those
+    with fewer species. Labels are then matched to fast moieties in order of
+    `required`, then of how few fast moieties a species is in, then of
+    `preference`. Each fast moiety is scaled so that its label's coefficient
+    is 1. Returns None if there is no such choice.
     """
-    basis = S_subnetwork.T.nullspace()
-    n_moieties = len(basis)
+    n_species = len(S_subnetwork)
+    n_moieties = n_species - sympy.Matrix(S_subnetwork).rank()
     if len(required) > n_moieties:
         return None
     if n_moieties == 0:
-        return sympy.zeros(0, S_subnetwork.shape[0]), []
-    B = sympy.Matrix.hstack(*basis).T
-    optional = [i for i in preference if i not in required]
-    for chosen in combinations(optional, n_moieties - len(required)):
-        pivots = list(required) + list(chosen)
-        B_pivots = B[:, pivots]
-        if B_pivots.det() == 0:
-            continue
-        P = B_pivots.inv() * B
-        if all(entry >= 0 for entry in P):
-            return P, pivots
-    return None
+        return [], []
+    rank = {i: position for position, i in enumerate(preference)}
+    relations = get_extreme_conservation_relations(S_subnetwork)
+
+    def support(relation):
+        return [k for k, x in enumerate(relation) if x != 0]
+
+    def priority(relation):
+        members = support(relation)
+        return (
+            -sum(i in members for i in required),
+            len(members),
+            min(rank[i] for i in members),
+        )
+
+    chosen: list[list[Fraction]] = []
+    for relation in sorted(relations, key=priority):
+        if sympy.Matrix(chosen + [relation]).rank() > len(chosen):
+            chosen.append(relation)
+        if len(chosen) == n_moieties:
+            break
+    if len(chosen) < n_moieties:
+        return None
+    candidates_of = {
+        i: sorted(
+            (m for m, relation in enumerate(chosen) if relation[i] != 0),
+            key=lambda m: len(support(chosen[m])),
+        )
+        for i in range(n_species)
+    }
+    label_of: dict[int, int] = {}
+
+    def assign(i, visited):
+        for m in candidates_of[i]:
+            if m in visited:
+                continue
+            visited.add(m)
+            if m not in label_of or assign(label_of[m], visited):
+                label_of[m] = i
+                return True
+        return False
+
+    by_specificity = sorted(
+        (i for i in preference if i not in required),
+        key=lambda i: (len(candidates_of[i]), rank[i]),
+    )
+    for i in list(required) + by_specificity:
+        if len(label_of) == n_moieties:
+            break
+        if not assign(i, set()) and i in required:
+            return None
+    if len(label_of) < n_moieties:
+        return None
+    moieties = sorted(label_of, key=lambda m: label_of[m])
+    return (
+        [[x / chosen[m][label_of[m]] for x in chosen[m]] for m in moieties],
+        [label_of[m] for m in moieties],
+    )
 
 
 def get_fast_moieties(
@@ -221,27 +318,31 @@ def get_fast_moieties(
     balanced_species: Sequence[str],
     reaction_ids: Sequence[str],
     preference: Sequence[str],
-    required_pivots: Sequence[str],
+    required_labels: Sequence[str],
 ) -> tuple[FastMoietyMatrix, list[str], list[FastSubnetwork]]:
     """Work out a model's fast moieties.
 
-    Raises a ValueError if no choice of pivots that includes
-    `required_pivots` gives non-negative coefficients.
+    Raises a ValueError if a subnetwork has no fast moieties with
+    non-negative coefficients whose labels include `required_labels`.
     """
     n_species = len(balanced_species)
     rank = {
         balanced_species.index(s): position
         for position, s in enumerate(preference)
     }
-    required_ix = [balanced_species.index(s) for s in required_pivots]
+    required_ix = [balanced_species.index(s) for s in required_labels]
     subnetworks = get_fast_subnetworks(S_fb)
     rows: dict[int, np.ndarray] = {}
     for subnetwork in subnetworks:
         members = subnetwork.balanced_species_ix
         local = {i: position for position, i in enumerate(members)}
-        S_subnetwork = sympy.Matrix(
-            S_fb[np.ix_(members, subnetwork.reaction_ix)]
-        ).applyfunc(sympy.nsimplify)
+        S_subnetwork = [
+            [
+                Fraction(S_fb[i, j]).limit_denominator()
+                for j in subnetwork.reaction_ix
+            ]
+            for i in members
+        ]
         by_preference = sorted(members, key=rank.__getitem__)
         required = [local[i] for i in required_ix if i in local]
         result = get_subnetwork_fast_moieties(
@@ -254,28 +355,25 @@ def get_fast_moieties(
                 "The rapid equilibrium reactions "
                 f"{[reaction_ids[j] for j in subnetwork.reaction_ix]} have no "
                 "fast moieties with non-negative coefficients among species "
-                f"{names}"
-                + (f" in which {wanted} are pivots." if wanted else ".")
+                f"{names}" + (f" that {wanted} can label." if wanted else ".")
             )
             raise ValueError(msg)
-        P_subnetwork, pivots = result
-        for row, pivot in enumerate(pivots):
+        moieties, labels = result
+        for moiety, label in zip(moieties, labels):
             full_row = np.zeros(n_species)
-            full_row[list(members)] = np.array(
-                P_subnetwork.row(row), dtype=np.float64
-            ).ravel()
-            rows[members[pivot]] = full_row
+            full_row[list(members)] = [float(x) for x in moiety]
+            rows[members[label]] = full_row
     in_a_subnetwork = {i for s in subnetworks for i in s.balanced_species_ix}
     for i in range(n_species):
         if i not in in_a_subnetwork:
             rows[i] = np.eye(n_species)[i]
-    pivot_ix = sorted(rows)
+    label_ix = sorted(rows)
     matrix = (
-        np.vstack([rows[i] for i in pivot_ix])
-        if pivot_ix
+        np.vstack([rows[i] for i in label_ix])
+        if label_ix
         else np.zeros((0, n_species))
     )
-    return matrix, [balanced_species[i] for i in pivot_ix], subnetworks
+    return matrix, [balanced_species[i] for i in label_ix], subnetworks
 
 
 def get_rapid_equilibria(
@@ -283,29 +381,29 @@ def get_rapid_equilibria(
     S: StoichiometricMatrix,
     species: Sequence[str],
     balanced_species: Sequence[str],
-    moiety_pivot_species: Sequence[str],
-    fast_moiety_pivot_species: Sequence[str],
+    moiety_label_species: Sequence[str],
+    fast_moiety_label_species: Sequence[str],
 ) -> RapidEquilibria:
     """Build a model's rapid equilibrium structure from its rapid equilibrium
-    reactions and pivot choices."""
-    check_fast_moiety_pivot_species(
-        fast_moiety_pivot_species, balanced_species, species, S
+    reactions and label choices."""
+    check_fast_moiety_label_species(
+        fast_moiety_label_species, balanced_species, species, S
     )
     balanced_ix = [species.index(s) for s in balanced_species]
     check_fast_moieties(S[balanced_ix, :], list(reactions))
-    required_pivots = [
+    required_labels = [
         s
         for s in dict.fromkeys(
-            list(moiety_pivot_species) + list(fast_moiety_pivot_species)
+            list(moiety_label_species) + list(fast_moiety_label_species)
         )
         if s in balanced_species
     ]
-    matrix, pivots, subnetworks = get_fast_moieties(
+    matrix, labels, subnetworks = get_fast_moieties(
         S[balanced_ix, :],
         balanced_species,
         list(reactions),
         sorted(balanced_species, key=species.index),
-        required_pivots,
+        required_labels,
     )
     return RapidEquilibria(
         reaction_ids=tuple(reactions),
@@ -318,7 +416,7 @@ def get_rapid_equilibria(
             i for i, s in enumerate(species) if s not in balanced_species
         ),
         subnetworks=tuple(subnetworks),
-        fast_moiety_pivots=tuple(pivots),
+        fast_moiety_labels=tuple(labels),
         _S=freeze_array(S),
         _fast_moiety_matrix=freeze_array(matrix),
     )

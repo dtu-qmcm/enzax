@@ -20,7 +20,7 @@ Two features of the model:
 
 - The cofactors X1_c and X2_c form a conserved moiety `X`: reactions r3
   and regX interconvert them, so their total is constant. X2_c is therefore
-  declared a moiety pivot species, leaving five ODE state species to solve
+  declared a moiety label species, leaving five ODE state species to solve
   for, and the total X1_c + X2_c is the parameter `moiety_totals`.
 
 """
@@ -32,7 +32,7 @@ from enzax.parameters import pack_parameters
 from enzax.reactions import MichaelisMenten
 
 balanced_species = ["A_c", "B_c", "C_c", "D_c", "X1_c", "X2_c"]
-moiety_pivot_species = ["X2_c"]
+moiety_label_species = ["X2_c"]
 # A and D each live in two compartments, so they share a formation energy.
 # Every other species is a compound of its own, so it needs no entry here.
 compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
@@ -62,7 +62,7 @@ reactions = {
 }
 model = KineticModel(
     balanced_species=balanced_species,
-    moiety_pivot_species=moiety_pivot_species,
+    moiety_label_species=moiety_label_species,
     compound_to_species=compound_to_species,
     reactions=reactions,
 )

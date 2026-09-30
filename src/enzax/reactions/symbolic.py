@@ -8,7 +8,7 @@ turned into a JAX function once, when the model is built.
 
 import io
 import tokenize
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 import equinox as eqx
@@ -78,6 +78,25 @@ def parse_expression(expression: str | sympy.Expr) -> sympy.Expr:
         name: FUNCTIONS.get(name, sympy.Symbol(name)) for name in names
     }
     return sympy.parse_expr(expression, local_dict=local_dict)
+
+
+def get_species_declaration(
+    species: Mapping[str, str] | Sequence[str],
+) -> dict[str, str]:
+    """Normalise a species declaration into a `{symbol: species id}` dict.
+
+    A sequence of species ids means each species is its own symbol.
+    """
+    if isinstance(species, str):
+        msg = (
+            f"A symbolic rate equation's species declaration is the string "
+            f"{species!r}. Use a list of species ids, or a mapping from "
+            "symbol to species id."
+        )
+        raise ValueError(msg)
+    if isinstance(species, Mapping):
+        return dict(species)
+    return {species_id: species_id for species_id in species}
 
 
 def get_symbol_names(expression: sympy.Expr) -> set[str]:
@@ -282,13 +301,18 @@ class SymbolicReaction(Reaction):
       plain symbol, so `S` or `E` can stand for a species or a parameter rather
       than one of sympy's built-in objects.
     * `species`: `{symbol: species id}` for every species the expression uses,
-      reactants included. A species that takes part in no reaction, such as an
+      reactants included, or a list of species ids to use them as their own
+      symbols. A species that takes part in no reaction, such as an
       allosteric effector, joins the model this way.
     * `parameters`: `{symbol: declaration}` for every parameter the expression
       uses. A declaration is either a parameter kind such as `"log_kcat"`, which
       gives the parameter its default label, or a mapping
       `{"kind": ..., "label": ...}`. The expression sees values on their natural
       scale, so a `log_` parameter arrives exponentiated.
+    * `default_parameter_kind`: a parameter kind for every symbol that is not
+      declared, e.g. `"log_custom"`. Each such symbol gets that kind's default
+      label. A misspelt symbol then becomes a parameter of its own, which
+      `pack_parameters` reports as a missing value.
     * `water_stoichiometry`: how much water the reaction consumes or produces,
       which only matters to `reversibility` and `keq`.
 
@@ -333,10 +357,33 @@ class SymbolicReaction(Reaction):
     """
 
     expression: sympy.Expr = eqx.field(converter=parse_expression)
-    species: dict[str, str] = eqx.field(default_factory=dict)
+    species: dict[str, str] = eqx.field(
+        default_factory=dict, converter=get_species_declaration
+    )
     parameters: dict[str, str | dict[str, str]] = eqx.field(
         default_factory=dict
     )
+    default_parameter_kind: str | None = None
+
+    def get_parameter_declarations(self) -> dict[str, str | dict[str, str]]:
+        """Get every parameter's declaration, including the defaulted ones.
+
+        With a `default_parameter_kind`, every symbol in the expression that is
+        not a declared species or parameter, or a reserved symbol, is a
+        parameter of that kind with its default label.
+        """
+        declarations = dict(self.parameters)
+        if self.default_parameter_kind is None:
+            return declarations
+        undeclared = (
+            get_symbol_names(self.expression)
+            - set(self.species)
+            - set(self.parameters)
+            - set(RESERVED_SYMBOLS)
+        )
+        for symbol in sorted(undeclared):
+            declarations[symbol] = self.default_parameter_kind
+        return declarations
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species the expression uses, in declaration order.
@@ -356,15 +403,16 @@ class SymbolicReaction(Reaction):
         equation is created so that the errors can name the reaction.
         """
         reaction_id = scope.reaction_id
+        declarations = self.get_parameter_declarations()
         check_symbols(
             get_symbol_names(self.expression),
             self.species,
-            self.parameters,
+            declarations,
             reaction_id,
         )
         by_symbol = {}
         defaulted = set()
-        for symbol, declaration in self.parameters.items():
+        for symbol, declaration in declarations.items():
             kind, label = get_parameter_declaration(
                 symbol, declaration, reaction_id
             )
@@ -402,7 +450,7 @@ class SymbolicReaction(Reaction):
         """
         lab = self.get_labels(scope)
         species_symbols = sorted(self.species)
-        parameter_symbols = sorted(self.parameters)
+        parameter_symbols = sorted(self.get_parameter_declarations())
         reserved = tuple(
             sorted(get_symbol_names(self.expression) & set(RESERVED_SYMBOLS))
         )
