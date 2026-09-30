@@ -46,7 +46,13 @@ FUNCTIONS = {
 
 ALLOWED_KINDS = KINETIC_PARAMETERS + ("temperature",)
 
-REACTION_LABEL_KINDS = ("log_kcat", "log_enzyme", "log_tc", "log_drain")
+REACTION_LABEL_KINDS = (
+    "log_kcat",
+    "log_enzyme",
+    "log_tc",
+    "log_drain",
+    "log_k_plus",
+)
 
 CUSTOM_KINDS = ("log_custom", "custom")
 
@@ -287,11 +293,12 @@ class SymbolicReaction(Reaction):
       which only matters to `reversibility` and `keq`.
 
     The allowed parameter kinds are `log_saturation_constant`, `log_kcat`,
-    `log_enzyme`, `log_tc`, `log_drain`, `log_custom`, `custom` and
-    `temperature`.
+    `log_enzyme`, `log_tc`, `log_drain`, `log_k_plus`, `log_custom`,
+    `custom` and `temperature`.
 
     The default label is the reaction id for `log_kcat`,
-    `log_enzyme`, `log_tc` and `log_drain`, and `cu|{reaction}|{symbol}` for
+    `log_enzyme`, `log_tc`, `log_drain` and `log_k_plus`, and
+    `cu|{reaction}|{symbol}` for
     `log_custom` and `custom`. `log_saturation_constant` has no default, so
     its label must be given, and `temperature` is unlabelled. Two symbols
     share a value by being given the same label, but two symbols that would

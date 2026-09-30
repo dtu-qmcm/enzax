@@ -12,8 +12,8 @@ value per `KineticModel`.
 The parameter axes are also model-level, because each parameter is stored
 as a single flat array for the whole model: `n_k` (every saturation constant
 -- Michaelis, competitive inhibition and allosteric), `n_kcat`, `n_enzyme`,
-`n_tc`, `n_drain` and `n_dgf`. A model's `parameter_labelling` says which
-label sits at which index along these axes.
+`n_tc`, `n_drain`, `n_k_plus` and `n_dgf`. A model's `parameter_labelling`
+says which label sits at which index along these axes.
 
 Reaction-level axes start with `n_rxn_*`. There is one value per reaction, so
 they are ragged across a model's reactions and only mean anything inside a
@@ -65,6 +65,7 @@ KcatArr = Float[Array, " n_kcat"]
 EnzymeArr = Float[Array, " n_enzyme"]
 TcArr = Float[Array, " n_tc"]
 DrainArr = Float[Array, " n_drain"]
+KPlusArr = Float[Array, " n_k_plus"]
 DgfArr = Float[Array, " n_dgf"]
 
 # --------------------------------------------------------------------------

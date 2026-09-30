@@ -13,10 +13,11 @@ A rate equation says how one reaction's flux depends on the concentrations of th
 
 ## Use a built-in rate equation
 
-Enzax provides two "ready-to-go" rate equations:
+Enzax provides three "ready-to-go" rate equations:
 
 - `MichaelisMenten` covers reversible and irreversible reactions, competitive inhibition and allosteric regulation.
 - `Drain` gives a reaction a constant flux, for representing a process at the edge of your model whose kinetics you do not want to describe.
+- `MassAction` gives a reaction thermodynamically consistent mass action kinetics with no enzyme: `v = k+ (Π s^|n| - Π p^n / K)`, where K comes from the formation energies. The forward rate constant `k+` is the parameter `log_k_plus`.
 
 Enzax's other built-in rate equations are more customisable. `SaturableReaction` is mostly the same as `MichaelisMenten`, but with the enzyme's states written out by hand, and `SymbolicReaction` gets its flux from a formula.
 
@@ -408,7 +409,7 @@ A declaration that only gives a kind gets a default label:
 
 | Kind | Default label |
 | --- | --- |
-| `log_kcat`, `log_enzyme`, `log_tc`, `log_drain` | the reaction id |
+| `log_kcat`, `log_enzyme`, `log_tc`, `log_drain`, `log_k_plus` | the reaction id |
 | `log_custom`, `custom` | `cu\|{reaction}\|{symbol}` |
 | `log_saturation_constant` | none, so give one, e.g. `km\|r1\|a` |
 | `temperature` | unlabelled |
@@ -644,7 +645,7 @@ Array([0.05263158, 0.4       , 0.07692308], dtype=float64)
 
 ### What a rate equation may not do
 
-Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, moiety_totals and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
+Enzax's parameters are a closed set, listed as PARAMETERS in enzax.parameters. log_saturation_constant, log_kcat, log_enzyme, log_tc, log_drain, log_k_plus, log_custom and custom come from rate equations, and dgf, log_conc_unbalanced, moiety_totals and temperature come from the model's structure. A rate equation whose by_parameter names anything else raises when the model is constructed:
 
 ```
 ValueError: Unknown parameters: ['log_my_thing'].
