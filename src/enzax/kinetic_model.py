@@ -10,6 +10,7 @@ import sympy
 from jaxtyping import PyTree, ScalarLike
 
 from enzax.array_types import (
+    FrozenArray,
     BalancedConcArr,
     BalancedSpeciesIx,
     ConcArray,
@@ -25,11 +26,18 @@ from enzax.array_types import (
     StoichiometricMatrix,
     UnbalancedConcArr,
     UnbalancedSpeciesIx,
+    freeze_array,
+    unfreeze_array,
 )
 from enzax.parameters import (
     check_id_has_no_separator,
     check_parameter_labelling,
     merge_labels,
+)
+from enzax.rapid_equilibrium import (
+    RapidEquilibria,
+    RapidEquilibriumReaction,
+    get_rapid_equilibria,
 )
 from enzax.reaction import Reaction, ReactionScope
 
@@ -64,6 +72,19 @@ def get_link_matrix(
     # solve L0 @ S_ind = S_dep, i.e. S_ind.T @ L0.T = S_dep.T
     L0_T = S_ind.T.solve_least_squares(S_dep.T)
     return np.array(L0_T.T, dtype=np.float64)
+
+
+def get_stoichiometric_matrix(
+    stoichiometry: Mapping[str, Mapping[str, float]],
+    species: Sequence[str],
+) -> StoichiometricMatrix:
+    """Build a stoichiometric matrix with one row per species and one column
+    per reaction, in the order the reactions are given."""
+    S = np.zeros(shape=(len(species), len(stoichiometry)))
+    for ix_reaction, coefficients in enumerate(stoichiometry.values()):
+        for species_i, coeff in coefficients.items():
+            S[get_ix_from_list(species_i, species), ix_reaction] = coeff
+    return S
 
 
 def get_species_to_compound(
@@ -146,8 +167,8 @@ def validate_kinetic_model(model: "KineticModel") -> None:
             "ODE state species, but this one has none."
         )
         raise ValueError(msg)
-    S_ind = model.S[model.ode_state_species_ix, :]
-    S_dep = model.S[model.moiety_pivot_species_ix, :]
+    S_ind = model.S_reduced[model.fast_moiety_rows(model.ode_state_species)]
+    S_dep = model.S_reduced[model.fast_moiety_rows(model.moiety_pivot_species)]
     rank_ind = np.linalg.matrix_rank(S_ind)
     if rank_ind < len(model.ode_state_species):
         msg = (
@@ -191,9 +212,10 @@ def get_conserved_moieties(
 ) -> list[str]:
     """Get the conserved moieties of a stoichiometric matrix.
 
-    Each moiety is a linear combination of species. They are a basis of
-    `S`'s left null space in reduced row echelon form, so each moiety's first
-    species has coefficient 1 and appears in no other moiety.
+    Each conserved moiety is a linear combination of species. They are a
+    basis of `S`'s left null space in reduced row echelon form, so each
+    conserved moiety's first species has coefficient 1 and appears in no
+    other conserved moiety.
     """
     basis = sympy.Matrix(S).applyfunc(sympy.nsimplify).T.nullspace()
     if not basis:
@@ -209,12 +231,17 @@ def warn_about_undeclared_moieties(model: "KineticModel") -> None:
     """Warn if a model has conserved moieties but declares none.
 
     `validate_kinetic_model` already requires a model that declares any
-    moieties to declare all of them, so only an empty `moiety_pivot_species`
-    needs a warning.
+    conserved moieties to declare all of them, so only an empty
+    `moiety_pivot_species` needs a warning.
     """
     if model.moiety_pivot_species:
         return
-    S_balanced = model.S[model.balanced_species_ix, :]
+    S_balanced = np.hstack(
+        (
+            model.S[model.balanced_species_ix, :],
+            model.S_fast[model.balanced_species_ix, :],
+        )
+    )
     if np.linalg.matrix_rank(S_balanced) == len(model.balanced_species):
         return
     moieties = get_conserved_moieties(S_balanced, model.balanced_species)
@@ -226,29 +253,9 @@ def warn_about_undeclared_moieties(model: "KineticModel") -> None:
     msg = (
         f"The balanced species form {described} but `moiety_pivot_species` "
         "is empty, so the model's steady states are not unique. Name one "
-        "species from each moiety in `moiety_pivot_species`."
+        "species from each conserved moiety in `moiety_pivot_species`."
     )
     warnings.warn(msg, UndeclaredMoietyWarning)
-
-
-# A pair (shape, values) for a static field
-FrozenArray = tuple[tuple[int, ...], tuple[int | float, ...]]
-
-
-def freeze_array(values) -> FrozenArray:
-    """Put an array into a form that a static field can hold.
-
-    This is required because static fields need to be comparable with ==, which
-    numpy arrays are not. See https://github.com/dtu-qmcm/enzax/issues/65.
-    """
-    array = np.asarray(values)
-    return array.shape, tuple(array.ravel().tolist())
-
-
-def unfreeze_array(frozen: FrozenArray, dtype) -> np.ndarray:
-    """Turn a frozen array into a numpy array with the given dtype."""
-    shape, values = frozen
-    return np.array(values, dtype=dtype).reshape(shape)
 
 
 class KineticModel(eqx.Module):
@@ -259,16 +266,21 @@ class KineticModel(eqx.Module):
     stoichiometry), and how to calculate its flux. The model's species are
     assembled from the reactions' stoichiometries and effectors.
 
-    A model's balanced species are the ones whose concentrations are state
-    variables. They are split into moiety pivot species and ODE state
-    species: a moiety pivot species' concentration is determined by the ODE
-    state species' concentrations together with a conserved moiety total,
-    so only the ODE state species need to be solved for.
+    A model's balanced species are the ones whose concentrations the model
+    determines, rather than taking them as parameters. Reactions in
+    `rapid_equilibrium_reactions` have no rate law: they are always at
+    equilibrium, so the model tracks the fast moieties they conserve rather
+    than the species they involve. Each fast moiety is labelled by a pivot
+    species, which `fast_moiety_pivot_species` can choose. Without rapid
+    equilibrium reactions, every balanced species is a fast moiety of its own.
 
-    `moiety_pivot_species` is therefore a subset of `balanced_species`, and
-    `ode_state_species` is the rest of `balanced_species`. Instantiating a
-    model checks this, along with the other conditions listed in
-    `validate_kinetic_model`.
+    Each conserved moiety is a combination of fast moieties.
+    `moiety_pivot_species` names one fast moiety for each conserved moiety,
+    and that fast moiety's total is worked out from the conserved moiety's
+    total, which is the parameter `moiety_totals`. The remaining fast moiety
+    pivots are `ode_state_species`, whose totals are the ODE state.
+    Instantiating a model checks this, along with the other conditions listed
+    in `validate_kinetic_model`.
 
     Formation energies belong to compounds rather than species, so species
     that represent the same compound in different compartments share one. Use
@@ -293,6 +305,12 @@ class KineticModel(eqx.Module):
     moiety_pivot_species: list[str] = eqx.field(
         static=True, default_factory=list
     )
+    rapid_equilibrium_reactions: dict[str, RapidEquilibriumReaction] = (
+        eqx.field(static=True, default_factory=dict)
+    )
+    fast_moiety_pivot_species: list[str] = eqx.field(
+        static=True, default_factory=list
+    )
     compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
     )
@@ -302,6 +320,7 @@ class KineticModel(eqx.Module):
     )
     species: list[str] = eqx.field(static=True, init=False)
     reaction_ids: list[str] = eqx.field(static=True, init=False)
+    rapid_equilibria: RapidEquilibria = eqx.field(static=True, init=False)
     ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
@@ -321,8 +340,21 @@ class KineticModel(eqx.Module):
             for reaction_id, reaction in self.reactions.items()
         }
         self.reaction_ids = list(self.reactions)
+        clash = [
+            r for r in self.rapid_equilibrium_reactions if r in self.reactions
+        ]
+        if clash:
+            msg = (
+                f"Reactions {clash} are both rapid equilibrium reactions and "
+                "reactions with fluxes. Every reaction needs an id of its own."
+            )
+            raise ValueError(msg)
         self.species = self._build_species()
-        named = dict.fromkeys(self.balanced_species + self.moiety_pivot_species)
+        named = dict.fromkeys(
+            self.balanced_species
+            + self.moiety_pivot_species
+            + self.fast_moiety_pivot_species
+        )
         not_species = [s for s in named if s not in self.species]
         if not_species:
             msg = (
@@ -347,9 +379,26 @@ class KineticModel(eqx.Module):
         self._unbalanced_species_ix = freeze_array(
             [get_ix_from_list(s, self.species) for s in self.unbalanced_species]
         )
+        self._S = freeze_array(
+            get_stoichiometric_matrix(self.stoichiometry, self.species)
+        )
+        self.rapid_equilibria = get_rapid_equilibria(
+            self.rapid_equilibrium_reactions,
+            get_stoichiometric_matrix(
+                {
+                    r: reaction.stoichiometry
+                    for r, reaction in self.rapid_equilibrium_reactions.items()
+                },
+                self.species,
+            ),
+            self.species,
+            self.balanced_species,
+            self.moiety_pivot_species,
+            self.fast_moiety_pivot_species,
+        )
         self.ode_state_species = [
             s
-            for s in self.balanced_species
+            for s in self.rapid_equilibria.fast_moiety_pivots
             if s not in self.moiety_pivot_species
         ]
         self._ode_state_species_ix = freeze_array(
@@ -361,22 +410,20 @@ class KineticModel(eqx.Module):
                 for s in self.moiety_pivot_species
             ]
         )
-        S = np.zeros(shape=(len(self.species), len(self.reaction_ids)))
-        for ix_reaction, reaction in enumerate(self.reaction_ids):
-            for species_i, coeff in self.stoichiometry[reaction].items():
-                ix_species = get_ix_from_list(species_i, self.species)
-                S[ix_species, ix_reaction] = coeff
-        self._S = freeze_array(S)
         validate_kinetic_model(self)
         warn_about_undeclared_moieties(self)
         self._L0 = freeze_array(
             get_link_matrix(
-                self.S, self.ode_state_species_ix, self.moiety_pivot_species_ix
+                self.S_reduced,
+                self.fast_moiety_rows(self.ode_state_species),
+                self.fast_moiety_rows(self.moiety_pivot_species),
             )
         )
         for species_i in self.species:
             check_id_has_no_separator(species_i, "Species")
-        for reaction in self.reaction_ids:
+        for reaction in self.reaction_ids + list(
+            self.rapid_equilibrium_reactions
+        ):
             check_id_has_no_separator(reaction, "Reaction")
         for compound in self._dgf_labels():
             check_id_has_no_separator(compound, "Compound")
@@ -414,6 +461,30 @@ class KineticModel(eqx.Module):
         return unfreeze_array(self._S, np.float64)
 
     @property
+    def S_fast(self) -> StoichiometricMatrix:
+        return self.rapid_equilibria.S
+
+    @property
+    def S_reduced(self) -> StoichiometricMatrix:
+        """The stoichiometric matrix of the reactions with fluxes, in terms of
+        fast moieties rather than balanced species."""
+        return (
+            self.rapid_equilibria.fast_moiety_matrix
+            @ self.S[self.balanced_species_ix, :]
+        )
+
+    def fast_moiety_rows(self, species: Sequence[str]) -> np.ndarray:
+        """Get the rows of `S_reduced` that belong to the fast moieties with
+        these pivot species."""
+        return np.array(
+            [
+                self.rapid_equilibria.fast_moiety_pivots.index(s)
+                for s in species
+            ],
+            dtype=np.int16,
+        )
+
+    @property
     def L0(self) -> LinkMatrix:
         return unfreeze_array(self._L0, np.float64)
 
@@ -422,7 +493,9 @@ class KineticModel(eqx.Module):
 
         The stoichiometry names most of them. A species that takes part in no
         reaction, such as an allosteric effector or a dead-end binder, is
-        named by the reaction that uses it, via its `get_species`.
+        named by the reaction that uses it, via its `get_species`. Species
+        that only rapid equilibrium reactions name come last, so adding one
+        never reorders the others.
         """
         from_stoichiometry = [
             species_id
@@ -434,7 +507,16 @@ class KineticModel(eqx.Module):
             for reaction in self.reaction_ids
             for species_id in self.reactions[reaction].get_species()
         ]
-        return list(dict.fromkeys(from_stoichiometry + from_reactions))
+        from_rapid_equilibria = [
+            species_id
+            for reaction in self.rapid_equilibrium_reactions.values()
+            for species_id in reaction.stoichiometry
+        ]
+        return list(
+            dict.fromkeys(
+                from_stoichiometry + from_reactions + from_rapid_equilibria
+            )
+        )
 
     def _build_parameter_labelling(self) -> ParamLabelling:
         """Collect parameter labels from the rate equations and the structure.
@@ -550,6 +632,12 @@ class KineticModel(eqx.Module):
 
         :return: a one dimensional array of floats representing the rate of change of balanced species concentrations. Has same size as self.structure.ix_balanced.
         """  # Noqa: E501
+        if self.rapid_equilibrium_reactions:
+            msg = (
+                "Models with rapid equilibrium reactions cannot be simulated "
+                "yet."
+            )
+            raise NotImplementedError(msg)
         moiety_totals = self.get_moiety_totals(parameters)
         conc_balanced = self.get_balanced_conc(conc_ind, moiety_totals)
         v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)

@@ -72,6 +72,7 @@ DgfArr = Float[Array, " n_dgf"]
 StaticSpeciesArr = Float[np.ndarray, " n_species"]
 StoichiometricMatrix = Float[np.ndarray, " n_species n_reaction"]
 LinkMatrix = Float[np.ndarray, " n_moiety n_ode_state"]
+FastMoietyMatrix = Float[np.ndarray, " n_fast_moiety n_balanced"]
 # Index arrays: the axis gives the array's length, and the comment says which
 # axis its values point into.
 SpeciesIx = Int[np.ndarray, " n_species"]  # values index n_dgf
@@ -174,3 +175,23 @@ ParamValueSpec = dict[str, ParamEntry]
 # Misc
 # --------------------------------------------------------------------------
 FloatArray1d = Float[Array, " _"]
+
+
+# A pair (shape, values) for a static field
+FrozenArray = tuple[tuple[int, ...], tuple[int | float, ...]]
+
+
+def freeze_array(values) -> FrozenArray:
+    """Put an array into a form that a static field can hold.
+
+    This is required because static fields need to be comparable with ==, which
+    numpy arrays are not. See https://github.com/dtu-qmcm/enzax/issues/65.
+    """
+    array = np.asarray(values)
+    return array.shape, tuple(array.ravel().tolist())
+
+
+def unfreeze_array(frozen: FrozenArray, dtype) -> np.ndarray:
+    """Turn a frozen array into a numpy array with the given dtype."""
+    shape, values = frozen
+    return np.array(values, dtype=dtype).reshape(shape)
