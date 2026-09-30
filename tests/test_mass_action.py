@@ -146,3 +146,11 @@ def test_a_symbolic_reaction_can_use_k_plus():
         }
     )
     assert model.parameter_labelling["log_k_plus"] == ("r1",)
+
+
+def test_the_flux_is_zero_at_equilibrium_for_dilute_products():
+    reaction = MassAction(stoichiometry={"a": -1.0, "d": 1.0})
+    # a <-> d with an equilibrium constant of 1e-10
+    dgf = {"a": 0.0, "d": RT * np.log(1e10)}
+    conc = {"a": 0.3, "d": 0.3e-10}
+    assert np.isclose(get_flux(reaction, conc, dgf=dgf), 0.0, atol=1e-15)
