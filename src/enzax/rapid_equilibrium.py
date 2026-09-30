@@ -6,17 +6,25 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 
+import jax
+import jax.numpy as jnp
 import numpy as np
+import optimistix as optx
 import sympy
 from equinox import Module, field
+from jaxtyping import Array, Float, Scalar
 
 from enzax.array_types import (
+    BalancedConcArr,
     FastMoietyMatrix,
+    FastMoietyTotalsArr,
     FrozenArray,
     StoichiometricMatrix,
+    UnbalancedConcArr,
     freeze_array,
     unfreeze_array,
 )
+from enzax.thermodynamics import GAS_CONSTANT
 
 
 class RapidEquilibriumReaction(Module):
@@ -60,6 +68,8 @@ class RapidEquilibria:
     reaction_ids: tuple[str, ...]
     water_stoichiometry: tuple[float, ...]
     balanced_species: tuple[str, ...]
+    balanced_species_ix: tuple[int, ...]
+    unbalanced_species_ix: tuple[int, ...]
     subnetworks: tuple[FastSubnetwork, ...]
     fast_moiety_pivots: tuple[str, ...]
     _S: FrozenArray
@@ -303,8 +313,79 @@ def get_rapid_equilibria(
             reaction.water_stoichiometry for reaction in reactions.values()
         ),
         balanced_species=tuple(balanced_species),
+        balanced_species_ix=tuple(balanced_ix),
+        unbalanced_species_ix=tuple(
+            i for i, s in enumerate(species) if s not in balanced_species
+        ),
         subnetworks=tuple(subnetworks),
         fast_moiety_pivots=tuple(pivots),
         _S=freeze_array(S),
         _fast_moiety_matrix=freeze_array(matrix),
     )
+
+
+def solve_rapid_equilibria(
+    rapid_equilibria: RapidEquilibria,
+    fast_moiety_totals: FastMoietyTotalsArr,
+    log_conc_unbalanced: UnbalancedConcArr,
+    dgf: Float[Array, " n_species"],
+    temperature: Scalar,
+    water_dgf: float,
+    rtol: float = 1e-10,
+    atol: float = 1e-10,
+    max_steps: int = 256,
+) -> BalancedConcArr:
+    """Get the balanced species' concentrations at which every rapid
+    equilibrium reaction is at equilibrium and the fast moieties have the
+    given totals.
+
+    Equilibrium constants come from the formation energies, and unbalanced
+    species and water enter them at their fixed concentrations. Returns NaN
+    where there is no solution, for example when a total is not positive.
+    """
+    S = rapid_equilibria.S
+    P = rapid_equilibria.fast_moiety_matrix
+    balanced_ix = np.array(rapid_equilibria.balanced_species_ix, dtype=int)
+    unbalanced_ix = np.array(rapid_equilibria.unbalanced_species_ix, dtype=int)
+    water_stoichiometry = np.array(rapid_equilibria.water_stoichiometry)
+    RT = temperature * GAS_CONSTANT
+    log_keq = -(S.T @ dgf + water_stoichiometry * water_dgf) / RT
+
+    def residual(log_conc_balanced, args):
+        totals, log_unbalanced, log_k = args
+        log_conc = jnp.zeros(S.shape[0])
+        log_conc = log_conc.at[balanced_ix].set(log_conc_balanced)
+        log_conc = log_conc.at[unbalanced_ix].set(log_unbalanced)
+        return jnp.concatenate(
+            [
+                jnp.log(P @ jnp.exp(log_conc_balanced)) - jnp.log(totals),
+                S.T @ log_conc - log_k,
+            ]
+        )
+
+    in_a_moiety = P > 0
+    largest_possible = jnp.min(
+        jnp.where(
+            in_a_moiety,
+            fast_moiety_totals[:, None] / jnp.where(in_a_moiety, P, 1.0),
+            jnp.inf,
+        ),
+        axis=0,
+        initial=jnp.inf,
+    )
+    guess = jnp.log(
+        jnp.where(jnp.isfinite(largest_possible), largest_possible / 2, 1.0)
+    )
+    args = (fast_moiety_totals, log_conc_unbalanced, log_keq)
+    sol = optx.least_squares(
+        residual,
+        optx.Dogleg(rtol=rtol, atol=atol),
+        jax.lax.stop_gradient(guess),
+        args=args,
+        max_steps=max_steps,
+        throw=False,
+    )
+    solved = (sol.result == optx.RESULTS.successful) & jnp.all(
+        jnp.abs(residual(sol.value, args)) < 1e3 * atol
+    )
+    return jnp.where(solved, jnp.exp(sol.value), jnp.nan)

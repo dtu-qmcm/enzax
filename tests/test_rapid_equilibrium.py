@@ -2,6 +2,7 @@
 
 import warnings
 
+import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
@@ -10,8 +11,10 @@ from enzax.kinetic_model import KineticModel, UndeclaredMoietyWarning
 from enzax.rapid_equilibrium import (
     RapidEquilibriumReaction,
     UnusedFastMoietyPivotWarning,
+    solve_rapid_equilibria,
 )
 from enzax.reactions import Drain, MichaelisMenten
+from enzax.thermodynamics import GAS_CONSTANT
 
 # Mg binds ATP quickly, while ATP is made and used slowly.
 MAKE_AND_USE_ATP = {
@@ -301,3 +304,181 @@ def test_rapid_equilibria_keep_their_water_stoichiometries():
         balanced_species=["atp", "adp"],
     )
     assert model.rapid_equilibria.water_stoichiometry == (-1.0,)
+
+
+RT = 298.15 * GAS_CONSTANT
+
+
+def get_dgf(model, values):
+    """Get formation energies per species from values keyed by compound."""
+    compounds = model.parameter_labelling["dgf"]
+    by_compound = jnp.array([values.get(c, 0.0) for c in compounds])
+    return by_compound[model.species_to_dgf_ix]
+
+
+def solve(model, totals, dgf_values, log_conc_unbalanced=(), **kwargs):
+    return solve_rapid_equilibria(
+        model.rapid_equilibria,
+        jnp.array(totals),
+        jnp.array(log_conc_unbalanced),
+        get_dgf(model, dgf_values),
+        298.15,
+        model.water_dgf,
+        **kwargs,
+    )
+
+
+def mg_binding_dgf(log_k):
+    return {"atp": -2000.0, "mg": -450.0, "mgatp": -2450.0 - RT * log_k}
+
+
+@pytest.mark.parametrize("keq", [1e-3, 1.0, 1e4, 1e8])
+@pytest.mark.parametrize("atp_total, mg_total", [(1.0, 0.5), (1e-4, 3.0)])
+def test_single_binding_matches_the_quadratic(keq, atp_total, mg_total):
+    model = KineticModel(**MG_ATP)
+    conc = solve(model, [atp_total, 0.2, mg_total], mg_binding_dgf(np.log(keq)))
+    b = keq * (atp_total + mg_total) + 1.0
+    bound = (b - np.sqrt(b**2 - 4 * keq**2 * atp_total * mg_total)) / (2 * keq)
+    expected = [atp_total - bound, 0.2, mg_total - bound, bound]
+    assert np.allclose(conc, expected, rtol=1e-8)
+
+
+COMPETING = dict(
+    reactions={
+        "make": Drain(stoichiometry={"atp": 1.0}),
+        "use": MichaelisMenten(stoichiometry={"mgatp": -1.0, "mgadp": 1.0}),
+    },
+    rapid_equilibrium_reactions={
+        "bind_atp": RapidEquilibriumReaction(
+            stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0}
+        ),
+        "bind_adp": RapidEquilibriumReaction(
+            stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0}
+        ),
+    },
+    balanced_species=["atp", "adp", "mg", "mgatp", "mgadp"],
+    moiety_pivot_species=["mg"],
+)
+
+
+def test_competing_ligands_satisfy_totals_and_equilibria_across_scales():
+    model = KineticModel(**COMPETING)
+    rng = np.random.default_rng(0)
+    totals = jnp.array(10 ** rng.uniform(-6, 2, (500, 3)))
+    log_k = rng.uniform(np.log(1e-4), np.log(1e9), (500, 2))
+    compounds = model.parameter_labelling["dgf"]
+    dgf_values = np.zeros((500, len(compounds)))
+    dgf_values[:, compounds.index("atp")] = -2000.0
+    dgf_values[:, compounds.index("adp")] = -1500.0
+    dgf_values[:, compounds.index("mg")] = -450.0
+    dgf_values[:, compounds.index("mgatp")] = -2450.0 - RT * log_k[:, 0]
+    dgf_values[:, compounds.index("mgadp")] = -1950.0 - RT * log_k[:, 1]
+    dgf = jnp.array(dgf_values)[:, model.species_to_dgf_ix]
+    conc = jax.vmap(
+        lambda y, g: solve_rapid_equilibria(
+            model.rapid_equilibria, y, jnp.array([]), g, 298.15, model.water_dgf
+        )
+    )(totals, dgf)
+    P = model.rapid_equilibria.fast_moiety_matrix
+    S_fb = model.S_fast[model.balanced_species_ix, :]
+    assert np.allclose(conc @ P.T, totals, rtol=1e-8)
+    assert np.allclose(jnp.log(conc) @ S_fb, log_k, atol=1e-7)
+
+
+def test_an_unbalanced_species_shifts_the_equilibrium():
+    model = KineticModel(
+        reactions=MAKE_AND_USE_ATP,
+        rapid_equilibrium_reactions=BIND_MG,
+        balanced_species=["atp", "adp", "mgatp"],
+    )
+    conc = solve(model, [1.0, 0.2], mg_binding_dgf(np.log(10.0)), [np.log(0.3)])
+    atp, _, mgatp = conc
+    assert np.isclose(mgatp / atp, 10.0 * 0.3, rtol=1e-8)
+    assert np.isclose(atp + mgatp, 1.0, rtol=1e-8)
+
+
+def test_water_enters_the_equilibrium_constant():
+    model = KineticModel(
+        reactions=MAKE_AND_USE_ATP,
+        rapid_equilibrium_reactions={
+            "hydrolyse": RapidEquilibriumReaction(
+                stoichiometry={"atp": -1.0, "adp": 1.0},
+                water_stoichiometry=-1.0,
+            ),
+        },
+        balanced_species=["atp", "adp"],
+    )
+    dgf_values = {"atp": -2000.0, "adp": -1850.0}
+    atp, adp = solve(model, [1.0], dgf_values)
+    dgr = -1850.0 + 2000.0 - model.water_dgf
+    assert np.isclose(adp / atp, np.exp(-dgr / RT), rtol=1e-8)
+
+
+def test_a_species_in_a_subnetwork_with_no_fast_moieties_is_fixed():
+    model = KineticModel(
+        reactions={"make": Drain(stoichiometry={"a": 1.0})},
+        rapid_equilibrium_reactions={
+            "eq": RapidEquilibriumReaction(stoichiometry={"a": -1.0, "b": 1.0})
+        },
+        balanced_species=["a"],
+    )
+    (a,) = solve(model, [], {"a": 0.0, "b": -RT * np.log(4.0)}, [np.log(2.0)])
+    assert np.isclose(a, 2.0 / 4.0, rtol=1e-8)
+
+
+def test_a_non_positive_total_gives_nan_only_for_that_member():
+    model = KineticModel(**MG_ATP)
+    totals = jnp.array([[1.0, 0.2, 0.5], [1.0, 0.2, 0.0], [2.0, 0.1, 1.0]])
+    dgf = get_dgf(model, mg_binding_dgf(np.log(100.0)))
+    conc = jax.vmap(
+        lambda y: solve_rapid_equilibria(
+            model.rapid_equilibria, y, jnp.array([]), dgf, 298.15, -150.9
+        )
+    )(totals)
+    assert np.all(np.isnan(conc[1]))
+    assert np.all(np.isfinite(conc[np.array([0, 2])]))
+
+
+def test_gradients_match_finite_differences():
+    model = KineticModel(**COMPETING)
+    compounds = model.parameter_labelling["dgf"]
+    base = {
+        "atp": -2000.0,
+        "adp": -1500.0,
+        "mg": -450.0,
+        "mgatp": -2450.0 - RT * np.log(50.0),
+        "mgadp": -1950.0 - RT * np.log(5.0),
+    }
+    by_compound = jnp.array([base[c] for c in compounds])
+    totals = jnp.array([1.0, 0.4, 0.8])
+
+    def free_mg(totals, by_compound):
+        conc = solve_rapid_equilibria(
+            model.rapid_equilibria,
+            totals,
+            jnp.array([]),
+            by_compound[model.species_to_dgf_ix],
+            298.15,
+            model.water_dgf,
+        )
+        return conc[model.balanced_species.index("mg")]
+
+    def central_difference(f, x, h):
+        return np.array(
+            [
+                (f(x.at[i].add(h)) - f(x.at[i].add(-h))) / (2 * h)
+                for i in range(len(x))
+            ]
+        )
+
+    fd_totals = central_difference(
+        lambda y: free_mg(y, by_compound), totals, 1e-6
+    )
+    fd_dgf = central_difference(lambda g: free_mg(totals, g), by_compound, 1e-4)
+    grad_totals, grad_dgf = jax.grad(free_mg, argnums=(0, 1))(
+        totals, by_compound
+    )
+    fwd_totals = jax.jacfwd(free_mg)(totals, by_compound)
+    assert np.allclose(grad_totals, fd_totals, rtol=1e-5, atol=1e-9)
+    assert np.allclose(fwd_totals, fd_totals, rtol=1e-5, atol=1e-9)
+    assert np.allclose(grad_dgf, fd_dgf, rtol=1e-5, atol=1e-9)

@@ -50,6 +50,7 @@ OdeStateArr = Float[Array, " n_ode_state"]
 # Rate of change of the ODE state: same axis, different quantity.
 OdeStateRateArr = Float[Array, " n_ode_state"]
 MoietyTotalsArr = Float[Array, " n_moiety"]
+FastMoietyTotalsArr = Float[Array, " n_fast_moiety"]
 Flux = Float[Array, " n_reaction"]
 
 # --------------------------------------------------------------------------
