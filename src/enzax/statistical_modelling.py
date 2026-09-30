@@ -256,9 +256,7 @@ def _log_density_and_steady_state(
     # that is what says the solve failed.
     found = jnp.isfinite(steady).all()
     conc_ind = jnp.where(found, steady, guess)
-    conc_balanced = model.get_balanced_conc(
-        conc_ind, model.get_moiety_totals(parameters)
-    )
+    conc_balanced = model.get_balanced_conc(conc_ind, parameters)
     conc_hat = model.get_conc(
         conc_balanced, model.get_log_conc_unbalanced(parameters)
     )

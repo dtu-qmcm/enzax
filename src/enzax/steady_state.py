@@ -177,9 +177,7 @@ def refine_guess_newton(
         throw=False,
     )
     conc_ind = jax.lax.stop_gradient(sol.value)
-    conc_balanced = model.get_balanced_conc(
-        conc_ind, model.get_moiety_totals(parameters)
-    )
+    conc_balanced = model.get_balanced_conc(conc_ind, parameters)
     trustworthy = (
         (sol.result == optx.RESULTS.successful)
         & jnp.isfinite(conc_ind).all()

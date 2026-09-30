@@ -126,8 +126,9 @@ def test_flux_matches_the_sbml_rate_laws(reaction):
 def test_the_steady_state_carries_glycolytic_flux():
     """The pathway runs forwards, drains included."""
     model = glycolysis.model
-    moiety_totals = model.get_moiety_totals(glycolysis.parameters)
-    conc = model.get_balanced_conc(glycolysis.steady_state, moiety_totals)
+    conc = model.get_balanced_conc(
+        glycolysis.steady_state, glycolysis.parameters
+    )
     flux = model.flux(conc, glycolysis.parameters)
     forwards = ["GLUT4", "PGI", "GAPD", "ENO", "LDHA", "G6PDH"]
     for reaction in forwards:

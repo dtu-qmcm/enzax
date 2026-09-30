@@ -10,6 +10,7 @@ import sympy
 from jaxtyping import PyTree, ScalarLike
 
 from enzax.array_types import (
+    FastMoietyTotalsArr,
     FrozenArray,
     BalancedConcArr,
     BalancedSpeciesIx,
@@ -38,6 +39,7 @@ from enzax.rapid_equilibrium import (
     RapidEquilibria,
     RapidEquilibriumReaction,
     get_rapid_equilibria,
+    solve_rapid_equilibria,
 )
 from enzax.reaction import Reaction, ReactionScope
 
@@ -610,16 +612,48 @@ class KineticModel(eqx.Module):
             return jnp.zeros(0)
         return parameters["moiety_totals"]
 
+    def get_fast_moiety_totals(
+        self, ode_state: OdeStateArr, parameters: PyTree
+    ) -> FastMoietyTotalsArr:
+        """Get the totals of every fast moiety from the ODE state, working out
+        the ones that belong to conserved moieties from the conserved moiety
+        totals."""
+        dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
+        totals = jnp.zeros(len(self.rapid_equilibria.fast_moiety_pivots))
+        totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
+            ode_state
+        )
+        totals = totals.at[
+            self.fast_moiety_rows(self.moiety_pivot_species)
+        ].set(dependent)
+        return totals
+
     def get_balanced_conc(
-        self,
-        conc_ind: OdeStateArr,
-        moiety_totals: MoietyTotalsArr,
+        self, ode_state: OdeStateArr, parameters: PyTree
     ) -> BalancedConcArr:
-        conc_dep = moiety_totals + self.L0 @ conc_ind
-        conc = jnp.zeros(len(self.species))
-        conc = conc.at[self.ode_state_species_ix].set(conc_ind)
-        conc = conc.at[self.moiety_pivot_species_ix].set(conc_dep)
-        return conc[self.balanced_species_ix]
+        """Get the balanced species' concentrations from the ODE state.
+
+        Without rapid equilibrium reactions these are the fast moiety totals
+        themselves; otherwise the species are found by solving for rapid
+        equilibrium.
+        """
+        totals = self.get_fast_moiety_totals(ode_state, parameters)
+        if not self.rapid_equilibrium_reactions:
+            return totals
+        return solve_rapid_equilibria(
+            self.rapid_equilibria,
+            totals,
+            self.get_log_conc_unbalanced(parameters),
+            parameters["dgf"][self.species_to_dgf_ix],
+            parameters["temperature"],
+            self.water_dgf,
+        )
+
+    def get_ode_state(self, conc_balanced: BalancedConcArr) -> OdeStateArr:
+        """Get the ODE state that corresponds to some balanced species'
+        concentrations."""
+        totals = self.rapid_equilibria.fast_moiety_matrix @ conc_balanced
+        return totals[self.fast_moiety_rows(self.ode_state_species)]
 
     def dcdt(
         self, conc_ind: OdeStateArr, parameters: PyTree
@@ -630,19 +664,11 @@ class KineticModel(eqx.Module):
 
         :param parameters: A PyTree of parameters.
 
-        :return: a one dimensional array of floats representing the rate of change of balanced species concentrations. Has same size as self.structure.ix_balanced.
+        :return: a one dimensional array of floats representing the rate of change of the ODE state. Has the same size as `self.ode_state_species`.
         """  # Noqa: E501
-        if self.rapid_equilibrium_reactions:
-            msg = (
-                "Models with rapid equilibrium reactions cannot be simulated "
-                "yet."
-            )
-            raise NotImplementedError(msg)
-        moiety_totals = self.get_moiety_totals(parameters)
-        conc_balanced = self.get_balanced_conc(conc_ind, moiety_totals)
+        conc_balanced = self.get_balanced_conc(conc_ind, parameters)
         v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
-        sv = self.S @ v
-        return jnp.array(sv[self.ode_state_species_ix])
+        return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
 
     def __call__(
         self, t: ScalarLike, y: OdeStateArr, parameters: PyTree

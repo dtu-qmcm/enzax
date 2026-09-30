@@ -45,8 +45,7 @@ def test_flux_and_dcdt_are_unchanged(name, example):
     model = example.model
     parameters = example.parameters
     expected = get_expected(name)
-    moiety_totals = model.get_moiety_totals(parameters)
-    conc_balanced = model.get_balanced_conc(example.steady_state, moiety_totals)
+    conc_balanced = model.get_balanced_conc(example.steady_state, parameters)
     flux = model.flux(conc_balanced, parameters)
     dcdt = model.dcdt(example.steady_state, parameters)
     assert jnp.array_equal(flux, jnp.array(expected["flux"]))

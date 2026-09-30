@@ -126,7 +126,6 @@ def test_refine_never_returns_a_non_physical_state(name, example):
     that it keeps holding if a model with a reachable one ever arrives.
     """
     model, parameters = example.model, example.parameters
-    totals = model.get_moiety_totals(parameters)
     key = jax.random.key(7)
     for _ in range(25):
         key, key_scale, key_sign = jax.random.split(key, 3)
@@ -138,7 +137,7 @@ def test_refine_never_returns_a_non_physical_state(name, example):
         refined = refine_guess_newton(model, guess, parameters)
         if jnp.array_equal(refined, guess):
             continue
-        assert (model.get_balanced_conc(refined, totals) > 0).all()
+        assert (model.get_balanced_conc(refined, parameters) > 0).all()
 
 
 @pytest.mark.parametrize(["name", "example"], EXAMPLES)

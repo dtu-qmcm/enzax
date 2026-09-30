@@ -13,7 +13,9 @@ from enzax.rapid_equilibrium import (
     UnusedFastMoietyPivotWarning,
     solve_rapid_equilibria,
 )
+from enzax.parameters import pack_parameters
 from enzax.reactions import Drain, MichaelisMenten
+from enzax.steady_state import get_steady_state_hybrid
 from enzax.thermodynamics import GAS_CONSTANT
 
 # Mg binds ATP quickly, while ATP is made and used slowly.
@@ -104,12 +106,6 @@ def test_a_fast_moiety_pivot_species_in_a_rapid_equilibrium_does_not_warn():
     with warnings.catch_warnings():
         warnings.simplefilter("error", UnusedFastMoietyPivotWarning)
         KineticModel(**MG_ATP, fast_moiety_pivot_species=["mg"])
-
-
-def test_models_with_rapid_equilibria_cannot_be_simulated_yet():
-    model = KineticModel(**MG_ATP)
-    with pytest.raises(NotImplementedError):
-        model.dcdt(jnp.ones(4), {})
 
 
 def get_fast_only_model(stoichiometry, balanced_species, **kwargs):
@@ -482,3 +478,126 @@ def test_gradients_match_finite_differences():
     assert np.allclose(grad_totals, fd_totals, rtol=1e-5, atol=1e-9)
     assert np.allclose(fwd_totals, fd_totals, rtol=1e-5, atol=1e-9)
     assert np.allclose(grad_dgf, fd_dgf, rtol=1e-5, atol=1e-9)
+
+
+# Mg binds ATP and ADP quickly, while ADK, an ATPase and an ATP synthase are
+# slow. Total Mg and total adenylate are conserved.
+ENERGY = KineticModel(
+    reactions={
+        "adk": MichaelisMenten(
+            stoichiometry={"adp": -2.0, "atp": 1.0, "amp": 1.0}
+        ),
+        "atpase": MichaelisMenten(
+            stoichiometry={"mgatp": -1.0, "mgadp": 1.0, "pi": 1.0},
+            reversible=False,
+        ),
+        "synthase": MichaelisMenten(
+            stoichiometry={"mgadp": -1.0, "pi": -1.0, "mgatp": 1.0},
+            reversible=False,
+        ),
+    },
+    rapid_equilibrium_reactions={
+        "bind_atp": RapidEquilibriumReaction(
+            stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0}
+        ),
+        "bind_adp": RapidEquilibriumReaction(
+            stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0}
+        ),
+    },
+    balanced_species=["atp", "adp", "amp", "mg", "mgatp", "mgadp"],
+    moiety_pivot_species=["mg", "amp"],
+)
+
+
+def get_energy_parameters(log_kcat_synthase=np.log(2.0)):
+    labelling = ENERGY.parameter_labelling
+    dgf = {"mgatp": -RT * np.log(10.0), "mgadp": -RT * np.log(2.0)}
+    return pack_parameters(
+        labelling,
+        {
+            "log_saturation_constant": {
+                label: np.log(0.5)
+                for label in labelling["log_saturation_constant"]
+            },
+            "log_kcat": {
+                "adk": np.log(5.0),
+                "atpase": np.log(1.0),
+                "synthase": log_kcat_synthase,
+            },
+            "log_enzyme": {
+                label: np.log(0.1) for label in labelling["log_enzyme"]
+            },
+            "dgf": {c: dgf.get(c, 0.0) for c in labelling["dgf"]},
+            "log_conc_unbalanced": {"pi": np.log(1.0)},
+            "moiety_totals": {"mg": 1.0, "amp": 3.0},
+            "temperature": 298.15,
+        },
+    )
+
+
+def test_the_ode_state_is_the_non_conserved_fast_moieties():
+    assert ENERGY.ode_state_species == ["atp", "adp"]
+    assert ENERGY.rapid_equilibria.fast_moiety_coefficients["atp"] == {
+        "atp": 1.0,
+        "mgatp": 1.0,
+    }
+
+
+def test_balanced_concentrations_honour_totals_and_equilibria():
+    parameters = get_energy_parameters()
+    conc = ENERGY.get_balanced_conc(jnp.array([1.2, 0.9]), parameters)
+    c = dict(zip(ENERGY.balanced_species, conc.tolist()))
+    assert np.isclose(c["atp"] + c["mgatp"], 1.2)
+    assert np.isclose(c["adp"] + c["mgadp"], 0.9)
+    assert np.isclose(c["amp"], 3.0 - 1.2 - 0.9)
+    assert np.isclose(c["mg"] + c["mgatp"] + c["mgadp"], 1.0)
+    assert np.isclose(c["mgatp"] / (c["atp"] * c["mg"]), 10.0)
+    assert np.isclose(c["mgadp"] / (c["adp"] * c["mg"]), 2.0)
+
+
+def test_get_ode_state_inverts_get_balanced_conc():
+    parameters = get_energy_parameters()
+    state = jnp.array([1.2, 0.9])
+    conc = ENERGY.get_balanced_conc(state, parameters)
+    assert np.allclose(ENERGY.get_ode_state(conc), state)
+
+
+def test_dcdt_is_the_fast_moieties_rate_of_change():
+    parameters = get_energy_parameters()
+    state = jnp.array([1.2, 0.9])
+    conc = ENERGY.get_balanced_conc(state, parameters)
+    v = ENERGY.flux(conc, parameters)
+    S = dict(zip(ENERGY.species, ENERGY.S.tolist()))
+    atp_moiety = (np.array(S["atp"]) + np.array(S["mgatp"])) @ v
+    adp_moiety = (np.array(S["adp"]) + np.array(S["mgadp"])) @ v
+    assert np.allclose(ENERGY.dcdt(state, parameters), [atp_moiety, adp_moiety])
+
+
+def test_a_model_with_rapid_equilibria_reaches_a_steady_state():
+    parameters = get_energy_parameters()
+    steady = get_steady_state_hybrid(ENERGY, jnp.array([1.0, 1.0]), parameters)
+    assert np.allclose(ENERGY.dcdt(steady, parameters), 0.0, atol=1e-9)
+    conc = ENERGY.get_balanced_conc(steady, parameters)
+    assert np.all(conc > 0)
+    c = dict(zip(ENERGY.balanced_species, conc.tolist()))
+    assert np.isclose(c["mg"] + c["mgatp"] + c["mgadp"], 1.0)
+    assert np.isclose(
+        c["atp"] + c["adp"] + c["amp"] + c["mgatp"] + c["mgadp"], 3.0
+    )
+
+
+def test_steady_state_gradients_match_finite_differences():
+    guess = jnp.array([1.0, 1.0])
+
+    def free_mg_at_steady_state(log_kcat_synthase):
+        parameters = get_energy_parameters(log_kcat_synthase)
+        steady = get_steady_state_hybrid(ENERGY, guess, parameters)
+        conc = ENERGY.get_balanced_conc(steady, parameters)
+        return conc[ENERGY.balanced_species.index("mg")]
+
+    x = jnp.log(2.0)
+    h = 1e-5
+    fd = (free_mg_at_steady_state(x + h) - free_mg_at_steady_state(x - h)) / (
+        2 * h
+    )
+    assert np.isclose(jax.grad(free_mg_at_steady_state)(x), fd, rtol=1e-5)
