@@ -16,6 +16,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+from diffrax_bdf import BDF, BDFController, SemiExplicitDAETerm
 
 from enzax.examples import red_blood_cell as rbc
 from enzax.steady_state import get_steady_state_hybrid
@@ -27,29 +28,46 @@ REPEATS = 3
 MAX_STEPS = 4000
 OUT_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("benchmark")
 MIN_RATIO = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0
+STIFF_METHODS = ["kvaerno5", "bdf"]
+RAPID_EQUILIBRIUM_METHODS = ["kvaerno5", "bdf", "dae", "dae_include"]
 
 
-def make_ode_solve(model):
+def make_ode_solve(model, method):
+    if method == "kvaerno5":
+        solver = diffrax.Kvaerno5()
+        controller = diffrax.PIDController(
+            pcoeff=0.1, icoeff=0.3, rtol=1e-9, atol=1e-9
+        )
+    else:
+        solver = BDF(suppress_algebraic_error=method == "dae")
+        controller = BDFController(rtol=1e-9, atol=1e-9, dtmax=1e6)
+    is_dae = method.startswith("dae")
+
     @eqx.filter_jit
     def solve(y0, parameters, tol):
+        if is_dae:
+            term = SemiExplicitDAETerm(model.dae_vector_field, (False, True))
+            y0 = model.get_dae_state(y0, parameters)
+        else:
+            term = diffrax.ODETerm(model)
         sol = diffrax.diffeqsolve(
-            diffrax.ODETerm(model),
-            diffrax.Kvaerno5(),
+            term,
+            solver,
             t0=0.0,
             t1=jnp.inf,
             dt0=1e-6,
             y0=y0,
             args=parameters,
             max_steps=MAX_STEPS,
-            stepsize_controller=diffrax.PIDController(
-                pcoeff=0.1, icoeff=0.3, rtol=1e-9, atol=1e-9
-            ),
+            stepsize_controller=controller,
             event=diffrax.Event(diffrax.steady_state_event(rtol=tol, atol=tol)),
+            adjoint=diffrax.ImplicitAdjoint(),
             throw=False,
         )
         found = sol.result == diffrax.RESULTS.event_occurred
+        state = sol.ys[0][0] if is_dae else sol.ys[0]
         return (
-            jnp.where(found, sol.ys[0], jnp.nan),
+            jnp.where(found, state, jnp.nan),
             sol.stats["num_accepted_steps"],
             sol.stats["num_rejected_steps"],
         )
@@ -94,42 +112,59 @@ def check(model, state, parameters):
     return residual < 1e-6, residual
 
 
-def run(model, parameters, guess, label, tolerances=TOLERANCES):
-    hybrid, ode = make_hybrid_solve(model), make_ode_solve(model)
+def run(model, parameters, guess, label, methods, tolerances=TOLERANCES):
+    hybrid = make_hybrid_solve(model)
+    ode = {method: make_ode_solve(model, method) for method in methods}
     rows = []
     for tol in tolerances:
-        tol_ = jnp.array(tol)
-        state, t_hybrid = timed(hybrid, guess, parameters, tol_)
-        ok_hybrid, _ = check(model, state, parameters)
-        (ode_state, accepted, rejected), t_ode = timed(
-            ode, PERTURBATION * guess, parameters, tol_
-        )
-        ok_ode, residual = check(model, ode_state, parameters)
+        tol_ = float(tol)
+        state, seconds = timed(hybrid, guess, parameters, tol_)
+        success, residual = check(model, state, parameters)
         rows.append(
             dict(
                 formulation=label,
+                method="hybrid",
                 tolerance=tol,
-                hybrid_success=ok_hybrid,
-                hybrid_seconds=t_hybrid,
-                ode_success=ok_ode,
-                ode_residual=residual,
-                ode_accepted_steps=int(accepted),
-                ode_rejected_steps=int(rejected),
-                ode_seconds=t_ode,
-                state=state if ok_hybrid else ode_state,
+                success=success,
+                residual=residual,
+                accepted_steps=0,
+                rejected_steps=0,
+                seconds=seconds,
+                seconds_per_step=np.nan,
+                state=state,
             )
         )
+        for method, solve in ode.items():
+            (state, accepted, rejected), seconds = timed(
+                solve, PERTURBATION * guess, parameters, tol_
+            )
+            success, residual = check(model, state, parameters)
+            steps = int(accepted) + int(rejected)
+            rows.append(
+                dict(
+                    formulation=label,
+                    method=method,
+                    tolerance=tol,
+                    success=success,
+                    residual=residual,
+                    accepted_steps=int(accepted),
+                    rejected_steps=int(rejected),
+                    seconds=seconds,
+                    seconds_per_step=seconds / steps if steps else np.nan,
+                    state=state,
+                )
+            )
     return rows
 
 
 def describe(row):
-    hybrid = "ok" if row["hybrid_success"] else "FAIL"
-    ode = "ok" if row["ode_success"] else "FAIL"
-    steps = f"{row['ode_accepted_steps']}+{row['ode_rejected_steps']}"
+    success = "ok" if row["success"] else "FAIL"
+    steps = f"{row['accepted_steps']}+{row['rejected_steps']}"
+    per_step = row["seconds_per_step"] * 1e3
     return (
-        f"tol {row['tolerance']:.0e}: "
-        f"hybrid {hybrid} {row['hybrid_seconds'] * 1e3:.2f} ms | "
-        f"ODE {ode} {steps} steps {row['ode_seconds'] * 1e3:.2f} ms"
+        f"tol {row['tolerance']:.0e} {row['method']:>11}: {success} "
+        f"{steps:>10} steps {row['seconds'] * 1e3:9.2f} ms "
+        f"({per_step:.3f} ms/step)"
     )
 
 
@@ -159,30 +194,51 @@ def main():
         re_parameters,
         rbc.rapid_equilibrium_steady_state,
         "rapid equilibrium",
+        RAPID_EQUILIBRIUM_METHODS,
     )
-    for row in re_rows:
-        print(f"rapid equilibrium {describe(row)}", flush=True)
-    re_good = next(r for r in re_rows if r["hybrid_success"])
+    re_good = next(
+        r for r in re_rows if r["method"] == "hybrid" and r["success"]
+    )
     re_solution = conc_and_flux(re_model, re_good["state"], re_parameters)
-    records = [
-        {k: v for k, v in row.items() if k != "state"}
-        | dict(ratio=np.inf, conc_error=0.0, flux_error=0.0)
-        for row in re_rows
-    ]
+    records = []
+    for row in re_rows:
+        state = row.pop("state")
+        conc_error = flux_error = np.nan
+        if row["success"]:
+            approx = conc_and_flux(re_model, state, re_parameters)
+            conc_error, flux_error = errors(approx, re_solution)
+        records.append(
+            row
+            | dict(ratio=np.inf, conc_error=conc_error, flux_error=flux_error)
+        )
+        print(
+            f"rapid equilibrium {describe(row)} | error vs hybrid "
+            f"conc {conc_error:.2e}",
+            flush=True,
+        )
     failures = {tol: 0 for tol in TOLERANCES}
     for ratio in RATIOS[RATIOS >= MIN_RATIO]:
         active = [tol for tol in TOLERANCES if failures[tol] < 2]
         if not active:
             break
         parameters = rbc.get_parameters(rbc.model, float(ratio))
-        rows = run(rbc.model, parameters, rbc.steady_state, "stiff", active)
+        rows = run(
+            rbc.model,
+            parameters,
+            rbc.steady_state,
+            "stiff",
+            STIFF_METHODS,
+            active,
+        )
+        for tol in active:
+            all_failed = not any(
+                r["success"] for r in rows if r["tolerance"] == tol
+            )
+            failures[tol] = failures[tol] + 1 if all_failed else 0
         for row in rows:
-            both_failed = not (row["hybrid_success"] or row["ode_success"])
-            tol = row["tolerance"]
-            failures[tol] = failures[tol] + 1 if both_failed else 0
             state = row.pop("state")
             conc_error = flux_error = np.nan
-            if bool(jnp.all(jnp.isfinite(state))):
+            if row["success"]:
                 truth = conc_and_flux(rbc.model, state, parameters)
                 conc_error, flux_error = errors(re_solution, truth)
             records.append(
