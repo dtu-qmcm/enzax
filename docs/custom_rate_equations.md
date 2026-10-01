@@ -396,12 +396,11 @@ SymbolicReaction(
 
 ### Declaring species and parameters
 
-### Declaring species and parameters
+Every symbol in the expression must be declared, unless `default_parameter_kind` is set, and every declaration must be used.
 
-Every symbol in the expression must be declared, and every declaration must be used.
-
-- `species` maps symbols to species ids. It must include the reactants, since nothing is inferred from the stoichiometry. As with the built-in rate equations' effectors, naming a species that takes part in no reaction adds it to the model.
+- `species` maps symbols to species ids, for every species the expression uses. Reactants are no exception, since nothing is inferred from the stoichiometry, but a reactant that the expression does not use must be left out. When each species is its own symbol, a list of species ids will do: `species=["m1c"]` means `species={"m1c": "m1c"}`. As with the built-in rate equations' effectors, naming a species that takes part in no reaction adds it to the model.
 - `parameters` maps symbols to declarations. A declaration is either a parameter kind such as `"log_kcat"`, or a mapping `{"kind": ..., "label": ...}` that gives the label too.
+- `default_parameter_kind`, if given, declares every remaining symbol as a parameter of that kind with its default label, which saves listing many constants of one kind. The price is that a misspelt symbol becomes a parameter of its own, which `pack_parameters` then reports as missing a value.
 
 The expression sees every parameter on its natural scale, so a `log_kcat` value arrives as the turnover number itself, not its logarithm.
 
