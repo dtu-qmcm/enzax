@@ -448,16 +448,63 @@ def solve_rapid_equilibria(
     water_stoichiometry = np.array(rapid_equilibria.water_stoichiometry)
     RT = temperature * GAS_CONSTANT
     log_keq = -(S.T @ dgf + water_stoichiometry * water_dgf) / RT
+    in_a_subnetwork = {
+        i for s in rapid_equilibria.subnetworks for i in s.balanced_species_ix
+    }
+    isolated = np.array(
+        [i for i in range(P.shape[1]) if i not in in_a_subnetwork], dtype=int
+    )
+    conc = jnp.zeros(P.shape[1])
+    solved = jnp.all(fast_moiety_totals > 0)
+    if isolated.size:
+        own_row = np.argmax(P[:, isolated] != 0, axis=0)
+        conc = conc.at[isolated].set(fast_moiety_totals[own_row])
+    for subnetwork in rapid_equilibria.subnetworks:
+        members = np.array(subnetwork.balanced_species_ix, dtype=int)
+        rows = np.flatnonzero(np.any(P[:, members] != 0, axis=1))
+        subnetwork_conc = solve_fast_subnetwork(
+            S[np.ix_(balanced_ix[members], subnetwork.reaction_ix)],
+            S[np.ix_(unbalanced_ix, subnetwork.reaction_ix)],
+            P[np.ix_(rows, members)],
+            fast_moiety_totals[rows],
+            log_conc_unbalanced,
+            log_keq[np.array(subnetwork.reaction_ix, dtype=int)],
+            rtol,
+            atol,
+            max_steps,
+        )
+        solved &= jnp.all(jnp.isfinite(subnetwork_conc))
+        conc = conc.at[members].set(subnetwork_conc)
+    return jnp.where(solved, conc, jnp.nan)
 
-    def residual(log_conc_balanced, args):
+
+def solve_fast_subnetwork(
+    S_balanced: StoichiometricMatrix,
+    S_unbalanced: StoichiometricMatrix,
+    P: FastMoietyMatrix,
+    totals: FastMoietyTotalsArr,
+    log_conc_unbalanced: UnbalancedConcArr,
+    log_keq: Float[Array, " n_subnetwork_reaction"],
+    rtol: float,
+    atol: float,
+    max_steps: int,
+) -> Float[Array, " n_subnetwork_species"]:
+    """Solve one fast subnetwork for its species' concentrations.
+
+    The unknowns are the log concentrations of the subnetwork's balanced
+    species, and the residuals are its fast moieties' totals and its rapid
+    equilibrium reactions' equilibrium conditions. Returns NaN if the solve
+    fails.
+    """
+
+    def residual(log_conc, args):
         totals, log_unbalanced, log_k = args
-        log_conc = jnp.zeros(S.shape[0])
-        log_conc = log_conc.at[balanced_ix].set(log_conc_balanced)
-        log_conc = log_conc.at[unbalanced_ix].set(log_unbalanced)
         return jnp.concatenate(
             [
-                jnp.log(P @ jnp.exp(log_conc_balanced)) - jnp.log(totals),
-                S.T @ log_conc - log_k,
+                jnp.log(P @ jnp.exp(log_conc)) - jnp.log(totals),
+                S_balanced.T @ log_conc
+                + S_unbalanced.T @ log_unbalanced
+                - log_k,
             ]
         )
 
@@ -465,7 +512,7 @@ def solve_rapid_equilibria(
     largest_possible = jnp.min(
         jnp.where(
             in_a_moiety,
-            fast_moiety_totals[:, None] / jnp.where(in_a_moiety, P, 1.0),
+            totals[:, None] / jnp.where(in_a_moiety, P, 1.0),
             jnp.inf,
         ),
         axis=0,
@@ -474,7 +521,7 @@ def solve_rapid_equilibria(
     guess = jnp.log(
         jnp.where(jnp.isfinite(largest_possible), largest_possible / 2, 1.0)
     )
-    args = (fast_moiety_totals, log_conc_unbalanced, log_keq)
+    args = (totals, log_conc_unbalanced, log_keq)
     sol = optx.least_squares(
         residual,
         optx.Dogleg(rtol=rtol, atol=atol),
