@@ -5,7 +5,7 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.examples import red_blood_cell as rbc
-from enzax.steady_state import get_steady_state_hybrid
+from enzax.steady_state import get_steady_state_dae, get_steady_state_hybrid
 
 CALIBRATED = [
     "HK", "PFK", "PK", "TPI", "TKI", "TKII", "TA", "PRM", "PNPase"
@@ -93,3 +93,24 @@ def test_the_stiff_formulation_converges_to_the_rapid_equilibrium_one():
     errors = np.array(errors)
     assert np.allclose(errors * ratios, errors[0] * ratios[0], rtol=0.05)
     assert errors[-1] < 1e-3
+
+
+@pytest.mark.slow
+def test_the_dae_steady_state_matches_the_hybrid_one_from_a_poor_start():
+    pytest.importorskip("diffrax_bdf")
+    model, parameters = (
+        rbc.rapid_equilibrium_model,
+        rbc.rapid_equilibrium_parameters,
+    )
+    hybrid = get_steady_state_hybrid(
+        model, rbc.rapid_equilibrium_steady_state, parameters
+    )
+    dae = get_steady_state_dae(
+        model, 0.8 * rbc.rapid_equilibrium_steady_state, parameters
+    )
+    assert np.allclose(
+        model.get_balanced_conc(dae, parameters),
+        model.get_balanced_conc(hybrid, parameters),
+        rtol=1e-6,
+        atol=0.0,
+    )

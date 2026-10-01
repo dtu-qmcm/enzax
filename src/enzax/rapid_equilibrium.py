@@ -102,6 +102,16 @@ class RapidEquilibria:
             )
         }
 
+    @property
+    def subnetwork_species_ix(self) -> np.ndarray:
+        """The positions, among the balanced species, of the species in fast
+        subnetworks, one subnetwork after another. `log_conc` in
+        `KineticModel.dae_vector_field` follows this order."""
+        return np.array(
+            [i for s in self.subnetworks for i in s.balanced_species_ix],
+            dtype=int,
+        )
+
 
 def check_fast_moiety_label_species(
     fast_moiety_label_species: Sequence[str],
@@ -441,31 +451,17 @@ def solve_rapid_equilibria(
     species and water enter them at their fixed concentrations. Returns NaN
     where there is no solution, for example when a total is not positive.
     """
-    S = rapid_equilibria.S
-    P = rapid_equilibria.fast_moiety_matrix
-    balanced_ix = np.array(rapid_equilibria.balanced_species_ix, dtype=int)
-    unbalanced_ix = np.array(rapid_equilibria.unbalanced_species_ix, dtype=int)
-    water_stoichiometry = np.array(rapid_equilibria.water_stoichiometry)
-    RT = temperature * GAS_CONSTANT
-    log_keq = -(S.T @ dgf + water_stoichiometry * water_dgf) / RT
-    in_a_subnetwork = {
-        i for s in rapid_equilibria.subnetworks for i in s.balanced_species_ix
-    }
-    isolated = np.array(
-        [i for i in range(P.shape[1]) if i not in in_a_subnetwork], dtype=int
-    )
-    conc = jnp.zeros(P.shape[1])
+    log_keq = get_log_keq(rapid_equilibria, dgf, temperature, water_dgf)
     solved = jnp.all(fast_moiety_totals > 0)
-    if isolated.size:
-        own_row = np.argmax(P[:, isolated] != 0, axis=0)
-        conc = conc.at[isolated].set(fast_moiety_totals[own_row])
+    subnetwork_conc = []
     for subnetwork in rapid_equilibria.subnetworks:
-        members = np.array(subnetwork.balanced_species_ix, dtype=int)
-        rows = np.flatnonzero(np.any(P[:, members] != 0, axis=1))
-        subnetwork_conc = solve_fast_subnetwork(
-            S[np.ix_(balanced_ix[members], subnetwork.reaction_ix)],
-            S[np.ix_(unbalanced_ix, subnetwork.reaction_ix)],
-            P[np.ix_(rows, members)],
+        S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
+            rapid_equilibria, subnetwork
+        )
+        conc = solve_fast_subnetwork(
+            S_balanced,
+            S_unbalanced,
+            P,
             fast_moiety_totals[rows],
             log_conc_unbalanced,
             log_keq[np.array(subnetwork.reaction_ix, dtype=int)],
@@ -473,9 +469,126 @@ def solve_rapid_equilibria(
             atol,
             max_steps,
         )
-        solved &= jnp.all(jnp.isfinite(subnetwork_conc))
-        conc = conc.at[members].set(subnetwork_conc)
+        solved &= jnp.all(jnp.isfinite(conc))
+        subnetwork_conc.append(conc)
+    conc = assemble_balanced_conc(
+        rapid_equilibria,
+        fast_moiety_totals,
+        jnp.concatenate(subnetwork_conc) if subnetwork_conc else jnp.zeros(0),
+    )
     return jnp.where(solved, conc, jnp.nan)
+
+
+def get_log_keq(
+    rapid_equilibria: RapidEquilibria,
+    dgf: Float[Array, " n_species"],
+    temperature: Scalar,
+    water_dgf: float,
+) -> Float[Array, " n_rapid_equilibrium_reaction"]:
+    """Get the rapid equilibrium reactions' log equilibrium constants from the
+    formation energies of their species and of water."""
+    water_stoichiometry = np.array(rapid_equilibria.water_stoichiometry)
+    RT = temperature * GAS_CONSTANT
+    return -(rapid_equilibria.S.T @ dgf + water_stoichiometry * water_dgf) / RT
+
+
+def get_subnetwork_blocks(
+    rapid_equilibria: RapidEquilibria, subnetwork: FastSubnetwork
+) -> tuple[
+    StoichiometricMatrix, StoichiometricMatrix, FastMoietyMatrix, np.ndarray
+]:
+    """Get one fast subnetwork's blocks of the rapid equilibrium stoichiometric
+    matrix, for its balanced and for the unbalanced species, and of the fast
+    moiety matrix, together with the rows of the fast moieties it involves."""
+    S = rapid_equilibria.S
+    P = rapid_equilibria.fast_moiety_matrix
+    balanced_ix = np.array(rapid_equilibria.balanced_species_ix, dtype=int)
+    unbalanced_ix = np.array(rapid_equilibria.unbalanced_species_ix, dtype=int)
+    members = np.array(subnetwork.balanced_species_ix, dtype=int)
+    rows = np.flatnonzero(np.any(P[:, members] != 0, axis=1))
+    return (
+        S[np.ix_(balanced_ix[members], subnetwork.reaction_ix)],
+        S[np.ix_(unbalanced_ix, subnetwork.reaction_ix)],
+        P[np.ix_(rows, members)],
+        rows,
+    )
+
+
+def assemble_balanced_conc(
+    rapid_equilibria: RapidEquilibria,
+    fast_moiety_totals: FastMoietyTotalsArr,
+    subnetwork_conc: Float[Array, " n_subnetwork_species"],
+) -> BalancedConcArr:
+    """Get every balanced species' concentration from the fast moiety totals
+    and the concentrations of the species in fast subnetworks. A species in no
+    fast subnetwork is a fast moiety of its own, so its concentration is its
+    total."""
+    P = rapid_equilibria.fast_moiety_matrix
+    subnetwork_ix = rapid_equilibria.subnetwork_species_ix
+    isolated = np.setdiff1d(np.arange(P.shape[1]), subnetwork_ix)
+    conc = jnp.zeros(P.shape[1])
+    if isolated.size:
+        own_row = np.argmax(P[:, isolated] != 0, axis=0)
+        conc = conc.at[isolated].set(fast_moiety_totals[own_row])
+    return conc.at[subnetwork_ix].set(subnetwork_conc)
+
+
+def get_rapid_equilibrium_residual(
+    rapid_equilibria: RapidEquilibria,
+    log_conc: Float[Array, " n_subnetwork_species"],
+    fast_moiety_totals: FastMoietyTotalsArr,
+    log_conc_unbalanced: UnbalancedConcArr,
+    dgf: Float[Array, " n_species"],
+    temperature: Scalar,
+    water_dgf: float,
+) -> Float[Array, " n_subnetwork_species"]:
+    """Get the residuals of every fast subnetwork's rapid equilibrium
+    conditions, given log concentrations in the order of
+    `subnetwork_species_ix`."""
+    log_keq = get_log_keq(rapid_equilibria, dgf, temperature, water_dgf)
+    residuals = []
+    start = 0
+    for subnetwork in rapid_equilibria.subnetworks:
+        S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
+            rapid_equilibria, subnetwork
+        )
+        stop = start + len(subnetwork.balanced_species_ix)
+        residuals.append(
+            get_fast_subnetwork_residual(
+                log_conc[start:stop],
+                S_balanced,
+                S_unbalanced,
+                P,
+                fast_moiety_totals[rows],
+                log_conc_unbalanced,
+                log_keq[np.array(subnetwork.reaction_ix, dtype=int)],
+            )
+        )
+        start = stop
+    return jnp.concatenate(residuals) if residuals else jnp.zeros(0)
+
+
+def get_fast_subnetwork_residual(
+    log_conc: Float[Array, " n_subnetwork_species"],
+    S_balanced: StoichiometricMatrix,
+    S_unbalanced: StoichiometricMatrix,
+    P: FastMoietyMatrix,
+    totals: FastMoietyTotalsArr,
+    log_conc_unbalanced: UnbalancedConcArr,
+    log_keq: Float[Array, " n_subnetwork_reaction"],
+) -> Float[Array, " n_subnetwork_species"]:
+    """Get one fast subnetwork's residuals: the log of each fast moiety's total
+    from `log_conc` minus the log of its given total, then each rapid
+    equilibrium reaction's log mass action ratio minus its log equilibrium
+    constant."""
+    return jnp.concatenate(
+        [
+            jnp.log(P @ jnp.exp(log_conc)) - jnp.log(totals),
+            S_balanced.T @ log_conc
+            + S_unbalanced.T @ log_conc_unbalanced
+            - log_keq,
+        ]
+    )
 
 
 def solve_fast_subnetwork(
@@ -499,13 +612,8 @@ def solve_fast_subnetwork(
 
     def residual(log_conc, args):
         totals, log_unbalanced, log_k = args
-        return jnp.concatenate(
-            [
-                jnp.log(P @ jnp.exp(log_conc)) - jnp.log(totals),
-                S_balanced.T @ log_conc
-                + S_unbalanced.T @ log_unbalanced
-                - log_k,
-            ]
+        return get_fast_subnetwork_residual(
+            log_conc, S_balanced, S_unbalanced, P, totals, log_unbalanced, log_k
         )
 
     in_a_moiety = P > 0

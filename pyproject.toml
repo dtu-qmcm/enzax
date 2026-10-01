@@ -83,3 +83,6 @@ dev = [
     "pytest>=9.0.3",
     "requests>=2.32.5",
 ]
+
+[tool.uv.sources]
+diffrax-bdf = { path = "../../teddygroves/diffrax-bdf", editable = true }

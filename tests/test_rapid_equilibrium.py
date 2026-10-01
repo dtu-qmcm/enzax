@@ -12,12 +12,13 @@ from enzax.kinetic_model import KineticModel, UndeclaredMoietyWarning
 from enzax.rapid_equilibrium import (
     RapidEquilibriumReaction,
     UnusedFastMoietyLabelWarning,
+    assemble_balanced_conc,
     get_extreme_conservation_relations,
     solve_rapid_equilibria,
 )
 from enzax.parameters import pack_parameters
 from enzax.reactions import Drain, MichaelisMenten
-from enzax.steady_state import get_steady_state_hybrid
+from enzax.steady_state import get_steady_state_dae, get_steady_state_hybrid
 from enzax.thermodynamics import GAS_CONSTANT
 
 # Mg binds ATP quickly, while ATP is made and used slowly.
@@ -589,6 +590,68 @@ def test_steady_state_gradients_match_finite_differences():
         2 * h
     )
     assert np.isclose(jax.grad(free_mg_at_steady_state)(x), fd, rtol=1e-5)
+
+
+def test_the_dae_vector_field_is_dcdt_at_a_consistent_state():
+    parameters = get_energy_parameters()
+    state = jnp.array([1.2, 0.9])
+    rates, constraints = ENERGY.dae_vector_field(
+        0.0, ENERGY.get_dae_state(state, parameters), parameters
+    )
+    assert np.array_equal(rates, ENERGY.dcdt(state, parameters))
+    assert np.allclose(constraints, 0.0, atol=1e-12)
+
+
+def test_the_dae_constraints_detect_an_inconsistent_state():
+    parameters = get_energy_parameters()
+    state, log_conc = ENERGY.get_dae_state(jnp.array([1.2, 0.9]), parameters)
+    _, constraints = ENERGY.dae_vector_field(
+        0.0, (state, log_conc + 0.1), parameters
+    )
+    assert np.all(np.abs(constraints) > 1e-3)
+
+
+def test_the_dae_state_holds_the_balanced_concentrations():
+    parameters = get_energy_parameters()
+    state = jnp.array([1.2, 0.9])
+    _, log_conc = ENERGY.get_dae_state(state, parameters)
+    totals = ENERGY.get_fast_moiety_totals(state, parameters)
+    conc = assemble_balanced_conc(
+        ENERGY.rapid_equilibria, totals, jnp.exp(log_conc)
+    )
+    assert np.allclose(conc, ENERGY.get_balanced_conc(state, parameters))
+    assert np.allclose(ENERGY.get_ode_state(conc), state)
+
+
+@pytest.mark.parametrize("suppress_algebraic_error", [True, False])
+def test_the_dae_steady_state_matches_the_hybrid_one(suppress_algebraic_error):
+    pytest.importorskip("diffrax_bdf")
+    parameters = get_energy_parameters()
+    guess = jnp.array([1.0, 1.0])
+    dae = get_steady_state_dae(
+        ENERGY,
+        guess,
+        parameters,
+        suppress_algebraic_error=suppress_algebraic_error,
+    )
+    hybrid = get_steady_state_hybrid(ENERGY, guess, parameters)
+    assert np.allclose(dae, hybrid, rtol=1e-8, atol=0.0)
+
+
+def test_dae_steady_state_gradients_match_the_hybrid_ones():
+    pytest.importorskip("diffrax_bdf")
+    guess = jnp.array([1.0, 1.0])
+
+    def free_mg_at_steady_state(log_kcat_synthase, solve):
+        parameters = get_energy_parameters(log_kcat_synthase)
+        steady = solve(ENERGY, guess, parameters)
+        conc = ENERGY.get_balanced_conc(steady, parameters)
+        return conc[ENERGY.balanced_species.index("mg")]
+
+    x = jnp.log(2.0)
+    dae = jax.grad(free_mg_at_steady_state)(x, get_steady_state_dae)
+    hybrid = jax.grad(free_mg_at_steady_state)(x, get_steady_state_hybrid)
+    assert np.isclose(dae, hybrid, rtol=1e-8)
 
 
 def test_a_label_in_several_fast_moieties_labels_one_of_them():

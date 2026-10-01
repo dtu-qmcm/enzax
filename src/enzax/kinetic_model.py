@@ -7,7 +7,7 @@ import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
 import sympy
-from jaxtyping import PyTree, ScalarLike
+from jaxtyping import Array, Float, PyTree, ScalarLike
 
 from enzax.array_types import (
     FastMoietyTotalsArr,
@@ -38,7 +38,9 @@ from enzax.parameters import (
 from enzax.rapid_equilibrium import (
     RapidEquilibria,
     RapidEquilibriumReaction,
+    assemble_balanced_conc,
     get_rapid_equilibria,
+    get_rapid_equilibrium_residual,
     solve_rapid_equilibria,
 )
 from enzax.reaction import Reaction, ReactionScope
@@ -669,6 +671,54 @@ class KineticModel(eqx.Module):
         conc_balanced = self.get_balanced_conc(conc_ind, parameters)
         v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
         return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
+
+    def get_dae_state(
+        self, ode_state: OdeStateArr, parameters: PyTree
+    ) -> tuple[OdeStateArr, Float[Array, " n_subnetwork_species"]]:
+        """Get the pair `(ode_state, log_conc)` that `dae_vector_field` takes,
+        where `log_conc` holds the log concentrations of the species in fast
+        subnetworks, found by solving for rapid equilibrium."""
+        conc_balanced = self.get_balanced_conc(ode_state, parameters)
+        subnetwork_ix = self.rapid_equilibria.subnetwork_species_ix
+        return ode_state, jnp.log(conc_balanced[subnetwork_ix])
+
+    def dae_vector_field(
+        self,
+        t: ScalarLike,
+        y: tuple[OdeStateArr, Float[Array, " n_subnetwork_species"]],
+        parameters: PyTree,
+    ) -> tuple[OdeStateRateArr, Float[Array, " n_subnetwork_species"]]:
+        """Get the vector field of the model as a differential algebraic
+        equation in `y = (ode_state, log_conc)`, where `log_conc` holds the log
+        concentrations of the species in fast subnetworks.
+
+        Returns the rate of change of the ODE state, and the residuals of the
+        rapid equilibrium conditions. For each fast subnetwork these are the
+        log of each fast moiety's total from `log_conc` minus the log of its
+        total from `ode_state`, and each rapid equilibrium reaction's log mass
+        action ratio minus its log equilibrium constant. The residuals are zero
+        when `log_conc` agrees with `ode_state`.
+        """
+        ode_state, log_conc = y
+        totals = self.get_fast_moiety_totals(ode_state, parameters)
+        conc_balanced = assemble_balanced_conc(
+            self.rapid_equilibria, totals, jnp.exp(log_conc)
+        )
+        v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
+        ode_rows = self.fast_moiety_rows(self.ode_state_species)
+        rates = self.S_reduced[ode_rows] @ v
+        if not self.rapid_equilibrium_reactions:
+            return rates, jnp.zeros(0)
+        constraints = get_rapid_equilibrium_residual(
+            self.rapid_equilibria,
+            log_conc,
+            totals,
+            self.get_log_conc_unbalanced(parameters),
+            parameters["dgf"][self.species_to_dgf_ix],
+            parameters["temperature"],
+            self.water_dgf,
+        )
+        return rates, constraints
 
     def __call__(
         self, t: ScalarLike, y: OdeStateArr, parameters: PyTree
