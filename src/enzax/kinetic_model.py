@@ -822,6 +822,13 @@ class KineticModel(eqx.Module):
         v = self.flux(conc_balanced, parameters, variables)
         return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
 
+    def get_initial_variables(self) -> Float[Array, " n_algebraic_variable"]:
+        initial = [
+            constraint.get_initial_variables()
+            for constraint in self.algebraic_constraints.values()
+        ]
+        return jnp.concatenate(initial) if initial else jnp.zeros(0)
+
     def get_constraint_residuals(
         self,
         conc: ConcArray,
@@ -858,17 +865,15 @@ class KineticModel(eqx.Module):
             conc_balanced, self.get_log_conc_unbalanced(parameters)
         )
 
-        def residual(log_variables, args):
+        def residual(variables, args):
             conc, parameters = args
-            return self.get_constraint_residuals(
-                conc, jnp.exp(log_variables), parameters
-            )
+            return self.get_constraint_residuals(conc, variables, parameters)
 
         args = (conc, parameters)
         sol = optx.least_squares(
             residual,
             optx.Dogleg(rtol=rtol, atol=atol),
-            jnp.zeros(len(self.algebraic_variables)),
+            self.get_initial_variables(),
             args=args,
             max_steps=max_steps,
             throw=False,
@@ -876,7 +881,7 @@ class KineticModel(eqx.Module):
         solved = (sol.result == optx.RESULTS.successful) & jnp.all(
             jnp.abs(residual(sol.value, args)) < 1e3 * atol
         )
-        return jnp.where(solved, jnp.exp(sol.value), jnp.nan)
+        return jnp.where(solved, sol.value, jnp.nan)
 
     def get_dae_state(
         self, ode_state: OdeStateArr, parameters: PyTree
@@ -891,7 +896,7 @@ class KineticModel(eqx.Module):
         )
         return ode_state, {
             "log_conc": jnp.log(conc_balanced[subnetwork_ix]),
-            "log_variables": jnp.log(variables),
+            "variables": variables,
         }
 
     def dae_vector_field(
@@ -923,7 +928,7 @@ class KineticModel(eqx.Module):
         variables = None
         constraint_residuals = jnp.zeros(0)
         if self.algebraic_constraints:
-            variables = jnp.exp(algebraic["log_variables"])
+            variables = algebraic["variables"]
             constraint_residuals = self.get_constraint_residuals(
                 self.get_conc(
                     conc_balanced, self.get_log_conc_unbalanced(parameters)
@@ -946,7 +951,7 @@ class KineticModel(eqx.Module):
             )
         return rates, {
             "log_conc": network_residuals,
-            "log_variables": constraint_residuals,
+            "variables": constraint_residuals,
         }
 
     def __call__(

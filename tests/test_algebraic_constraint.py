@@ -314,7 +314,7 @@ def test_the_dae_residuals_vanish_at_a_consistent_state():
     )
     assert residuals["log_conc"].shape == (3,)
     assert np.allclose(residuals["log_conc"], 0.0, atol=1e-9)
-    assert np.allclose(residuals["log_variables"], 0.0, atol=1e-9)
+    assert np.allclose(residuals["variables"], 0.0, atol=1e-9)
 
 
 def test_with_rapid_equilibria_the_dae_matches_the_nested_solve():
@@ -334,3 +334,38 @@ def test_with_rapid_equilibria_the_dae_matches_the_nested_solve():
     dae = jax.grad(free_a)(np.log(V), get_steady_state_dae)
     hybrid = jax.grad(free_a)(np.log(V), get_steady_state_hybrid)
     assert np.isclose(dae, hybrid, rtol=1e-6)
+
+
+class NegativeCubic(Cubic):
+    def get_initial_variables(self):
+        return -jnp.ones(len(self.variables))
+
+    def __call__(self, conc, variables, constraint_input: CubicInput):
+        a = conc[constraint_input.ix_species]
+        x = variables[constraint_input.ix_variable]
+        return jnp.array([x**3 + x + constraint_input.k * a])
+
+
+def test_the_model_collects_each_constraint_initial_variables():
+    model = get_model(
+        c1=Cubic(species_id="a", variables=["x"]),
+        c2=NegativeCubic(species_id="a", variables=["z"]),
+    )
+    assert np.array_equal(model.get_initial_variables(), [1.0, -1.0])
+
+
+def test_algebraic_variables_can_be_negative():
+    model = get_model(c1=NegativeCubic(species_id="a", variables=["x"]))
+    parameters = pack_parameters(
+        model.parameter_labelling,
+        {
+            "log_drain": {"r1": 0.0, "r2": 0.0},
+            "log_custom": {"cu|c1|k": np.log(KC)},
+            "dgf": {"a": 0.0},
+            "temperature": 298.15,
+        },
+    )
+    _, algebraic = model.get_dae_state(jnp.array([1.5]), parameters)
+    (x,) = algebraic["variables"]
+    assert x < 0
+    assert np.isclose(x**3 + x, -KC * 1.5, rtol=1e-10)

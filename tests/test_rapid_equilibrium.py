@@ -643,7 +643,7 @@ def test_the_dae_vector_field_is_dcdt_at_a_consistent_state():
     )
     assert np.array_equal(rates, ENERGY.dcdt(state, parameters))
     assert np.allclose(residuals["log_conc"], 0.0, atol=1e-12)
-    assert residuals["log_variables"].shape == (0,)
+    assert residuals["variables"].shape == (0,)
 
 
 def test_the_dae_constraints_detect_an_inconsistent_state():
