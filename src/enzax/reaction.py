@@ -34,6 +34,7 @@ class ReactionScope:
     stoichiometry: StaticSpeciesArr
     species_to_dgf_ix: SpeciesIx
     water_dgf: float
+    algebraic_variables: tuple[str, ...] = ()
 
 
 def get_species_positions(

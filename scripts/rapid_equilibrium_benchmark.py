@@ -46,8 +46,11 @@ def make_ode_solve(model, method):
     @eqx.filter_jit
     def solve(y0, parameters, tol):
         if is_dae:
-            term = SemiExplicitDAETerm(model.dae_vector_field, (False, True))
             y0 = model.get_dae_state(y0, parameters)
+            term = SemiExplicitDAETerm(
+                model.dae_vector_field,
+                (False, jax.tree.map(lambda _: True, y0[1])),
+            )
         else:
             term = diffrax.ODETerm(model)
         sol = diffrax.diffeqsolve(

@@ -638,29 +638,29 @@ def test_steady_state_gradients_match_finite_differences():
 def test_the_dae_vector_field_is_dcdt_at_a_consistent_state():
     parameters = get_energy_parameters()
     state = jnp.array([1.2, 0.9])
-    rates, constraints = ENERGY.dae_vector_field(
+    rates, residuals = ENERGY.dae_vector_field(
         0.0, ENERGY.get_dae_state(state, parameters), parameters
     )
     assert np.array_equal(rates, ENERGY.dcdt(state, parameters))
-    assert np.allclose(constraints, 0.0, atol=1e-12)
+    assert np.allclose(residuals["log_conc"], 0.0, atol=1e-12)
+    assert residuals["log_variables"].shape == (0,)
 
 
 def test_the_dae_constraints_detect_an_inconsistent_state():
     parameters = get_energy_parameters()
-    state, log_conc = ENERGY.get_dae_state(jnp.array([1.2, 0.9]), parameters)
-    _, constraints = ENERGY.dae_vector_field(
-        0.0, (state, log_conc + 0.1), parameters
-    )
-    assert np.all(np.abs(constraints) > 1e-3)
+    state, algebraic = ENERGY.get_dae_state(jnp.array([1.2, 0.9]), parameters)
+    shifted = algebraic | {"log_conc": algebraic["log_conc"] + 0.1}
+    _, residuals = ENERGY.dae_vector_field(0.0, (state, shifted), parameters)
+    assert np.all(np.abs(residuals["log_conc"]) > 1e-3)
 
 
 def test_the_dae_state_holds_the_balanced_concentrations():
     parameters = get_energy_parameters()
     state = jnp.array([1.2, 0.9])
-    _, log_conc = ENERGY.get_dae_state(state, parameters)
+    _, algebraic = ENERGY.get_dae_state(state, parameters)
     totals = ENERGY.get_fast_moiety_totals(state, parameters)
     conc = assemble_balanced_conc(
-        ENERGY.fast_moieties, totals, jnp.exp(log_conc)
+        ENERGY.fast_moieties, totals, jnp.exp(algebraic["log_conc"])
     )
     assert np.allclose(conc, ENERGY.get_balanced_conc(state, parameters))
     assert np.allclose(ENERGY.get_ode_state(conc), state)

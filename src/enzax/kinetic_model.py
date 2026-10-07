@@ -7,6 +7,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+import optimistix as optx
 import sympy
 from jaxtyping import Array, Float, PyTree, ScalarLike
 
@@ -688,6 +689,7 @@ class KineticModel(eqx.Module):
                 stoichiometry=self.S[:, ix_reaction],
                 species_to_dgf_ix=self.species_to_dgf_ix,
                 water_dgf=self.water_dgf,
+                algebraic_variables=tuple(self.algebraic_variables),
             )
             for ix_reaction, reaction in enumerate(self.reaction_ids)
         ]
@@ -710,7 +712,12 @@ class KineticModel(eqx.Module):
         conc = conc.at[self.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
         return conc
 
-    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
+    def flux(
+        self,
+        conc_balanced: BalancedConcArr,
+        parameters: PyTree,
+        variables: Float[Array, " n_algebraic_variable"] | None = None,
+    ) -> Flux:
         """Get fluxes from balanced species concentrations.
 
         :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
@@ -721,6 +728,8 @@ class KineticModel(eqx.Module):
         conc = self.get_conc(
             conc_balanced, self.get_log_conc_unbalanced(parameters)
         )
+        if variables is not None:
+            parameters = parameters | {"algebraic_variables": variables}
         flux_list = []
         for reaction, ix in zip(self.reaction_ids, self.reaction_ix):
             rate_equation = self.reactions[reaction]
@@ -802,26 +811,95 @@ class KineticModel(eqx.Module):
 
         :return: a one dimensional array of floats representing the rate of change of the ODE state. Has the same size as `self.ode_state_species`.
         """  # Noqa: E501
-        conc_balanced = self.get_balanced_conc(conc_ind, parameters)
-        v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
+        conc_balanced = jnp.clip(
+            self.get_balanced_conc(conc_ind, parameters), min=1e-12
+        )
+        variables = None
+        if self.algebraic_constraints:
+            variables = self._solve_algebraic_variables(
+                conc_balanced, parameters
+            )
+        v = self.flux(conc_balanced, parameters, variables)
         return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
+
+    def get_constraint_residuals(
+        self,
+        conc: ConcArray,
+        variables: Float[Array, " n_algebraic_variable"],
+        parameters: PyTree,
+    ) -> Float[Array, " n_algebraic_variable"]:
+        residuals = [
+            constraint(conc, variables, constraint.get_input(parameters, ix))
+            for constraint, ix in zip(
+                self.algebraic_constraints.values(), self.constraint_ix
+            )
+        ]
+        return jnp.concatenate(residuals) if residuals else jnp.zeros(0)
+
+    def get_algebraic_variables(
+        self, ode_state: OdeStateArr, parameters: PyTree
+    ) -> Float[Array, " n_algebraic_variable"]:
+        conc_balanced = jnp.clip(
+            self.get_balanced_conc(ode_state, parameters), min=1e-12
+        )
+        return self._solve_algebraic_variables(conc_balanced, parameters)
+
+    def _solve_algebraic_variables(
+        self,
+        conc_balanced: BalancedConcArr,
+        parameters: PyTree,
+        rtol: float = 1e-10,
+        atol: float = 1e-10,
+        max_steps: int = 256,
+    ) -> Float[Array, " n_algebraic_variable"]:
+        if not self.algebraic_constraints:
+            return jnp.zeros(0)
+        conc = self.get_conc(
+            conc_balanced, self.get_log_conc_unbalanced(parameters)
+        )
+
+        def residual(log_variables, args):
+            conc, parameters = args
+            return self.get_constraint_residuals(
+                conc, jnp.exp(log_variables), parameters
+            )
+
+        args = (conc, parameters)
+        sol = optx.least_squares(
+            residual,
+            optx.Dogleg(rtol=rtol, atol=atol),
+            jnp.zeros(len(self.algebraic_variables)),
+            args=args,
+            max_steps=max_steps,
+            throw=False,
+        )
+        solved = (sol.result == optx.RESULTS.successful) & jnp.all(
+            jnp.abs(residual(sol.value, args)) < 1e3 * atol
+        )
+        return jnp.where(solved, jnp.exp(sol.value), jnp.nan)
 
     def get_dae_state(
         self, ode_state: OdeStateArr, parameters: PyTree
-    ) -> tuple[OdeStateArr, Float[Array, " n_subnetwork_species"]]:
+    ) -> tuple[OdeStateArr, dict[str, Array]]:
         """Get the pair `(ode_state, log_conc)` that `dae_vector_field` takes,
         where `log_conc` holds the log concentrations of the species in fast
         subnetworks, found by solving for rapid equilibrium."""
         conc_balanced = self.get_balanced_conc(ode_state, parameters)
         subnetwork_ix = self.fast_moieties.subnetwork_species_ix
-        return ode_state, jnp.log(conc_balanced[subnetwork_ix])
+        variables = self._solve_algebraic_variables(
+            jnp.clip(conc_balanced, min=1e-12), parameters
+        )
+        return ode_state, {
+            "log_conc": jnp.log(conc_balanced[subnetwork_ix]),
+            "log_variables": jnp.log(variables),
+        }
 
     def dae_vector_field(
         self,
         t: ScalarLike,
-        y: tuple[OdeStateArr, Float[Array, " n_subnetwork_species"]],
+        y: tuple[OdeStateArr, dict[str, Array]],
         parameters: PyTree,
-    ) -> tuple[OdeStateRateArr, Float[Array, " n_subnetwork_species"]]:
+    ) -> tuple[OdeStateRateArr, dict[str, Array]]:
         """Get the vector field of the model as a differential algebraic
         equation in `y = (ode_state, log_conc)`, where `log_conc` holds the log
         concentrations of the species in fast subnetworks.
@@ -833,25 +911,43 @@ class KineticModel(eqx.Module):
         action ratio minus its log equilibrium constant. The residuals are zero
         when `log_conc` agrees with `ode_state`.
         """
-        ode_state, log_conc = y
+        ode_state, algebraic = y
+        log_conc = algebraic["log_conc"]
         totals = self.get_fast_moiety_totals(ode_state, parameters)
-        conc_balanced = assemble_balanced_conc(
-            self.fast_moieties, totals, jnp.exp(log_conc)
+        conc_balanced = jnp.clip(
+            assemble_balanced_conc(
+                self.fast_moieties, totals, jnp.exp(log_conc)
+            ),
+            min=1e-12,
         )
-        v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
+        variables = None
+        constraint_residuals = jnp.zeros(0)
+        if self.algebraic_constraints:
+            variables = jnp.exp(algebraic["log_variables"])
+            constraint_residuals = self.get_constraint_residuals(
+                self.get_conc(
+                    conc_balanced, self.get_log_conc_unbalanced(parameters)
+                ),
+                variables,
+                parameters,
+            )
+        v = self.flux(conc_balanced, parameters, variables)
         ode_rows = self.fast_moiety_rows(self.ode_state_species)
         rates = self.S_reduced[ode_rows] @ v
-        if not self._rapid_equilibrium_network.reactions:
-            return rates, jnp.zeros(0)
-        constraints = self._rapid_equilibrium_network.get_residuals(
-            self.fast_moieties,
-            log_conc,
-            totals,
-            self._rapid_equilibrium_network.get_input(
-                parameters, self.rapid_equilibrium_network_ix
-            ),
-        )
-        return rates, constraints
+        network_residuals = jnp.zeros(0)
+        if self._rapid_equilibrium_network.reactions:
+            network_residuals = self._rapid_equilibrium_network.get_residuals(
+                self.fast_moieties,
+                log_conc,
+                totals,
+                self._rapid_equilibrium_network.get_input(
+                    parameters, self.rapid_equilibrium_network_ix
+                ),
+            )
+        return rates, {
+            "log_conc": network_residuals,
+            "log_variables": constraint_residuals,
+        }
 
     def __call__(
         self, t: ScalarLike, y: OdeStateArr, parameters: PyTree

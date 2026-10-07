@@ -163,15 +163,26 @@ def check_symbols(
     species: Mapping[str, str],
     parameters: Mapping[str, str | Mapping[str, str]],
     reaction_id: str,
+    algebraic_variables: Mapping[str, str] | None = None,
 ) -> None:
     """Raise unless an expression's symbols match its declarations."""
-    both = set(species) & set(parameters)
-    if both:
-        msg = (
-            f"Reaction {reaction_id} declares {sorted(both)} as both species "
-            "and parameters."
-        )
-        raise ValueError(msg)
+    variables = algebraic_variables or {}
+    groups = {
+        "species": set(species),
+        "parameters": set(parameters),
+        "algebraic variables": set(variables),
+    }
+    names = list(groups)
+    for i, first in enumerate(names):
+        for second in names[i + 1 :]:
+            both = groups[first] & groups[second]
+            if both:
+                msg = (
+                    f"Reaction {reaction_id} declares {sorted(both)} as both "
+                    f"{first} and {second}."
+                )
+                raise ValueError(msg)
+    species = {**species, **variables}
     reserved = (set(species) | set(parameters)) & set(RESERVED_SYMBOLS)
     if reserved:
         msg = (
@@ -364,6 +375,9 @@ class SymbolicReaction(Reaction):
         default_factory=dict
     )
     default_parameter_kind: str | None = None
+    algebraic_variables: dict[str, str] = eqx.field(
+        default_factory=dict, converter=get_species_declaration
+    )
 
     def get_parameter_declarations(self) -> dict[str, str | dict[str, str]]:
         """Get every parameter's declaration, including the defaulted ones.
@@ -379,6 +393,7 @@ class SymbolicReaction(Reaction):
             get_symbol_names(self.expression)
             - set(self.species)
             - set(self.parameters)
+            - set(self.algebraic_variables)
             - set(RESERVED_SYMBOLS)
         )
         for symbol in sorted(undeclared):
@@ -409,6 +424,7 @@ class SymbolicReaction(Reaction):
             self.species,
             declarations,
             reaction_id,
+            self.algebraic_variables,
         )
         by_symbol = {}
         defaulted = set()
@@ -451,6 +467,7 @@ class SymbolicReaction(Reaction):
         lab = self.get_labels(scope)
         species_symbols = sorted(self.species)
         parameter_symbols = sorted(self.get_parameter_declarations())
+        variable_symbols = sorted(self.algebraic_variables)
         reserved = tuple(
             sorted(get_symbol_names(self.expression) & set(RESERVED_SYMBOLS))
         )
@@ -458,7 +475,10 @@ class SymbolicReaction(Reaction):
         function = sympy.lambdify(
             [
                 by_name[name]
-                for name in species_symbols + parameter_symbols + list(reserved)
+                for name in species_symbols
+                + parameter_symbols
+                + variable_symbols
+                + list(reserved)
             ],
             self.expression,
             "jax",
@@ -472,6 +492,20 @@ class SymbolicReaction(Reaction):
                 else get_parameter_position(labelling, kind, label)
             )
             parameter_positions.append((kind, position))
+        for symbol in variable_symbols:
+            variable = self.algebraic_variables[symbol]
+            if variable not in scope.algebraic_variables:
+                msg = (
+                    f"Reaction {scope.reaction_id} reads algebraic variable "
+                    f"{variable!r}, which no constraint has."
+                )
+                raise ValueError(msg)
+            parameter_positions.append(
+                (
+                    "algebraic_variables",
+                    scope.algebraic_variables.index(variable),
+                )
+            )
         return SymbolicIx(
             function=function,
             ix_species=get_species_positions(

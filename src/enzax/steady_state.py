@@ -269,7 +269,9 @@ def get_steady_state_dae(
     if adjoint is None:
         adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
-        terms=SemiExplicitDAETerm(model.dae_vector_field, (False, True)),
+        terms=SemiExplicitDAETerm(
+            model.dae_vector_field, (False, jax.tree.map(lambda _: True, y0[1]))
+        ),
         solver=BDF(suppress_algebraic_error=suppress_algebraic_error),
         t0=jnp.array(0.0),
         t1=jnp.inf,
