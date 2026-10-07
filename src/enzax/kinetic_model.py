@@ -4,11 +4,13 @@ import warnings
 from collections.abc import Mapping, Sequence
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import numpy as np
 import sympy
 from jaxtyping import Array, Float, PyTree, ScalarLike
 
+from enzax.algebraic_constraint import AlgebraicConstraint, ConstraintScope
 from enzax.array_types import (
     FastMoietyTotalsArr,
     FrozenArray,
@@ -311,6 +313,9 @@ class KineticModel(eqx.Module):
     rapid_equilibrium_network: RapidEquilibriumNetwork | None = eqx.field(
         static=True, default=None
     )
+    algebraic_constraints: dict[str, AlgebraicConstraint] = eqx.field(
+        static=True, default_factory=dict
+    )
     compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
     )
@@ -322,6 +327,8 @@ class KineticModel(eqx.Module):
     reaction_ids: list[str] = eqx.field(static=True, init=False)
     fast_moieties: FastMoieties = eqx.field(static=True, init=False)
     rapid_equilibrium_network_ix: PyTree = eqx.field(static=True, init=False)
+    algebraic_variables: list[str] = eqx.field(static=True, init=False)
+    constraint_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
     ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
@@ -352,7 +359,10 @@ class KineticModel(eqx.Module):
                 "reactions with fluxes. Every reaction needs an id of its own."
             )
             raise ValueError(msg)
+        self._check_constraint_ids()
+        self.algebraic_variables = self._build_algebraic_variables()
         self.species = self._build_species()
+        self._check_algebraic_variable_names()
         named = dict.fromkeys(
             self.balanced_species
             + self.moiety_label_species
@@ -419,6 +429,10 @@ class KineticModel(eqx.Module):
             check_id_has_no_separator(reaction, "Reaction")
         for compound in self._dgf_labels():
             check_id_has_no_separator(compound, "Compound")
+        for constraint_id in self.algebraic_constraints:
+            check_id_has_no_separator(constraint_id, "Constraint")
+        for variable in self.algebraic_variables:
+            check_id_has_no_separator(variable, "Algebraic variable")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
         self.reaction_ix = [
@@ -427,6 +441,13 @@ class KineticModel(eqx.Module):
             )
             for scope in self._scopes()
         ]
+        self.constraint_ix = [
+            self.algebraic_constraints[scope.constraint_id].get_input_indexes(
+                scope, self.parameter_labelling
+            )
+            for scope in self._constraint_scopes()
+        ]
+        self._check_residual_counts()
         self.rapid_equilibrium_network_ix = (
             self._rapid_equilibrium_network.get_input_indexes(
                 self._rapid_equilibrium_network_scope(),
@@ -528,11 +549,105 @@ class KineticModel(eqx.Module):
         from_rapid_equilibria = list(
             self._rapid_equilibrium_network.get_species()
         )
+        from_constraints = [
+            species_id
+            for constraint in self.algebraic_constraints.values()
+            for species_id in constraint.get_species()
+        ]
         return list(
             dict.fromkeys(
-                from_stoichiometry + from_reactions + from_rapid_equilibria
+                from_stoichiometry
+                + from_reactions
+                + from_rapid_equilibria
+                + from_constraints
             )
         )
+
+    def _check_constraint_ids(self) -> None:
+        reaction_ids = set(self.reactions) | set(
+            self._rapid_equilibrium_network.reactions
+        )
+        clash = [c for c in self.algebraic_constraints if c in reaction_ids]
+        if clash:
+            msg = (
+                f"Algebraic constraints {clash} have the same ids as "
+                "reactions. Every constraint needs an id of its own."
+            )
+            raise ValueError(msg)
+
+    def _build_algebraic_variables(self) -> list[str]:
+        owners: dict[str, list[str]] = {}
+        for constraint_id, constraint in self.algebraic_constraints.items():
+            for variable in constraint.variables:
+                owners.setdefault(variable, []).append(constraint_id)
+        shared = {v: c for v, c in owners.items() if len(c) > 1}
+        if shared:
+            msg = (
+                "Each algebraic variable must belong to exactly one "
+                f"constraint, but these belong to several: {shared}."
+            )
+            raise ValueError(msg)
+        return list(owners)
+
+    def _check_algebraic_variable_names(self) -> None:
+        are_species = [v for v in self.algebraic_variables if v in self.species]
+        if are_species:
+            msg = (
+                f"Algebraic variables {are_species} have the same names as "
+                "species."
+            )
+            raise ValueError(msg)
+        for constraint_id, constraint in self.algebraic_constraints.items():
+            unknown = [
+                v
+                for v in constraint.get_variables_read()
+                if v not in self.algebraic_variables
+            ]
+            if unknown:
+                msg = (
+                    f"Constraint {constraint_id} reads algebraic variables "
+                    f"{unknown}, which no constraint has."
+                )
+                raise ValueError(msg)
+
+    def _constraint_scopes(self) -> list[ConstraintScope]:
+        return [
+            ConstraintScope(
+                constraint_id=constraint_id,
+                species=tuple(self.species),
+                algebraic_variables=tuple(self.algebraic_variables),
+            )
+            for constraint_id in self.algebraic_constraints
+        ]
+
+    def _check_residual_counts(self) -> None:
+        dummy_parameters = {
+            parameter: jax.ShapeDtypeStruct(
+                (len(labels),) if labels else (), jnp.float64
+            )
+            for parameter, labels in self.parameter_labelling.items()
+        }
+        conc = jax.ShapeDtypeStruct((len(self.species),), jnp.float64)
+        variables = jax.ShapeDtypeStruct(
+            (len(self.algebraic_variables),), jnp.float64
+        )
+        for (constraint_id, constraint), ix in zip(
+            self.algebraic_constraints.items(), self.constraint_ix
+        ):
+            residuals = eqx.filter_eval_shape(
+                lambda c, v, p: constraint(c, v, constraint.get_input(p, ix)),
+                conc,
+                variables,
+                dummy_parameters,
+            )
+            n_variables = len(constraint.variables)
+            if residuals.shape != (n_variables,):
+                msg = (
+                    f"Constraint {constraint_id} has {n_variables} algebraic "
+                    "variables, so it needs as many residuals, but it returns "
+                    f"an array of shape {residuals.shape}."
+                )
+                raise ValueError(msg)
 
     def _build_parameter_labelling(self) -> ParamLabelling:
         """Collect parameter labels from the rate equations and the structure.
@@ -548,13 +663,21 @@ class KineticModel(eqx.Module):
             self.reactions[scope.reaction_id].get_labels_by_parameter(scope)
             for scope in self._scopes()
         ]
+        from_constraints = [
+            self.algebraic_constraints[
+                scope.constraint_id
+            ].get_labels_by_parameter(scope)
+            for scope in self._constraint_scopes()
+        ]
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
         if self.unbalanced_species:
             from_structure["log_conc_unbalanced"] = self.unbalanced_species
         if self.moiety_label_species:
             from_structure["moiety_totals"] = self.moiety_label_species
         from_structure["temperature"] = ()
-        return merge_labels(*from_rate_equations, from_structure)
+        return merge_labels(
+            *from_rate_equations, *from_constraints, from_structure
+        )
 
     def _scopes(self) -> list[ReactionScope]:
         """Get one static description per reaction, in reaction order."""
