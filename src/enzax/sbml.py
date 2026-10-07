@@ -60,8 +60,8 @@ def math_to_sympy(ast: libsbml.ASTNode) -> sympy.Expr:
     """Turn a libsbml math object into a sympy expression."""
     return SBMLMathMLParser().parse_str(
         libsbml.writeMathMLToString(
-            libsbml.parseL3Formula(libsbml.formulaToL3String(ast))
-        )
+            libsbml.parseL3Formula(libsbml.formulaToL3String(ast)),
+        ),
     )
 
 
@@ -90,12 +90,12 @@ def check_sbml_is_supported(model: libsbml.Model) -> None:
         if compartment.getSize() != 1.0:
             problems.append(
                 f"compartment {compartment.getId()!r} with size "
-                f"{compartment.getSize()} rather than 1"
+                f"{compartment.getSize()} rather than 1",
             )
     for species in model.getListOfSpecies():
         if species.getHasOnlySubstanceUnits():
             problems.append(
-                f"species {species.getId()!r} with hasOnlySubstanceUnits"
+                f"species {species.getId()!r} with hasOnlySubstanceUnits",
             )
     if problems:
         msg = (
@@ -194,7 +194,8 @@ def get_symbolic_reaction(
             )
             raise ValueError(msg)
         kind = parameter_kinds.get(
-            label, "log_custom" if value > 0 else "custom"
+            label,
+            "log_custom" if value > 0 else "custom",
         )
         if kind == "log_custom" and not value > 0:
             msg = (
@@ -217,7 +218,8 @@ def get_symbolic_reaction(
 
 
 def get_stoichiometry(
-    reaction: libsbml.Reaction, excluded: set[str]
+    reaction: libsbml.Reaction,
+    excluded: set[str],
 ) -> dict[str, float]:
     """Get a reaction's net stoichiometry, leaving out some species."""
     stoichiometry: dict[str, float] = {}
@@ -307,7 +309,8 @@ def sbml_to_enzax(
         law = math_to_sympy(reaction.getKineticLaw().getMath())
         law = law.xreplace(rule_symbols)
         stoichiometry[reaction.getId()] = get_stoichiometry(
-            reaction, set(rules)
+            reaction,
+            set(rules),
         )
         rate_equation, parameter_values = get_symbolic_reaction(
             reaction,

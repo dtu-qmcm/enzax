@@ -134,7 +134,10 @@ SOLVERS = {
     "kvaerno5": (
         diffrax.Kvaerno5(),
         diffrax.PIDController(
-            pcoeff=0.1, icoeff=0.3, rtol=IVP_RTOL, atol=IVP_ATOL
+            pcoeff=0.1,
+            icoeff=0.3,
+            rtol=IVP_RTOL,
+            atol=IVP_ATOL,
         ),
     ),
     "bdf": (BDF(), BDFController(rtol=IVP_RTOL, atol=IVP_ATOL, dtmax=1e6)),
@@ -238,14 +241,16 @@ def build_problem(example, seed: int) -> tuple[Problem, jax.Array]:
     prior = pack_locs_and_scales(
         loc=free_reference,
         scale=jax.tree.map(
-            lambda leaf: jnp.full_like(leaf, PRIOR_SD), free_reference
+            lambda leaf: jnp.full_like(leaf, PRIOR_SD),
+            free_reference,
         ),
     )
     default_guess = example.steady_state
     steady = get_steady_state_hybrid(model, default_guess, true_parameters)
     balanced = model.get_balanced_conc(steady, true_parameters)
     true_conc = model.get_conc(
-        balanced, model.get_log_conc_unbalanced(true_parameters)
+        balanced,
+        model.get_log_conc_unbalanced(true_parameters),
     )
     true_flux = model.flux(balanced, true_parameters)
     true_log_enzyme = true_parameters["log_enzyme"]
@@ -259,7 +264,9 @@ def build_problem(example, seed: int) -> tuple[Problem, jax.Array]:
         flux_error,
     )
     values = simulate(
-        key_simulate, (true_conc, true_log_enzyme, true_flux), errors
+        key_simulate,
+        (true_conc, true_log_enzyme, true_flux),
+        errors,
     )
     position, unflatten = ravel_pytree(free_reference)
     problem = Problem(
@@ -278,7 +285,8 @@ def jitter(key, parameters, sd: float):
     """Move every parameter a little, to make a ground truth."""
     treedef = jax.tree.structure(parameters)
     keys = jax.tree.unflatten(
-        treedef, list(jax.random.split(key, treedef.num_leaves))
+        treedef,
+        list(jax.random.split(key, treedef.num_leaves)),
     )
     return jax.tree.map(
         lambda leaf, leaf_key: leaf
@@ -301,12 +309,12 @@ def simulate(key, truth, error):
     return (
         jnp.exp(
             jnp.log(true_conc)
-            + jax.random.normal(key_conc, true_conc.shape) * conc_error
+            + jax.random.normal(key_conc, true_conc.shape) * conc_error,
         ),
         jnp.exp(
             true_log_enzyme
             + jax.random.normal(key_enzyme, true_log_enzyme.shape)
-            * enzyme_error
+            * enzyme_error,
         ),
         true_flux + jax.random.normal(key_flux, true_flux.shape) * flux_error,
     )
@@ -344,13 +352,15 @@ def make_density(problem: Problem, configuration: Configuration) -> Callable:
         steady = solve(model, guess, parameters)
         balanced = model.get_balanced_conc(steady, parameters)
         conc_hat = model.get_conc(
-            balanced, model.get_log_conc_unbalanced(parameters)
+            balanced,
+            model.get_log_conc_unbalanced(parameters),
         )
         flux_hat = model.flux(balanced, parameters)
         enzyme_hat = jnp.exp(parameters["log_enzyme"])
         conc_msts, enzyme_msts, flux_msts = problem.measurements
         log_density = enzax_prior_logdensity(
-            free_parameters, problem.prior
+            free_parameters,
+            problem.prior,
         ) + enzax_log_likelihood(
             (conc_hat, *conc_msts),
             (enzyme_hat, *enzyme_msts),
@@ -371,7 +381,8 @@ def make_guess_fn(problem: Problem) -> Callable:
 
     def target_function(conc_ind, position):
         parameters = combine_parameters(
-            problem.split, problem.unflatten(position)
+            problem.split,
+            problem.unflatten(position),
         )
         return problem.model.dcdt(conc_ind, parameters)
 
@@ -432,7 +443,7 @@ def warm_up(
     inverse_mass_matrix = np.asarray(tuned["inverse_mass_matrix"])
     print(
         f"  adapted in {time.time() - began:.0f} s: step size "
-        f"{step_size:.4g}"
+        f"{step_size:.4g}",
     )
     kernel = jax.jit(
         grapenuts_sampler(
@@ -441,7 +452,7 @@ def warm_up(
             inverse_mass_matrix=tuned["inverse_mass_matrix"],
             default_guess=problem.default_guess,
             **bound,
-        ).step
+        ).step,
     )
     leapfrogs = []
     accepted = []
@@ -451,7 +462,7 @@ def warm_up(
         accepted.append(float(info.acceptance_rate))
     print(
         f"  {n_sample} draws: {np.median(leapfrogs):.0f} leapfrog steps per "
-        f"iteration (median), acceptance {np.mean(accepted):.3f}"
+        f"iteration (median), acceptance {np.mean(accepted):.3f}",
     )
     return {
         "step_size": np.asarray(step_size),
@@ -499,7 +510,7 @@ def build_trajectory(
     # momentum is drawn from it, so its standard deviation is the reciprocal
     # square root of what is stored.
     start_momentum = jax.random.normal(key, start_position.shape) / jnp.sqrt(
-        inverse_mass_matrix
+        inverse_mass_matrix,
     )
     default_guess = problem.default_guess
     _, start_gradient = value_and_grad(start_position, guess=default_guess)
@@ -517,7 +528,8 @@ def build_trajectory(
                 guess = solution
             else:
                 guess = guess_fn(
-                    GuessInputs(solution, position, is_default), moved
+                    GuessInputs(solution, position, is_default),
+                    moved,
                 )
             (_, moved_solution), gradient = value_and_grad(moved, guess=guess)
             momentum = momentum + 0.5 * step_size * gradient
@@ -528,7 +540,8 @@ def build_trajectory(
 
 
 def make_leapfrog_cost(
-    problem: Problem, configuration: Configuration
+    problem: Problem,
+    configuration: Configuration,
 ) -> Callable:
     """Get the work one leapfrog step does, as a function to time.
 
@@ -546,7 +559,10 @@ def make_leapfrog_cost(
 
     @eqx.filter_jit()
     def leapfrog_cost(
-        previous_position, previous_solution, position, is_default
+        previous_position,
+        previous_solution,
+        position,
+        is_default,
     ):
         if guess_fn is None:
             guess = default_guess
@@ -613,7 +629,8 @@ def time_configuration(
         else:
             reference = reference_gradients[position]
             error = float(
-                np.linalg.norm(gradient - reference) / np.linalg.norm(reference)
+                np.linalg.norm(gradient - reference)
+                / np.linalg.norm(reference),
             )
         records.append(
             {
@@ -628,11 +645,11 @@ def time_configuration(
                 "log_density": float(log_density),
                 "gradient_relative_error": error,
                 "gradient": gradient,
-            }
+            },
         )
     print(
         f", {np.mean([r['seconds'] for r in records]) * 1e3:.1f} ms per "
-        f"leapfrog step"
+        f"leapfrog step",
     )
     return records
 
@@ -676,13 +693,13 @@ def summarise(
                 "seconds_per_iteration": seconds_per_iteration,
                 "gradient_relative_error": float(
                     np.max(
-                        [record["gradient_relative_error"] for record in mine]
-                    )
+                        [record["gradient_relative_error"] for record in mine],
+                    ),
                 ),
                 "log_density": float(
-                    np.mean([record["log_density"] for record in mine])
+                    np.mean([record["log_density"] for record in mine]),
                 ),
-            }
+            },
         )
     for position, row in enumerate(rows):
         previous = rows[position - 1] if position else None
@@ -701,7 +718,7 @@ def report(rows: list[dict], n_leapfrog: int, n_free: int) -> None:
     """Print the summary as a table."""
     print(
         f"\nOne NUTS iteration: {n_leapfrog} leapfrog steps, {n_free} free "
-        f"parameters"
+        f"parameters",
     )
     header = (
         f"{'configuration':<20}{'s/leapfrog':>12}{'s/iteration':>13}"
@@ -721,14 +738,14 @@ def report(rows: list[dict], n_leapfrog: int, n_free: int) -> None:
             f"{row['seconds_per_leapfrog']:>12.4f}"
             f"{row['seconds_per_iteration']:>13.2f}"
             f"{factor:>9}{cumulative:>12}"
-            f"{row['gradient_relative_error']:>12.2e}"
+            f"{row['gradient_relative_error']:>12.2e}",
         )
     if not all(np.isfinite(row["log_density"]) for row in rows):
         print(
             "\nA log density is not finite: some configuration's steady "
             "state solve failed at the timed positions, so its time is the "
             "time of a failure rather than of a solve. The csv's "
-            "log_density column says which."
+            "log_density column says which.",
         )
 
 
@@ -878,7 +895,7 @@ def main() -> None:
     print(
         f"glycolysis: {len(problem.model.ode_state_species)} balanced "
         f"species, {len(problem.model.reaction_ids)} reactions, {n_free} free "
-        "parameters"
+        "parameters",
     )
     print(f"warming up: {N_WARMUP} adaptation draws, {N_SAMPLE} samples")
     warmed = warm_up(problem, key_warmup, N_WARMUP, N_SAMPLE, MAX_TREEDEPTH)
@@ -900,7 +917,12 @@ def main() -> None:
     for configuration in reversed(CONFIGURATIONS):
         print(f"{configuration.label}:")
         mine = time_configuration(
-            problem, configuration, steps, where, N_REPEAT, reference
+            problem,
+            configuration,
+            steps,
+            where,
+            N_REPEAT,
+            reference,
         )
         if reference is None:
             reference = np.stack([record["gradient"] for record in mine])

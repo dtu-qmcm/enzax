@@ -128,7 +128,7 @@ def get_flux_at_equilibrium(
         if i != ix_product
     )
     conc_product = jnp.exp(
-        (jnp.log(keq) - log_q_without_product) / stoichiometry[ix_product]
+        (jnp.log(keq) - log_q_without_product) / stoichiometry[ix_product],
     )
     conc_eq = conc.at[ix_product].set(conc_product)
     return rate_equation(conc_eq, rate_equation.get_input(parameters, ix))

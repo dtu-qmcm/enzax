@@ -57,7 +57,9 @@ class Cubic(AlgebraicConstraint):
             ix_species=scope.species.index(self.species_id),
             ix_variable=scope.algebraic_variables.index(self.variables[0]),
             ix_k=get_parameter_position(
-                labelling, "log_custom", self.get_labels(scope).k
+                labelling,
+                "log_custom",
+                self.get_labels(scope).k,
             ),
         )
 
@@ -202,7 +204,8 @@ def test_dcdt_reads_the_algebraic_variable():
     parameters = get_toy_parameters()
     (x,) = TOY.get_algebraic_variables(jnp.array([1.5]), parameters)
     assert np.isclose(
-        TOY.dcdt(jnp.array([1.5]), parameters)[0], V - K2 * x * 1.5
+        TOY.dcdt(jnp.array([1.5]), parameters)[0],
+        V - K2 * x * 1.5,
     )
 
 
@@ -229,7 +232,7 @@ def test_a_symbol_cannot_be_both_a_species_and_a_variable():
             },
             balanced_species=["a"],
             algebraic_constraints={
-                "c1": Cubic(species_id="a", variables=["x"])
+                "c1": Cubic(species_id="a", variables=["x"]),
             },
         )
 
@@ -237,7 +240,9 @@ def test_a_symbol_cannot_be_both_a_species_and_a_variable():
 def test_the_nested_steady_state_matches_the_closed_form():
     a, _, _ = get_toy_steady_state()
     steady = get_steady_state_hybrid(
-        TOY, jnp.array([1.0]), get_toy_parameters()
+        TOY,
+        jnp.array([1.0]),
+        get_toy_parameters(),
     )
     assert np.isclose(steady[0], a, rtol=1e-8)
 
@@ -278,9 +283,9 @@ def test_steady_state_gradients_match_the_closed_form(solve):
 BIND_M = RapidEquilibriumNetwork(
     reactions={
         "f1": RapidEquilibriumReaction(
-            stoichiometry={"a": -1.0, "m": -1.0, "am": 1.0}
-        )
-    }
+            stoichiometry={"a": -1.0, "m": -1.0, "am": 1.0},
+        ),
+    },
 )
 TOY_WITH_BINDING = KineticModel(
     reactions={"r1": Drain(stoichiometry={"a": 1.0}), "r2": OUTFLOW},
@@ -310,7 +315,8 @@ def test_the_dae_residuals_vanish_at_a_consistent_state():
     y = TOY_WITH_BINDING.get_dae_state(jnp.array([2.0]), parameters)
     rates, residuals = TOY_WITH_BINDING.dae_vector_field(0.0, y, parameters)
     assert np.allclose(
-        rates, TOY_WITH_BINDING.dcdt(jnp.array([2.0]), parameters)
+        rates,
+        TOY_WITH_BINDING.dcdt(jnp.array([2.0]), parameters),
     )
     assert residuals["log_conc"].shape == (3,)
     assert np.allclose(residuals["log_conc"], 0.0, atol=1e-9)
@@ -329,7 +335,9 @@ def test_with_rapid_equilibria_the_dae_matches_the_nested_solve():
 
     for solve in [get_steady_state_hybrid, get_steady_state_dae]:
         assert np.isclose(
-            free_a(np.log(V), solve), get_toy_steady_state()[0], rtol=1e-7
+            free_a(np.log(V), solve),
+            get_toy_steady_state()[0],
+            rtol=1e-7,
         )
     dae = jax.grad(free_a)(np.log(V), get_steady_state_dae)
     hybrid = jax.grad(free_a)(np.log(V), get_steady_state_hybrid)

@@ -59,7 +59,8 @@ def get_sbml_parameters():
     """
     with open(HERE / "data" / "sbml_glycolysis_parameters.json", "r") as f:
         return pack_parameters(
-            glycolysis.model.parameter_labelling, json.load(f)
+            glycolysis.model.parameter_labelling,
+            json.load(f),
         )
 
 
@@ -113,11 +114,12 @@ def test_flux_matches_the_sbml_rate_laws(reaction):
     position = glycolysis.model.reaction_ids.index(reaction)
     from_sbml = expected["flux"][reaction]
     relative_difference = abs(float(flux[position]) - from_sbml) / abs(
-        from_sbml
+        from_sbml,
     )
     if reaction in KNOWN_DIFFERENT:
         assert relative_difference == pytest.approx(
-            KNOWN_DIFFERENT[reaction], rel=0.05
+            KNOWN_DIFFERENT[reaction],
+            rel=0.05,
         )
     else:
         assert relative_difference < 1e-9
@@ -127,7 +129,8 @@ def test_the_steady_state_carries_glycolytic_flux():
     """The pathway runs forwards, drains included."""
     model = glycolysis.model
     conc = model.get_balanced_conc(
-        glycolysis.steady_state, glycolysis.parameters
+        glycolysis.steady_state,
+        glycolysis.parameters,
     )
     flux = model.flux(conc, glycolysis.parameters)
     forwards = ["GLUT4", "PGI", "GAPD", "ENO", "LDHA", "G6PDH"]
@@ -154,7 +157,7 @@ def test_the_stoichiometry_balances_an_independent_implementation():
     with open(state_file, "r") as f:
         balanced = json.load(f)["lines"]["CHO-S wt"]["concentration"]
     v = jnp.array(
-        [flux[reaction] for reaction in glycolysis.model.reaction_ids]
+        [flux[reaction] for reaction in glycolysis.model.reaction_ids],
     )
     dcdt = glycolysis.model.S @ v
     for species, rate in zip(glycolysis.model.species, dcdt):
@@ -175,7 +178,9 @@ def test_the_fitted_model_reproduces_julias_fluxes():
         if reaction == "GLUT4":
             continue
         assert float(flux[position]) == pytest.approx(
-            expected[reaction], rel=1e-9, abs=1e-30
+            expected[reaction],
+            rel=1e-9,
+            abs=1e-30,
         )
 
 

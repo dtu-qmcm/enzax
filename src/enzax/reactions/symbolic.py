@@ -105,7 +105,9 @@ def get_symbol_names(expression: sympy.Expr) -> set[str]:
 
 
 def get_parameter_declaration(
-    symbol: str, declaration: str | Mapping[str, str], reaction_id: str
+    symbol: str,
+    declaration: str | Mapping[str, str],
+    reaction_id: str,
 ) -> tuple[str, str | None]:
     """Get a declaration's kind and label, with None for no label."""
     if isinstance(declaration, str):
@@ -228,7 +230,9 @@ def check_default_labels_are_distinct(
 
 
 def get_parameter_value(
-    parameters: ParamDict, kind: str, position: int | None
+    parameters: ParamDict,
+    kind: str,
+    position: int | None,
 ) -> Scalar:
     """Get one parameter's value on its natural scale."""
     value = parameters[kind] if position is None else parameters[kind][position]
@@ -275,7 +279,8 @@ class SymbolicInput(eqx.Module):
 
 
 def get_reserved_values(
-    conc: ConcArray, symbolic_input: SymbolicInput
+    conc: ConcArray,
+    symbolic_input: SymbolicInput,
 ) -> dict[str, Scalar]:
     """Get the values of the reserved symbols an expression uses."""
     thermodynamics = symbolic_input.thermodynamics
@@ -369,14 +374,16 @@ class SymbolicReaction(Reaction):
 
     expression: sympy.Expr = eqx.field(converter=parse_expression)
     species: dict[str, str] = eqx.field(
-        default_factory=dict, converter=get_species_declaration
+        default_factory=dict,
+        converter=get_species_declaration,
     )
     parameters: dict[str, str | dict[str, str]] = eqx.field(
-        default_factory=dict
+        default_factory=dict,
     )
     default_parameter_kind: str | None = None
     algebraic_variables: dict[str, str] = eqx.field(
-        default_factory=dict, converter=get_species_declaration
+        default_factory=dict,
+        converter=get_species_declaration,
     )
 
     def get_parameter_declarations(self) -> dict[str, str | dict[str, str]]:
@@ -430,7 +437,9 @@ class SymbolicReaction(Reaction):
         defaulted = set()
         for symbol, declaration in declarations.items():
             kind, label = get_parameter_declaration(
-                symbol, declaration, reaction_id
+                symbol,
+                declaration,
+                reaction_id,
             )
             if label is None and kind not in UNLABELLED_KINDS:
                 label = get_default_label(kind, symbol, reaction_id)
@@ -440,7 +449,8 @@ class SymbolicReaction(Reaction):
         return SymbolicLabels(by_symbol=by_symbol)
 
     def get_thermodynamic_indexes(
-        self, scope: ReactionScope
+        self,
+        scope: ReactionScope,
     ) -> ThermodynamicIx:
         """Get the positions and stoichiometry the reserved symbols need."""
         ix_reactant = get_species_positions(scope, get_reactants(scope))
@@ -453,7 +463,9 @@ class SymbolicReaction(Reaction):
         )
 
     def get_input_indexes(
-        self, scope: ReactionScope, labelling: ParamLabelling
+        self,
+        scope: ReactionScope,
+        labelling: ParamLabelling,
     ) -> SymbolicIx:
         """Compile the expression and work out where its inputs live.
 
@@ -469,7 +481,7 @@ class SymbolicReaction(Reaction):
         parameter_symbols = sorted(self.get_parameter_declarations())
         variable_symbols = sorted(self.algebraic_variables)
         reserved = tuple(
-            sorted(get_symbol_names(self.expression) & set(RESERVED_SYMBOLS))
+            sorted(get_symbol_names(self.expression) & set(RESERVED_SYMBOLS)),
         )
         by_name = {s.name: s for s in self.expression.free_symbols}
         function = sympy.lambdify(
@@ -504,12 +516,13 @@ class SymbolicReaction(Reaction):
                 (
                     "algebraic_variables",
                     scope.algebraic_variables.index(variable),
-                )
+                ),
             )
         return SymbolicIx(
             function=function,
             ix_species=get_species_positions(
-                scope, [self.species[symbol] for symbol in species_symbols]
+                scope,
+                [self.species[symbol] for symbol in species_symbols],
             ),
             parameter_positions=tuple(parameter_positions),
             reserved=reserved,
@@ -541,7 +554,9 @@ class SymbolicReaction(Reaction):
         )
 
     def __call__(
-        self, conc: ConcArray, symbolic_input: SymbolicInput
+        self,
+        conc: ConcArray,
+        symbolic_input: SymbolicInput,
     ) -> Scalar:
         """Get the flux of a symbolic reaction."""
         reserved_values = get_reserved_values(conc, symbolic_input)

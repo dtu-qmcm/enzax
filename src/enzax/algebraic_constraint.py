@@ -93,7 +93,9 @@ class AlgebraicConstraint(Module, ABC):
 
     @abstractmethod
     def get_input_indexes(
-        self, scope: ConstraintScope, labelling: ParamLabelling
+        self,
+        scope: ConstraintScope,
+        labelling: ParamLabelling,
     ) -> PyTree: ...
 
     @abstractmethod

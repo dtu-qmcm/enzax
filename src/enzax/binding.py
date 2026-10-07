@@ -149,7 +149,9 @@ class BindingPolynomial(eqx.Module):
         for term in self.terms:
             total = total + term(conc, k)
         return eqx.error_if(
-            total, total <= 0.0, "Binding polynomial is not positive!"
+            total,
+            total <= 0.0,
+            "Binding polynomial is not positive!",
         )
 
 
@@ -188,12 +190,14 @@ class BindingPolynomialExpression:
     terms: tuple[NamedTerm, ...]
 
     def __add__(
-        self, other: "BindingPolynomialExpression"
+        self,
+        other: "BindingPolynomialExpression",
     ) -> "BindingPolynomialExpression":
         return BindingPolynomialExpression(self.terms + other.terms)
 
     def __mul__(
-        self, other: "BindingPolynomialExpression | float"
+        self,
+        other: "BindingPolynomialExpression | float",
     ) -> "BindingPolynomialExpression":
         if isinstance(other, (int, float)):
             return self.__rmul__(float(other))
@@ -205,7 +209,7 @@ class BindingPolynomialExpression:
                 )
                 for mine in self.terms
                 for theirs in other.terms
-            )
+            ),
         )
 
     def __rmul__(self, other: float) -> "BindingPolynomialExpression":
@@ -213,7 +217,7 @@ class BindingPolynomialExpression:
             tuple(
                 NamedTerm(term.coefficient * other, term.factors)
                 for term in self.terms
-            )
+            ),
         )
 
 
@@ -246,12 +250,13 @@ def get_expression_species(
             for term in expression.terms
             for factor in term.factors
             for species_id, _ in factor.species
-        )
+        ),
     )
 
 
 def site(
-    *species: SpeciesDeclaration, exponent: float = 1.0
+    *species: SpeciesDeclaration,
+    exponent: float = 1.0,
 ) -> BindingPolynomialExpression:
     """Declare a site that may be empty: `(1 + sum(conc / k)) ** exponent`.
 
@@ -319,7 +324,9 @@ def get_complex_expression(
 
 
 def get_factor_labels(
-    factor: NamedSite | NamedBound, scope: ReactionScope, prefix: str
+    factor: NamedSite | NamedBound,
+    scope: ReactionScope,
+    prefix: str,
 ) -> tuple[str, ...]:
     """Get the labels of the constants one factor divides by."""
     return tuple(
@@ -353,7 +360,8 @@ def get_factor_indexes(
 ) -> SiteFactor | BoundFactor:
     """Turn one declared factor's names into positions."""
     ix_species = get_species_positions(
-        scope, (species_id for species_id, _ in factor.species)
+        scope,
+        (species_id for species_id, _ in factor.species),
     )
     ix_k = get_parameter_positions(
         labelling,
@@ -362,7 +370,9 @@ def get_factor_indexes(
     )
     if isinstance(factor, NamedSite):
         return SiteFactor(
-            ix_species=ix_species, ix_k=ix_k, exponent=factor.exponent
+            ix_species=ix_species,
+            ix_k=ix_k,
+            exponent=factor.exponent,
         )
     return BoundFactor(ix_species=ix_species, ix_k=ix_k)
 
@@ -389,5 +399,5 @@ def get_polynomial_indexes(
                 ),
             )
             for term in expression.terms
-        )
+        ),
     )

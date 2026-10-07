@@ -84,19 +84,25 @@ def get_selected_labels_for_parameter(
 
 
 def get_selected_labels(
-    labelling: ParamLabelling, selection: ParameterSelection, purpose: str
+    labelling: ParamLabelling,
+    selection: ParameterSelection,
+    purpose: str,
 ) -> SelectedLabels:
     """Resolve a `{parameter: labels}` selection against a model's labels."""
     return {
         parameter: get_selected_labels_for_parameter(
-            labelling, parameter, wanted, purpose
+            labelling,
+            parameter,
+            wanted,
+            purpose,
         )
         for parameter, wanted in selection.items()
     }
 
 
 def complement_selection(
-    labelling: ParamLabelling, selected: SelectedLabels
+    labelling: ParamLabelling,
+    selected: SelectedLabels,
 ) -> SelectedLabels:
     """Get the selection that chooses everything another one leaves out."""
     return {
@@ -140,7 +146,8 @@ class ParameterSplit(eqx.Module):
 
 
 def split_positions(
-    labels: ParamLabels, fixed_labels: set[str]
+    labels: ParamLabels,
+    fixed_labels: set[str],
 ) -> tuple[Index, Index]:
     """Split one parameter's positions into the free ones and the fixed ones."""
     is_fixed = [label in fixed_labels for label in labels]
@@ -187,7 +194,9 @@ def split_parameters_by_fixing(
         parameter. For example `{"log_tc": ["G6PDH"], "temperature": None}`.
     """
     return get_parameter_split(
-        labelling, parameters, get_selected_labels(labelling, fixed, "fixed")
+        labelling,
+        parameters,
+        get_selected_labels(labelling, fixed, "fixed"),
     )
 
 
@@ -208,13 +217,15 @@ def split_parameters_by_freeing(
         labelling,
         parameters,
         complement_selection(
-            labelling, get_selected_labels(labelling, free, "free")
+            labelling,
+            get_selected_labels(labelling, free, "free"),
         ),
     )
 
 
 def get_free_parameters(
-    split: ParameterSplit, parameters: ParamDict
+    split: ParameterSplit,
+    parameters: ParamDict,
 ) -> ParamDict:
     """Gather the free parameters out of a full parameter set."""
     gathered = {
@@ -246,7 +257,8 @@ def scatter_parameter_values(
 
 
 def combine_parameters(
-    split: ParameterSplit, free_parameters: ParamDict
+    split: ParameterSplit,
+    free_parameters: ParamDict,
 ) -> ParamDict:
     """Scatter free and fixed values into full-size parameter arrays."""
     scattered = {

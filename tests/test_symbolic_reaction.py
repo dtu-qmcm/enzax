@@ -83,7 +83,9 @@ def test_explicit_labels_can_be_shared():
 
 def test_get_species_reports_every_declared_species():
     rate_equation = SymbolicReaction(
-        stoichiometry=R1, expression="s * e", species={"s": "a", "e": "e"}
+        stoichiometry=R1,
+        expression="s * e",
+        species={"s": "a", "e": "e"},
     )
     assert rate_equation.get_species() == ("a", "e")
 
@@ -193,13 +195,16 @@ def test_agrees_with_irreversible_michaelis_menten():
         parameters=MM_PARAMETERS,
     )
     assert_same_flux_and_gradient(
-        symbolic, MichaelisMenten(stoichiometry=R1, reversible=False)
+        symbolic,
+        MichaelisMenten(stoichiometry=R1, reversible=False),
     )
 
 
 def test_agrees_with_drain():
     symbolic = SymbolicReaction(
-        stoichiometry=R1, expression="v", parameters={"v": "log_drain"}
+        stoichiometry=R1,
+        expression="v",
+        parameters={"v": "log_drain"},
     )
     assert_same_flux_and_gradient(symbolic, Drain(stoichiometry=R1))
 
@@ -222,7 +227,7 @@ def test_effectors_custom_parameters_and_temperature():
 
 
 REVERSIBLE_MM_PARAMETERS = MM_PARAMETERS | {
-    "km_p": {"kind": "log_saturation_constant", "label": "km|r1|b"}
+    "km_p": {"kind": "log_saturation_constant", "label": "km|r1|b"},
 }
 REVERSIBLE_MM_EXPRESSION = (
     "kcat * enzyme * (s / km) / (1 + s / km + p / km_p) * reversibility"
@@ -239,14 +244,15 @@ def test_agrees_with_reversible_michaelis_menten(water_stoichiometry):
         water_stoichiometry=water_stoichiometry,
     )
     built_in = MichaelisMenten(
-        stoichiometry=R1, water_stoichiometry=water_stoichiometry
+        stoichiometry=R1,
+        water_stoichiometry=water_stoichiometry,
     )
     assert_same_flux_and_gradient(symbolic, built_in)
 
 
 def test_keq_comes_from_formation_energies():
     flux, _ = get_flux_and_gradient(
-        SymbolicReaction(stoichiometry=R1, expression="keq")
+        SymbolicReaction(stoichiometry=R1, expression="keq"),
     )
     dgr_std = VALUES["dgf"]["b"] - VALUES["dgf"]["a"]
     expected = jnp.exp(-dgr_std / (VALUES["temperature"] * 0.008314))
@@ -359,7 +365,8 @@ def get_pathway(symbolic):
             "r1": MichaelisMenten(stoichiometry=PATHWAY_STOICHIOMETRY["r1"]),
             "r2": MichaelisMenten(stoichiometry=PATHWAY_STOICHIOMETRY["r2"]),
             "r3": MichaelisMenten(
-                stoichiometry=PATHWAY_STOICHIOMETRY["r3"], reversible=False
+                stoichiometry=PATHWAY_STOICHIOMETRY["r3"],
+                reversible=False,
             ),
         }
     model = KineticModel(
@@ -413,7 +420,8 @@ def test_species_can_be_a_list_of_species_ids():
     )
     assert as_list.species == {"a": "a"}
     assert_same_flux_and_gradient(
-        as_list, MichaelisMenten(stoichiometry=R1, reversible=False)
+        as_list,
+        MichaelisMenten(stoichiometry=R1, reversible=False),
     )
 
 
@@ -457,7 +465,7 @@ def test_a_misspelt_symbol_is_caught_when_parameters_are_packed():
                 expression="vmax * a / (kmm + a)",
                 species=["a"],
                 default_parameter_kind="log_custom",
-            )
+            ),
         },
     )
     spec = {

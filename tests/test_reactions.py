@@ -93,7 +93,7 @@ def test_allosteric_irreversible_michaelis_menten():
             reversible=False,
             allosteric_activators=["c"],
             subunits=1,
-        )
+        ),
     )
     assert jnp.isclose(rate, expected_rate)
 
@@ -120,7 +120,7 @@ def test_allosteric_reversible_michaelis_menten():
             stoichiometry=R1,
             allosteric_activators=["c"],
             subunits=1,
-        )
+        ),
     )
     assert jnp.isclose(rate, expected_rate)
 
@@ -146,14 +146,14 @@ def test_michaelis_constants_can_be_declared_in_any_order():
             stoichiometry=R1,
             michaelis_constants={"a": "km|r1|a", "b": "km|r1|b"},
             water_stoichiometry=0.0,
-        )
+        ),
     )
     backwards = get_flux(
         MichaelisMenten(
             stoichiometry=R1,
             michaelis_constants={"b": "km|r1|b", "a": "km|r1|a"},
             water_stoichiometry=0.0,
-        )
+        ),
     )
     assert forwards == backwards
 
@@ -164,7 +164,7 @@ def test_k_declaration_rejects_a_non_reactant():
             MichaelisMenten(
                 stoichiometry=R1,
                 michaelis_constants={"c": "km|r1|c"},
-            )
+            ),
         )
 
 
@@ -175,5 +175,5 @@ def test_species_cannot_be_both_activator_and_inhibitor():
                 stoichiometry=R1,
                 allosteric_inhibitors=["c"],
                 allosteric_activators=["c"],
-            )
+            ),
         )

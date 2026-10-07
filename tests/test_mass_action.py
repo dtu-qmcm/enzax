@@ -20,7 +20,7 @@ LOG_KEQ = -(DGF["d"] - 2 * DGF["a"] - DGF["c"]) / RT
 
 def get_model(reactions):
     species = sorted(
-        {s for reaction in reactions.values() for s in reaction.stoichiometry}
+        {s for reaction in reactions.values() for s in reaction.stoichiometry},
     )
     return KineticModel(reactions=reactions, balanced_species=species)
 
@@ -49,7 +49,8 @@ def get_flux(reaction, conc, log_k_plus=np.log(2.0), dgf=DGF):
 def test_the_irreversible_rate_honours_stoichiometric_exponents():
     conc = {"a": 0.3, "c": 0.5, "d": 0.2}
     flux = get_flux(
-        MassAction(stoichiometry=STOICHIOMETRY, reversible=False), conc
+        MassAction(stoichiometry=STOICHIOMETRY, reversible=False),
+        conc,
     )
     assert np.isclose(flux, 2.0 * 0.3**2 * 0.5)
 
@@ -78,7 +79,8 @@ def test_the_flux_follows_the_driving_force(factor, sign):
 
 def test_water_enters_the_equilibrium_constant():
     reaction = MassAction(
-        stoichiometry={"a": -1.0, "d": 1.0}, water_stoichiometry=-1.0
+        stoichiometry={"a": -1.0, "d": 1.0},
+        water_stoichiometry=-1.0,
     )
     water_dgf = get_model({"r1": reaction}).water_dgf
     # a + water <-> d, with an equilibrium constant of 4
@@ -124,12 +126,14 @@ def test_reactions_can_share_a_k_plus():
     model = get_model(
         {
             "r1": MassAction(
-                stoichiometry={"a": -1.0, "c": 1.0}, k_plus_label="k"
+                stoichiometry={"a": -1.0, "c": 1.0},
+                k_plus_label="k",
             ),
             "r2": MassAction(
-                stoichiometry={"c": -1.0, "d": 1.0}, k_plus_label="k"
+                stoichiometry={"c": -1.0, "d": 1.0},
+                k_plus_label="k",
             ),
-        }
+        },
     )
     assert model.parameter_labelling["log_k_plus"] == ("k",)
 
@@ -142,8 +146,8 @@ def test_a_symbolic_reaction_can_use_k_plus():
                 expression="k * s",
                 species={"s": "a"},
                 parameters={"k": "log_k_plus"},
-            )
-        }
+            ),
+        },
     )
     assert model.parameter_labelling["log_k_plus"] == ("r1",)
 

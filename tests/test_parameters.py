@@ -63,17 +63,19 @@ def get_parameters(model, **overrides):
 
 
 SEPARATE = get_model(
-    [MichaelisMenten(stoichiometry=R1), MichaelisMenten(stoichiometry=R2)]
+    [MichaelisMenten(stoichiometry=R1), MichaelisMenten(stoichiometry=R2)],
 )
 SHARED = get_model(
     [
         MichaelisMenten(
-            stoichiometry=R1, michaelis_constants={"a": "km|shared|a"}
+            stoichiometry=R1,
+            michaelis_constants={"a": "km|shared|a"},
         ),
         MichaelisMenten(
-            stoichiometry=R2, michaelis_constants={"a": "km|shared|a"}
+            stoichiometry=R2,
+            michaelis_constants={"a": "km|shared|a"},
         ),
-    ]
+    ],
 )
 
 
@@ -119,7 +121,8 @@ def test_pack_unpack_round_trip():
     labelling = SEPARATE.parameter_labelling
     parameters = get_parameters(SEPARATE)
     round_tripped = pack_parameters(
-        labelling, unpack_parameters(labelling, parameters)
+        labelling,
+        unpack_parameters(labelling, parameters),
     )
     assert set(round_tripped) == set(parameters)
     for key, value in parameters.items():
@@ -130,7 +133,8 @@ def test_pack_rejects_an_unknown_label():
     labelling = SEPARATE.parameter_labelling
     spec = unpack_parameters(labelling, get_parameters(SEPARATE))
     spec["log_saturation_constant"] = dict(
-        spec["log_saturation_constant"], **{"km|r3|a": 0.0}
+        spec["log_saturation_constant"],
+        **{"km|r3|a": 0.0},
     )
     with pytest.raises(ValueError, match="no value labelled"):
         pack_parameters(labelling, spec)
@@ -145,7 +149,8 @@ def test_pack_rejects_a_missing_label():
         if k != "km|r1|a"
     }
     with pytest.raises(
-        ValueError, match="No value given for 'log_saturation_constant' labels"
+        ValueError,
+        match="No value given for 'log_saturation_constant' labels",
     ):
         pack_parameters(labelling, spec)
 
@@ -204,10 +209,12 @@ def test_gradient_accumulates_over_a_shared_parameter():
         return model.flux(CONC, parameters).sum()
 
     separate_grad = jax.grad(total_flux, argnums=1)(
-        SEPARATE, get_parameters(SEPARATE)
+        SEPARATE,
+        get_parameters(SEPARATE),
     )["log_saturation_constant"]
     shared_grad = jax.grad(total_flux, argnums=1)(
-        SHARED, get_parameters(SHARED)
+        SHARED,
+        get_parameters(SHARED),
     )["log_saturation_constant"]
     separate_labels = SEPARATE.parameter_labelling["log_saturation_constant"]
     expected = (
@@ -215,7 +222,9 @@ def test_gradient_accumulates_over_a_shared_parameter():
         + separate_grad[separate_labels.index("km|r2|a")]
     )
     shared_ix = get_parameter_position(
-        SHARED.parameter_labelling, "log_saturation_constant", "km|shared|a"
+        SHARED.parameter_labelling,
+        "log_saturation_constant",
+        "km|shared|a",
     )
     assert jnp.isclose(shared_grad[shared_ix], expected)
 
@@ -239,7 +248,7 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
                 allosteric_activators={"b": "km|r1|b"},
             ),
             MichaelisMenten(stoichiometry=R2),
-        ]
+        ],
     )
     labelling = model.parameter_labelling
     assert labelling["log_saturation_constant"] == (
@@ -250,7 +259,9 @@ def test_an_allosteric_constant_can_use_a_michaelis_constants_label():
     )
     ix = model.reaction_ix[0]
     position = get_parameter_position(
-        labelling, "log_saturation_constant", "km|r1|b"
+        labelling,
+        "log_saturation_constant",
+        "km|r1|b",
     )
     assert position in get_k_positions(ix.binding_polynomial)
     assert position in get_k_positions(ix.allostery.relaxed_state)
@@ -261,7 +272,7 @@ def test_separator_is_rejected_in_an_id():
         KineticModel(
             balanced_species=["a|b", "c"],
             reactions={
-                "r1": MichaelisMenten(stoichiometry={"a|b": -1.0, "c": 1.0})
+                "r1": MichaelisMenten(stoichiometry={"a|b": -1.0, "c": 1.0}),
             },
         )
 
@@ -271,10 +282,11 @@ def test_log_k_labels_must_have_a_known_prefix():
         get_model(
             [
                 MichaelisMenten(
-                    stoichiometry=R1, michaelis_constants={"a": "bogus|r1|a"}
+                    stoichiometry=R1,
+                    michaelis_constants={"a": "bogus|r1|a"},
                 ),
                 MichaelisMenten(stoichiometry=R2),
-            ]
+            ],
         )
 
 

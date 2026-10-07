@@ -39,7 +39,8 @@ def test_conserved_moiety_is_conserved():
 
     def get_conc(ind):
         balanced = conserved_moiety.model.get_balanced_conc(
-            ind, conserved_moiety.parameters
+            ind,
+            conserved_moiety.parameters,
         )
         return conserved_moiety.model.get_conc(balanced, log_unbalanced)
 

@@ -29,7 +29,7 @@ MAKE_AND_USE_ATP = {
 }
 BIND_MG = {
     "bind": RapidEquilibriumReaction(
-        stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0}
+        stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0},
     ),
 }
 MG_ATP = dict(
@@ -41,7 +41,8 @@ MG_ATP = dict(
 
 def test_a_model_without_rapid_equilibria_has_no_fast_columns():
     model = KineticModel(
-        reactions=MAKE_AND_USE_ATP, balanced_species=["atp", "adp"]
+        reactions=MAKE_AND_USE_ATP,
+        balanced_species=["atp", "adp"],
     )
     assert model.fast_moieties.reaction_ids == ()
     assert model.S_fast.shape == (2, 0)
@@ -58,7 +59,8 @@ def test_rapid_equilibria_are_not_reactions_with_fluxes():
 def test_s_fast_holds_the_rapid_equilibria_stoichiometries():
     model = KineticModel(**MG_ATP)
     assert np.array_equal(
-        model.S_fast, np.array([[-1.0], [0.0], [-1.0], [1.0]])
+        model.S_fast,
+        np.array([[-1.0], [0.0], [-1.0], [1.0]]),
     )
 
 
@@ -87,7 +89,7 @@ def test_reaction_ids_must_not_clash():
         KineticModel(
             reactions=MAKE_AND_USE_ATP,
             rapid_equilibrium_network=RapidEquilibriumNetwork(
-                reactions={"use": BIND_MG["bind"]}
+                reactions={"use": BIND_MG["bind"]},
             ),
             balanced_species=["atp", "adp", "mg", "mgatp"],
         )
@@ -98,7 +100,8 @@ def test_fast_moiety_label_species_must_be_balanced():
         KineticModel(
             reactions=MAKE_AND_USE_ATP,
             rapid_equilibrium_network=RapidEquilibriumNetwork(
-                reactions=BIND_MG, fast_moiety_label_species=["mg"]
+                reactions=BIND_MG,
+                fast_moiety_label_species=["mg"],
             ),
             balanced_species=["atp", "adp", "mgatp"],
         )
@@ -110,9 +113,10 @@ def test_a_fast_moiety_label_species_in_no_rapid_equilibrium_warns():
             **MG_ATP
             | dict(
                 rapid_equilibrium_network=RapidEquilibriumNetwork(
-                    reactions=BIND_MG, fast_moiety_label_species=["adp"]
-                )
-            )
+                    reactions=BIND_MG,
+                    fast_moiety_label_species=["adp"],
+                ),
+            ),
         )
 
 
@@ -123,14 +127,18 @@ def test_a_fast_moiety_label_species_in_a_rapid_equilibrium_does_not_warn():
             **MG_ATP
             | dict(
                 rapid_equilibrium_network=RapidEquilibriumNetwork(
-                    reactions=BIND_MG, fast_moiety_label_species=["mg"]
-                )
-            )
+                    reactions=BIND_MG,
+                    fast_moiety_label_species=["mg"],
+                ),
+            ),
         )
 
 
 def get_fast_only_model(
-    stoichiometry, balanced_species, fast_moiety_label_species=(), **kwargs
+    stoichiometry,
+    balanced_species,
+    fast_moiety_label_species=(),
+    **kwargs,
 ):
     return KineticModel(
         reactions={},
@@ -155,7 +163,8 @@ CHAIN = dict(
 
 def test_without_rapid_equilibria_each_species_is_a_fast_moiety():
     model = KineticModel(
-        reactions=MAKE_AND_USE_ATP, balanced_species=["atp", "adp"]
+        reactions=MAKE_AND_USE_ATP,
+        balanced_species=["atp", "adp"],
     )
     assert model.fast_moieties.fast_moiety_labels == ("atp", "adp")
     assert np.array_equal(model.fast_moieties.fast_moiety_matrix, np.eye(2))
@@ -187,12 +196,12 @@ def test_competing_ligands_share_one_mg_moiety():
         rapid_equilibrium_network=RapidEquilibriumNetwork(
             reactions={
                 "bind_atp": RapidEquilibriumReaction(
-                    stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0}
+                    stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0},
                 ),
                 "bind_adp": RapidEquilibriumReaction(
-                    stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0}
+                    stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0},
                 ),
-            }
+            },
         ),
         balanced_species=["atp", "adp", "mg", "mgatp", "mgadp"],
         moiety_label_species=["mg"],
@@ -235,7 +244,7 @@ def test_by_default_labels_follow_species_order():
 def test_fast_moiety_label_species_choose_the_labels():
     model = get_fast_only_model(**CHAIN, fast_moiety_label_species=["c"])
     assert model.fast_moieties.fast_moiety_coefficients == {
-        "c": {"a": 1.0, "b": 1.0, "c": 1.0}
+        "c": {"a": 1.0, "b": 1.0, "c": 1.0},
     }
 
 
@@ -266,9 +275,9 @@ def test_a_subnetwork_can_have_no_fast_moieties():
         rapid_equilibrium_network=RapidEquilibriumNetwork(
             reactions={
                 "eq": RapidEquilibriumReaction(
-                    stoichiometry={"a": -1.0, "b": 1.0}
-                )
-            }
+                    stoichiometry={"a": -1.0, "b": 1.0},
+                ),
+            },
         ),
         balanced_species=["a"],
     )
@@ -283,9 +292,9 @@ def test_a_rapid_equilibrium_needs_a_balanced_species():
             rapid_equilibrium_network=RapidEquilibriumNetwork(
                 reactions={
                     "bind": RapidEquilibriumReaction(
-                        stoichiometry={"x": -1.0, "y": 1.0}
-                    )
-                }
+                        stoichiometry={"x": -1.0, "y": 1.0},
+                    ),
+                },
             ),
             balanced_species=["atp", "adp"],
         )
@@ -317,7 +326,7 @@ def test_rapid_equilibria_keep_their_water_stoichiometries():
                     stoichiometry={"atp": -1.0, "adp": 1.0},
                     water_stoichiometry=-1.0,
                 ),
-            }
+            },
         ),
         balanced_species=["atp", "adp"],
     )
@@ -369,12 +378,12 @@ COMPETING = dict(
     rapid_equilibrium_network=RapidEquilibriumNetwork(
         reactions={
             "bind_atp": RapidEquilibriumReaction(
-                stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0}
+                stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0},
             ),
             "bind_adp": RapidEquilibriumReaction(
-                stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0}
+                stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0},
             ),
-        }
+        },
     ),
     balanced_species=["atp", "adp", "mg", "mgatp", "mgadp"],
     moiety_label_species=["mg"],
@@ -396,8 +405,13 @@ def test_competing_ligands_satisfy_totals_and_equilibria_across_scales():
     dgf = jnp.array(dgf_values)[:, model.species_to_dgf_ix]
     conc = jax.vmap(
         lambda y, g: solve_rapid_equilibria(
-            model.fast_moieties, y, jnp.array([]), g, 298.15, model.water_dgf
-        )
+            model.fast_moieties,
+            y,
+            jnp.array([]),
+            g,
+            298.15,
+            model.water_dgf,
+        ),
     )(totals, dgf)
     P = model.fast_moieties.fast_moiety_matrix
     S_fb = model.S_fast[model.balanced_species_ix, :]
@@ -426,7 +440,7 @@ def test_water_enters_the_equilibrium_constant():
                     stoichiometry={"atp": -1.0, "adp": 1.0},
                     water_stoichiometry=-1.0,
                 ),
-            }
+            },
         ),
         balanced_species=["atp", "adp"],
     )
@@ -442,9 +456,9 @@ def test_a_species_in_a_subnetwork_with_no_fast_moieties_is_fixed():
         rapid_equilibrium_network=RapidEquilibriumNetwork(
             reactions={
                 "eq": RapidEquilibriumReaction(
-                    stoichiometry={"a": -1.0, "b": 1.0}
-                )
-            }
+                    stoichiometry={"a": -1.0, "b": 1.0},
+                ),
+            },
         ),
         balanced_species=["a"],
     )
@@ -458,8 +472,13 @@ def test_a_non_positive_total_gives_nan_only_for_that_member():
     dgf = get_dgf(model, mg_binding_dgf(np.log(100.0)))
     conc = jax.vmap(
         lambda y: solve_rapid_equilibria(
-            model.fast_moieties, y, jnp.array([]), dgf, 298.15, -150.9
-        )
+            model.fast_moieties,
+            y,
+            jnp.array([]),
+            dgf,
+            298.15,
+            -150.9,
+        ),
     )(totals)
     assert np.all(np.isnan(conc[1]))
     assert np.all(np.isfinite(conc[np.array([0, 2])]))
@@ -494,15 +513,18 @@ def test_gradients_match_finite_differences():
             [
                 (f(x.at[i].add(h)) - f(x.at[i].add(-h))) / (2 * h)
                 for i in range(len(x))
-            ]
+            ],
         )
 
     fd_totals = central_difference(
-        lambda y: free_mg(y, by_compound), totals, 1e-6
+        lambda y: free_mg(y, by_compound),
+        totals,
+        1e-6,
     )
     fd_dgf = central_difference(lambda g: free_mg(totals, g), by_compound, 1e-4)
     grad_totals, grad_dgf = jax.grad(free_mg, argnums=(0, 1))(
-        totals, by_compound
+        totals,
+        by_compound,
     )
     fwd_totals = jax.jacfwd(free_mg)(totals, by_compound)
     assert np.allclose(grad_totals, fd_totals, rtol=1e-5, atol=1e-9)
@@ -515,7 +537,7 @@ def test_gradients_match_finite_differences():
 ENERGY = KineticModel(
     reactions={
         "adk": MichaelisMenten(
-            stoichiometry={"adp": -2.0, "atp": 1.0, "amp": 1.0}
+            stoichiometry={"adp": -2.0, "atp": 1.0, "amp": 1.0},
         ),
         "atpase": MichaelisMenten(
             stoichiometry={"mgatp": -1.0, "mgadp": 1.0, "pi": 1.0},
@@ -529,12 +551,12 @@ ENERGY = KineticModel(
     rapid_equilibrium_network=RapidEquilibriumNetwork(
         reactions={
             "bind_atp": RapidEquilibriumReaction(
-                stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0}
+                stoichiometry={"atp": -1.0, "mg": -1.0, "mgatp": 1.0},
             ),
             "bind_adp": RapidEquilibriumReaction(
-                stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0}
+                stoichiometry={"adp": -1.0, "mg": -1.0, "mgadp": 1.0},
             ),
-        }
+        },
     ),
     balanced_species=["atp", "adp", "amp", "mg", "mgatp", "mgadp"],
     moiety_label_species=["mg", "amp"],
@@ -614,7 +636,8 @@ def test_a_model_with_rapid_equilibria_reaches_a_steady_state():
     c = dict(zip(ENERGY.balanced_species, conc.tolist()))
     assert np.isclose(c["mg"] + c["mgatp"] + c["mgadp"], 1.0)
     assert np.isclose(
-        c["atp"] + c["adp"] + c["amp"] + c["mgatp"] + c["mgadp"], 3.0
+        c["atp"] + c["adp"] + c["amp"] + c["mgatp"] + c["mgadp"],
+        3.0,
     )
 
 
@@ -639,7 +662,9 @@ def test_the_dae_vector_field_is_dcdt_at_a_consistent_state():
     parameters = get_energy_parameters()
     state = jnp.array([1.2, 0.9])
     rates, residuals = ENERGY.dae_vector_field(
-        0.0, ENERGY.get_dae_state(state, parameters), parameters
+        0.0,
+        ENERGY.get_dae_state(state, parameters),
+        parameters,
     )
     assert np.array_equal(rates, ENERGY.dcdt(state, parameters))
     assert np.allclose(residuals["log_conc"], 0.0, atol=1e-12)
@@ -660,7 +685,9 @@ def test_the_dae_state_holds_the_balanced_concentrations():
     _, algebraic = ENERGY.get_dae_state(state, parameters)
     totals = ENERGY.get_fast_moiety_totals(state, parameters)
     conc = assemble_balanced_conc(
-        ENERGY.fast_moieties, totals, jnp.exp(algebraic["log_conc"])
+        ENERGY.fast_moieties,
+        totals,
+        jnp.exp(algebraic["log_conc"]),
     )
     assert np.allclose(conc, ENERGY.get_balanced_conc(state, parameters))
     assert np.allclose(ENERGY.get_ode_state(conc), state)
@@ -728,7 +755,8 @@ def test_fast_moieties_need_not_have_a_species_of_their_own():
     }
     species = sorted({s for r in reactions.values() for s in r})
     model = get_fast_only_model(
-        stoichiometry=reactions, balanced_species=species
+        stoichiometry=reactions,
+        balanced_species=species,
     )
     P = model.fast_moieties.fast_moiety_matrix
     assert P.shape[0] == len(species) - len(reactions)

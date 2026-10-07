@@ -48,15 +48,17 @@ class Drain(Reaction):
 
     def get_labels(self, scope: ReactionScope) -> DrainLabels:
         return DrainLabels(
-            drain=get_reaction_label(self.drain, scope.reaction_id)
+            drain=get_reaction_label(self.drain, scope.reaction_id),
         )
 
     def get_input_indexes(
-        self, scope: ReactionScope, labelling: ParamLabelling
+        self,
+        scope: ReactionScope,
+        labelling: ParamLabelling,
     ) -> DrainIx:
         lab = self.get_labels(scope)
         return DrainIx(
-            ix_drain=get_parameter_position(labelling, "log_drain", lab.drain)
+            ix_drain=get_parameter_position(labelling, "log_drain", lab.drain),
         )
 
     def get_input(self, parameters: ParamDict, ix: DrainIx) -> DrainInput:

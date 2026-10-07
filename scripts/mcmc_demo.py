@@ -90,14 +90,17 @@ def main():
     true_parameters = example.parameters
     default_guess = example.steady_state
     split = split_parameters_by_freeing(
-        model.parameter_labelling, true_parameters, FREE_PARAMETERS
+        model.parameter_labelling,
+        true_parameters,
+        FREE_PARAMETERS,
     )
     free_true = get_free_parameters(split, true_parameters)
     prior = prior_from_truth(free_true, sd=PRIOR_SD)
     steady = get_steady_state_hybrid(model, default_guess, true_parameters)
     balanced = model.get_balanced_conc(steady, true_parameters)
     true_conc = model.get_conc(
-        balanced, model.get_log_conc_unbalanced(true_parameters)
+        balanced,
+        model.get_log_conc_unbalanced(true_parameters),
     )
     true_flux = model.flux(balanced, true_parameters)
     true_log_enzyme = true_parameters["log_enzyme"]
@@ -117,7 +120,8 @@ def main():
         prior=prior,
     )
     sampler = grapenuts(
-        default_guess, guess_fn=get_guess_fn(model, split, free_true)
+        default_guess,
+        guess_fn=get_guess_fn(model, split, free_true),
     )
     with blackjax.progress_bar("enzax"):
         states, info = run_sampler(

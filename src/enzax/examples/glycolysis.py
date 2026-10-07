@@ -146,7 +146,7 @@ reactions = {
             18.0 * site({"atp_c": "km|PFKL|atp_c"}) * site("lac_c")
         ),
         relaxed_state_expression=site(
-            {"f6p_c": "km|PFKL|f6p_c", "fdp_c": "km|PFKL|fdp_c"}
+            {"f6p_c": "km|PFKL|f6p_c", "fdp_c": "km|PFKL|fdp_c"},
         ),
     ),
     "FBA": SaturableReaction(
@@ -161,10 +161,15 @@ reactions = {
             "nad_c": -1.0,
             "nadh_c": 1.0,
             "dpg_c": 1.0,
-        }
+        },
     ),
     "PGK": MichaelisMenten(
-        stoichiometry={"dpg_c": -1.0, "adp_c": -1.0, "p3g_c": 1.0, "atp_c": 1.0}
+        stoichiometry={
+            "dpg_c": -1.0,
+            "adp_c": -1.0,
+            "p3g_c": 1.0,
+            "atp_c": 1.0,
+        },
     ),
     "PGM": MichaelisMenten(stoichiometry={"p3g_c": -1.0, "p2g_c": 1.0}),
     # The SBML's driving force for ENO uses 3-phosphoglycerate's formation
@@ -174,10 +179,20 @@ reactions = {
         water_stoichiometry=1.0,
     ),
     "PKM1": MichaelisMenten(
-        stoichiometry={"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0}
+        stoichiometry={
+            "pep_c": -1.0,
+            "adp_c": -1.0,
+            "pyr_c": 1.0,
+            "atp_c": 1.0,
+        },
     ),
     "PKM2": MichaelisMenten(
-        stoichiometry={"pep_c": -1.0, "adp_c": -1.0, "pyr_c": 1.0, "atp_c": 1.0}
+        stoichiometry={
+            "pep_c": -1.0,
+            "adp_c": -1.0,
+            "pyr_c": 1.0,
+            "atp_c": 1.0,
+        },
     ),
     "LDHA": MichaelisMenten(
         stoichiometry={
@@ -185,7 +200,7 @@ reactions = {
             "nadh_c": -1.0,
             "lac_c": 1.0,
             "nad_c": 1.0,
-        }
+        },
     ),
     "G6PDH": SaturableReaction(
         stoichiometry={
@@ -212,7 +227,7 @@ reactions = {
             "nadph_c": 1.0,
             "ru5p_c": 1.0,
             "co2_c": 1.0,
-        }
+        },
     ),
     "RPI": MichaelisMenten(stoichiometry={"ru5p_c": -1.0, "r5p_c": 1.0}),
     "RPE": MichaelisMenten(stoichiometry={"ru5p_c": -1.0, "xu5p_c": 1.0}),
@@ -254,18 +269,20 @@ reactions = {
             "f6p_c": -1.0,
             "s7p_c": 1.0,
             "g3p_c": 1.0,
-        }
+        },
     ),
     # A drain `v * conc / (conc + eps)` is Michaelis Menten kinetics with one
     # substrate, `kcat * enzyme = v` and `km = eps`.
     "r5p_drain": MichaelisMenten(
-        stoichiometry={"r5p_c": -1.0}, reversible=False
+        stoichiometry={"r5p_c": -1.0},
+        reversible=False,
     ),
     "pyr_drain": MichaelisMenten(
-        stoichiometry={"pyr_c": -1.0}, reversible=False
+        stoichiometry={"pyr_c": -1.0},
+        reversible=False,
     ),
     "lac_transport": MichaelisMenten(
-        stoichiometry={"lac_c": -1.0, "lac_e": 1.0}
+        stoichiometry={"lac_c": -1.0, "lac_e": 1.0},
     ),
 }
 model = KineticModel(
@@ -495,5 +512,5 @@ steady_state = jnp.array(
         2.1585925028279545e-05,  # xu5p_c
         2.6074383457096873e-06,  # e4p_c
         0.00015129302192134288,  # s7p_c
-    ]
+    ],
 )

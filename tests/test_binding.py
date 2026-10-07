@@ -26,7 +26,7 @@ from enzax.reactions import MichaelisMenten, SaturableReaction
 
 HEX_SPECIES = ["glc_c", "atp_c", "g6p_c", "adp_c", "gdp_c"]
 HEX_STOICHIOMETRY = {
-    "HEX1": {"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0}
+    "HEX1": {"glc_c": -1.0, "atp_c": -1.0, "g6p_c": 1.0, "adp_c": 1.0},
 }
 HEX_CONC = jnp.array([0.5, 2.0, 0.3, 0.4, 0.1])
 FBA_SPECIES = ["fdp_c", "g3p_c", "dhap_c"]
@@ -86,7 +86,7 @@ def test_default_expression_is_the_old_hard_coded_one():
             MichaelisMenten(
                 stoichiometry=HEX_STOICHIOMETRY["HEX1"],
                 competitive_inhibitors=["gdp_c"],
-            )
+            ),
         ],
     )
     expression = model.reactions["HEX1"].get_expression(model._scopes()[0])
@@ -108,7 +108,7 @@ def test_default_expression_is_the_old_hard_coded_one():
                 ),
             ),
             NamedTerm(1.0, (NamedBound((("gdp_c", "ki|HEX1|gdp_c"),)),)),
-        )
+        ),
     )
 
 
@@ -130,7 +130,7 @@ def test_operators_distribute():
                     NamedSite((("c", None),), 1.0),
                 ),
             ),
-        )
+        ),
     )
 
 
@@ -139,7 +139,7 @@ def test_a_coefficient_multiplies_every_term():
         (
             NamedTerm(14.0, (NamedSite((("a", None),), 1.0),)),
             NamedTerm(14.0, ()),
-        )
+        ),
     )
 
 
@@ -154,7 +154,7 @@ def test_hex1_abortive_complexes():
                 dead_end_states_expression=(
                     dead_end("glc_c", "g6p_c") + dead_end("glc_c", "gdp_c")
                 ),
-            )
+            ),
         ],
     )
     k_values = {
@@ -197,7 +197,7 @@ def test_hex2_can_borrow_hex1s_constant():
             SaturableReaction(
                 stoichiometry=stoichiometry["HEX2"],
                 dead_end_states_expression=dead_end(
-                    {"glc_c": "km|HEX2|glc_c", "gdp_c": "km|HEX1|gdp_c"}
+                    {"glc_c": "km|HEX2|glc_c", "gdp_c": "km|HEX1|gdp_c"},
                 ),
             ),
         ],
@@ -219,7 +219,7 @@ def test_fba_ternary_abortive_complex():
             SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 dead_end_states_expression=dead_end("fdp_c", "g3p_c", "dhap_c"),
-            )
+            ),
         ],
     )
     k_values = {
@@ -249,7 +249,7 @@ def test_a_dead_end_reuses_a_reactants_own_constant():
             SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 dead_end_states_expression=dead_end("fdp_c", "g3p_c"),
-            )
+            ),
         ],
     )
     assert model.parameter_labelling["log_saturation_constant"] == (
@@ -267,7 +267,7 @@ def test_an_expression_can_name_a_species_no_reaction_touches():
             "FBA": SaturableReaction(
                 stoichiometry={"fdp_c": -1.0, "g3p_c": 1.0, "dhap_c": 1.0},
                 dead_end_states_expression=dead_end("fdp_c", "gdp_c"),
-            )
+            ),
         },
     )
     assert model.species == [*FBA_SPECIES, "gdp_c"]
@@ -299,7 +299,7 @@ def test_a_non_positive_polynomial_is_an_error():
             SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
                 binding_polynomial_expression=-1.0 * ONE,
-            )
+            ),
         ],
     )
     parameters = get_parameters(
@@ -316,7 +316,7 @@ def test_a_non_positive_polynomial_is_an_error():
 
 PFK_SPECIES = ["f6p_c", "atp_c", "fdp_c", "adp_c", "lac_c", "f26bp_c"]
 PFK_STOICHIOMETRY = {
-    "PFKM": {"f6p_c": -1.0, "atp_c": -1.0, "fdp_c": 1.0, "adp_c": 1.0}
+    "PFKM": {"f6p_c": -1.0, "atp_c": -1.0, "fdp_c": 1.0, "adp_c": 1.0},
 }
 PFK_CONC = jnp.array([0.1, 2.0, 0.05, 0.5, 1.2, 0.02])
 PFK_K = {
@@ -329,7 +329,7 @@ PFK_K = {
 }
 G6PDH_SPECIES = ["g6p_c", "nadp_c", "pgl6_c", "nadph_c"]
 G6PDH_STOICHIOMETRY = {
-    "G6PDH": {"g6p_c": -1.0, "nadp_c": -1.0, "pgl6_c": 1.0, "nadph_c": 1.0}
+    "G6PDH": {"g6p_c": -1.0, "nadp_c": -1.0, "pgl6_c": 1.0, "nadph_c": 1.0},
 }
 G6PDH_CONC = jnp.array([0.4, 0.1, 0.02, 0.05])
 G6PDH_K = {
@@ -341,7 +341,13 @@ G6PDH_K = {
 
 
 def get_allosteric_factor(
-    species, stoichiometry, reaction, conc, allosteric, k, tc
+    species,
+    stoichiometry,
+    reaction,
+    conc,
+    allosteric,
+    k,
+    tc,
 ):
     """Get an allosteric rate law's flux over the same law without allostery.
 
@@ -355,10 +361,12 @@ def get_allosteric_factor(
     )
     fancy = get_model(species, [reaction], [allosteric])
     plain_flux = plain.flux(
-        get_conc(plain, species, conc), get_parameters(plain, k)
+        get_conc(plain, species, conc),
+        get_parameters(plain, k),
     )
     fancy_flux = fancy.flux(
-        get_conc(fancy, species, conc), get_parameters(fancy, k, tc)
+        get_conc(fancy, species, conc),
+        get_parameters(fancy, k, tc),
     )
     return fancy_flux[0] / plain_flux[0]
 
