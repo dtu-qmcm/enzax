@@ -6,7 +6,10 @@ from scipy.optimize import brentq
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rapid_equilibrium import RapidEquilibriumReaction
+from enzax.rapid_equilibrium import (
+    RapidEquilibriumNetwork,
+    RapidEquilibriumReaction,
+)
 from enzax.reactions import MassAction, SymbolicReaction
 from enzax.thermodynamics import GAS_CONSTANT
 
@@ -496,10 +499,14 @@ def get_model(rapid_equilibrium: bool = False) -> KineticModel:
     }
     return KineticModel(
         reactions=SLOW_REACTIONS | fast,
-        rapid_equilibrium_reactions={
-            reaction_id: RapidEquilibriumReaction(stoichiometry=stoichiometry)
-            for reaction_id, stoichiometry in equilibrating.items()
-        },
+        rapid_equilibrium_network=RapidEquilibriumNetwork(
+            reactions={
+                reaction_id: RapidEquilibriumReaction(
+                    stoichiometry=stoichiometry
+                )
+                for reaction_id, stoichiometry in equilibrating.items()
+            }
+        ),
         balanced_species=BALANCED_SPECIES,
         moiety_label_species=list(MOIETY_TOTALS),
     )
@@ -513,10 +520,10 @@ def get_dgf(model: KineticModel) -> dict[str, float]:
         if reaction_id in model.reaction_ids
     } | {
         reaction_id: model.S_fast[
-            :, model.rapid_equilibria.reaction_ids.index(reaction_id)
+            :, model.fast_moieties.reaction_ids.index(reaction_id)
         ]
         for reaction_id in constants
-        if reaction_id in model.rapid_equilibria.reaction_ids
+        if reaction_id in model.fast_moieties.reaction_ids
     }
     S = np.array([columns[r] for r in constants]).T
     rhs = np.array(

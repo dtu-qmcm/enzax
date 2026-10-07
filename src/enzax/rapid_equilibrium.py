@@ -2,7 +2,7 @@
 moieties they conserve."""
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -19,6 +19,8 @@ from enzax.array_types import (
     FastMoietyMatrix,
     FastMoietyTotalsArr,
     FrozenArray,
+    ParamDict,
+    ParamLabelling,
     StoichiometricMatrix,
     UnbalancedConcArr,
     freeze_array,
@@ -55,7 +57,7 @@ class FastSubnetwork:
 
 
 @dataclass(frozen=True)
-class RapidEquilibria:
+class FastMoieties:
     """The rapid equilibrium reactions' structure: their stoichiometries and
     fast moieties.
 
@@ -386,54 +388,8 @@ def get_fast_moieties(
     return matrix, [balanced_species[i] for i in label_ix], subnetworks
 
 
-def get_rapid_equilibria(
-    reactions: Mapping[str, RapidEquilibriumReaction],
-    S: StoichiometricMatrix,
-    species: Sequence[str],
-    balanced_species: Sequence[str],
-    moiety_label_species: Sequence[str],
-    fast_moiety_label_species: Sequence[str],
-) -> RapidEquilibria:
-    """Build a model's rapid equilibrium structure from its rapid equilibrium
-    reactions and label choices."""
-    check_fast_moiety_label_species(
-        fast_moiety_label_species, balanced_species, species, S
-    )
-    balanced_ix = [species.index(s) for s in balanced_species]
-    check_fast_moieties(S[balanced_ix, :], list(reactions))
-    required_labels = [
-        s
-        for s in dict.fromkeys(
-            list(moiety_label_species) + list(fast_moiety_label_species)
-        )
-        if s in balanced_species
-    ]
-    matrix, labels, subnetworks = get_fast_moieties(
-        S[balanced_ix, :],
-        balanced_species,
-        list(reactions),
-        sorted(balanced_species, key=species.index),
-        required_labels,
-    )
-    return RapidEquilibria(
-        reaction_ids=tuple(reactions),
-        water_stoichiometry=tuple(
-            reaction.water_stoichiometry for reaction in reactions.values()
-        ),
-        balanced_species=tuple(balanced_species),
-        balanced_species_ix=tuple(balanced_ix),
-        unbalanced_species_ix=tuple(
-            i for i, s in enumerate(species) if s not in balanced_species
-        ),
-        subnetworks=tuple(subnetworks),
-        fast_moiety_labels=tuple(labels),
-        _S=freeze_array(S),
-        _fast_moiety_matrix=freeze_array(matrix),
-    )
-
-
 def solve_rapid_equilibria(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     dgf: Float[Array, " n_species"],
@@ -451,12 +407,12 @@ def solve_rapid_equilibria(
     species and water enter them at their fixed concentrations. Returns NaN
     where there is no solution, for example when a total is not positive.
     """
-    log_keq = get_log_keq(rapid_equilibria, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
     solved = jnp.all(fast_moiety_totals > 0)
     subnetwork_conc = []
-    for subnetwork in rapid_equilibria.subnetworks:
+    for subnetwork in fast_moieties.subnetworks:
         S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
-            rapid_equilibria, subnetwork
+            fast_moieties, subnetwork
         )
         conc = solve_fast_subnetwork(
             S_balanced,
@@ -472,7 +428,7 @@ def solve_rapid_equilibria(
         solved &= jnp.all(jnp.isfinite(conc))
         subnetwork_conc.append(conc)
     conc = assemble_balanced_conc(
-        rapid_equilibria,
+        fast_moieties,
         fast_moiety_totals,
         jnp.concatenate(subnetwork_conc) if subnetwork_conc else jnp.zeros(0),
     )
@@ -480,30 +436,30 @@ def solve_rapid_equilibria(
 
 
 def get_log_keq(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     dgf: Float[Array, " n_species"],
     temperature: Scalar,
     water_dgf: float,
 ) -> Float[Array, " n_rapid_equilibrium_reaction"]:
     """Get the rapid equilibrium reactions' log equilibrium constants from the
     formation energies of their species and of water."""
-    water_stoichiometry = np.array(rapid_equilibria.water_stoichiometry)
+    water_stoichiometry = np.array(fast_moieties.water_stoichiometry)
     RT = temperature * GAS_CONSTANT
-    return -(rapid_equilibria.S.T @ dgf + water_stoichiometry * water_dgf) / RT
+    return -(fast_moieties.S.T @ dgf + water_stoichiometry * water_dgf) / RT
 
 
 def get_subnetwork_blocks(
-    rapid_equilibria: RapidEquilibria, subnetwork: FastSubnetwork
+    fast_moieties: FastMoieties, subnetwork: FastSubnetwork
 ) -> tuple[
     StoichiometricMatrix, StoichiometricMatrix, FastMoietyMatrix, np.ndarray
 ]:
     """Get one fast subnetwork's blocks of the rapid equilibrium stoichiometric
     matrix, for its balanced and for the unbalanced species, and of the fast
     moiety matrix, together with the rows of the fast moieties it involves."""
-    S = rapid_equilibria.S
-    P = rapid_equilibria.fast_moiety_matrix
-    balanced_ix = np.array(rapid_equilibria.balanced_species_ix, dtype=int)
-    unbalanced_ix = np.array(rapid_equilibria.unbalanced_species_ix, dtype=int)
+    S = fast_moieties.S
+    P = fast_moieties.fast_moiety_matrix
+    balanced_ix = np.array(fast_moieties.balanced_species_ix, dtype=int)
+    unbalanced_ix = np.array(fast_moieties.unbalanced_species_ix, dtype=int)
     members = np.array(subnetwork.balanced_species_ix, dtype=int)
     rows = np.flatnonzero(np.any(P[:, members] != 0, axis=1))
     return (
@@ -515,7 +471,7 @@ def get_subnetwork_blocks(
 
 
 def assemble_balanced_conc(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     fast_moiety_totals: FastMoietyTotalsArr,
     subnetwork_conc: Float[Array, " n_subnetwork_species"],
 ) -> BalancedConcArr:
@@ -523,8 +479,8 @@ def assemble_balanced_conc(
     and the concentrations of the species in fast subnetworks. A species in no
     fast subnetwork is a fast moiety of its own, so its concentration is its
     total."""
-    P = rapid_equilibria.fast_moiety_matrix
-    subnetwork_ix = rapid_equilibria.subnetwork_species_ix
+    P = fast_moieties.fast_moiety_matrix
+    subnetwork_ix = fast_moieties.subnetwork_species_ix
     isolated = np.setdiff1d(np.arange(P.shape[1]), subnetwork_ix)
     conc = jnp.zeros(P.shape[1])
     if isolated.size:
@@ -534,7 +490,7 @@ def assemble_balanced_conc(
 
 
 def get_rapid_equilibrium_residual(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     log_conc: Float[Array, " n_subnetwork_species"],
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
@@ -545,12 +501,12 @@ def get_rapid_equilibrium_residual(
     """Get the residuals of every fast subnetwork's rapid equilibrium
     conditions, given log concentrations in the order of
     `subnetwork_species_ix`."""
-    log_keq = get_log_keq(rapid_equilibria, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
     residuals = []
     start = 0
-    for subnetwork in rapid_equilibria.subnetworks:
+    for subnetwork in fast_moieties.subnetworks:
         S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
-            rapid_equilibria, subnetwork
+            fast_moieties, subnetwork
         )
         stop = start + len(subnetwork.balanced_species_ix)
         residuals.append(
@@ -642,3 +598,140 @@ def solve_fast_subnetwork(
         jnp.abs(residual(sol.value, args)) < 1e3 * atol
     )
     return jnp.where(solved, jnp.exp(sol.value), jnp.nan)
+
+
+@dataclass(frozen=True)
+class RapidEquilibriumNetworkScope:
+    species: tuple[str, ...]
+    balanced_species: tuple[str, ...]
+    moiety_label_species: tuple[str, ...]
+    S: StoichiometricMatrix
+    species_to_dgf_ix: np.ndarray
+    water_dgf: float
+
+
+class RapidEquilibriumNetworkIx(Module):
+    ix_dgf: np.ndarray
+    has_unbalanced: bool
+    water_dgf: float
+
+
+class RapidEquilibriumNetworkInput(Module):
+    dgf: Float[Array, " n_species"]
+    temperature: Scalar
+    log_conc_unbalanced: UnbalancedConcArr
+    water_dgf: float
+
+
+class RapidEquilibriumNetwork(Module):
+    reactions: dict[str, RapidEquilibriumReaction]
+    fast_moiety_label_species: list[str] = field(default_factory=list)
+
+    def get_species(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                species_id
+                for reaction in self.reactions.values()
+                for species_id in reaction.stoichiometry
+            )
+        )
+
+    def get_structure(
+        self, scope: RapidEquilibriumNetworkScope
+    ) -> FastMoieties:
+        """Build a model's rapid equilibrium structure from its rapid
+        equilibrium reactions and label choices."""
+        species = scope.species
+        balanced_species = scope.balanced_species
+        S = scope.S
+        check_fast_moiety_label_species(
+            self.fast_moiety_label_species, balanced_species, species, S
+        )
+        balanced_ix = [species.index(s) for s in balanced_species]
+        check_fast_moieties(S[balanced_ix, :], list(self.reactions))
+        required_labels = [
+            s
+            for s in dict.fromkeys(
+                list(scope.moiety_label_species)
+                + list(self.fast_moiety_label_species)
+            )
+            if s in balanced_species
+        ]
+        matrix, labels, subnetworks = get_fast_moieties(
+            S[balanced_ix, :],
+            balanced_species,
+            list(self.reactions),
+            sorted(balanced_species, key=species.index),
+            required_labels,
+        )
+        return FastMoieties(
+            reaction_ids=tuple(self.reactions),
+            water_stoichiometry=tuple(
+                reaction.water_stoichiometry
+                for reaction in self.reactions.values()
+            ),
+            balanced_species=tuple(balanced_species),
+            balanced_species_ix=tuple(balanced_ix),
+            unbalanced_species_ix=tuple(
+                i for i, s in enumerate(species) if s not in balanced_species
+            ),
+            subnetworks=tuple(subnetworks),
+            fast_moiety_labels=tuple(labels),
+            _S=freeze_array(S),
+            _fast_moiety_matrix=freeze_array(matrix),
+        )
+
+    def get_input_indexes(
+        self, scope: RapidEquilibriumNetworkScope, labelling: ParamLabelling
+    ) -> RapidEquilibriumNetworkIx:
+        return RapidEquilibriumNetworkIx(
+            ix_dgf=scope.species_to_dgf_ix,
+            has_unbalanced="log_conc_unbalanced" in labelling,
+            water_dgf=scope.water_dgf,
+        )
+
+    def get_input(
+        self, parameters: ParamDict, ix: RapidEquilibriumNetworkIx
+    ) -> RapidEquilibriumNetworkInput:
+        return RapidEquilibriumNetworkInput(
+            dgf=parameters["dgf"][ix.ix_dgf],
+            temperature=parameters["temperature"],
+            log_conc_unbalanced=(
+                parameters["log_conc_unbalanced"]
+                if ix.has_unbalanced
+                else jnp.zeros(0)
+            ),
+            water_dgf=ix.water_dgf,
+        )
+
+    def solve(
+        self,
+        structure: FastMoieties,
+        fast_moiety_totals: FastMoietyTotalsArr,
+        network_input: RapidEquilibriumNetworkInput,
+    ) -> BalancedConcArr:
+        return solve_rapid_equilibria(
+            structure,
+            fast_moiety_totals,
+            network_input.log_conc_unbalanced,
+            network_input.dgf,
+            network_input.temperature,
+            network_input.water_dgf,
+        )
+
+    def get_residuals(
+        self,
+        structure: FastMoieties,
+        log_conc: Float[Array, " n_subnetwork_species"],
+        fast_moiety_totals: FastMoietyTotalsArr,
+        network_input: RapidEquilibriumNetworkInput,
+    ) -> Float[Array, " n_subnetwork_species"]:
+        return get_rapid_equilibrium_residual(
+            structure,
+            log_conc,
+            fast_moiety_totals,
+            network_input.log_conc_unbalanced,
+            network_input.dgf,
+            network_input.temperature,
+            network_input.water_dgf,
+        )

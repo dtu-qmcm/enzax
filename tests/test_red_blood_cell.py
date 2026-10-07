@@ -59,7 +59,7 @@ def test_rapid_equilibria_shrink_the_ode_state():
 
 
 def test_every_fast_moiety_has_non_negative_coefficients():
-    matrix = rbc.rapid_equilibrium_model.rapid_equilibria.fast_moiety_matrix
+    matrix = rbc.rapid_equilibrium_model.fast_moieties.fast_moiety_matrix
     assert np.all(matrix >= 0)
 
 

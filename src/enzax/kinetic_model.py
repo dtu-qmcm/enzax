@@ -36,12 +36,10 @@ from enzax.parameters import (
     merge_labels,
 )
 from enzax.rapid_equilibrium import (
-    RapidEquilibria,
-    RapidEquilibriumReaction,
+    FastMoieties,
+    RapidEquilibriumNetwork,
+    RapidEquilibriumNetworkScope,
     assemble_balanced_conc,
-    get_rapid_equilibria,
-    get_rapid_equilibrium_residual,
-    solve_rapid_equilibria,
 )
 from enzax.reaction import Reaction, ReactionScope
 
@@ -271,12 +269,13 @@ class KineticModel(eqx.Module):
     assembled from the reactions' stoichiometries and effectors.
 
     A model's balanced species are the ones whose concentrations the model
-    determines, rather than taking them as parameters. Reactions in
-    `rapid_equilibrium_reactions` have no rate law: they are always at
+    determines, rather than taking them as parameters. The reactions in
+    `rapid_equilibrium_network` have no rate law: they are always at
     equilibrium, so the model tracks the fast moieties they conserve rather
     than the species they involve. Each fast moiety is labelled by one of its
-    species, which `fast_moiety_label_species` can choose. Without rapid
-    equilibrium reactions, every balanced species is a fast moiety of its own.
+    species, which the `fast_moiety_label_species` of
+    `rapid_equilibrium_network` can choose. Without rapid equilibrium
+    reactions, every balanced species is a fast moiety of its own.
 
     Each conserved moiety is a combination of fast moieties.
     `moiety_label_species` names one fast moiety for each conserved moiety,
@@ -309,11 +308,8 @@ class KineticModel(eqx.Module):
     moiety_label_species: list[str] = eqx.field(
         static=True, default_factory=list
     )
-    rapid_equilibrium_reactions: dict[str, RapidEquilibriumReaction] = (
-        eqx.field(static=True, default_factory=dict)
-    )
-    fast_moiety_label_species: list[str] = eqx.field(
-        static=True, default_factory=list
+    rapid_equilibrium_network: RapidEquilibriumNetwork | None = eqx.field(
+        static=True, default=None
     )
     compound_to_species: dict[str, list[str]] | None = eqx.field(
         static=True, default=None
@@ -324,7 +320,8 @@ class KineticModel(eqx.Module):
     )
     species: list[str] = eqx.field(static=True, init=False)
     reaction_ids: list[str] = eqx.field(static=True, init=False)
-    rapid_equilibria: RapidEquilibria = eqx.field(static=True, init=False)
+    fast_moieties: FastMoieties = eqx.field(static=True, init=False)
+    rapid_equilibrium_network_ix: PyTree = eqx.field(static=True, init=False)
     ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
@@ -345,7 +342,9 @@ class KineticModel(eqx.Module):
         }
         self.reaction_ids = list(self.reactions)
         clash = [
-            r for r in self.rapid_equilibrium_reactions if r in self.reactions
+            r
+            for r in self._rapid_equilibrium_network.reactions
+            if r in self.reactions
         ]
         if clash:
             msg = (
@@ -357,7 +356,7 @@ class KineticModel(eqx.Module):
         named = dict.fromkeys(
             self.balanced_species
             + self.moiety_label_species
-            + self.fast_moiety_label_species
+            + self._rapid_equilibrium_network.fast_moiety_label_species
         )
         not_species = [s for s in named if s not in self.species]
         if not_species:
@@ -386,23 +385,12 @@ class KineticModel(eqx.Module):
         self._S = freeze_array(
             get_stoichiometric_matrix(self.stoichiometry, self.species)
         )
-        self.rapid_equilibria = get_rapid_equilibria(
-            self.rapid_equilibrium_reactions,
-            get_stoichiometric_matrix(
-                {
-                    r: reaction.stoichiometry
-                    for r, reaction in self.rapid_equilibrium_reactions.items()
-                },
-                self.species,
-            ),
-            self.species,
-            self.balanced_species,
-            self.moiety_label_species,
-            self.fast_moiety_label_species,
+        self.fast_moieties = self._rapid_equilibrium_network.get_structure(
+            self._rapid_equilibrium_network_scope()
         )
         self.ode_state_species = [
             s
-            for s in self.rapid_equilibria.fast_moiety_labels
+            for s in self.fast_moieties.fast_moiety_labels
             if s not in self.moiety_label_species
         ]
         self._ode_state_species_ix = freeze_array(
@@ -426,7 +414,7 @@ class KineticModel(eqx.Module):
         for species_i in self.species:
             check_id_has_no_separator(species_i, "Species")
         for reaction in self.reaction_ids + list(
-            self.rapid_equilibrium_reactions
+            self._rapid_equilibrium_network.reactions
         ):
             check_id_has_no_separator(reaction, "Reaction")
         for compound in self._dgf_labels():
@@ -439,6 +427,35 @@ class KineticModel(eqx.Module):
             )
             for scope in self._scopes()
         ]
+        self.rapid_equilibrium_network_ix = (
+            self._rapid_equilibrium_network.get_input_indexes(
+                self._rapid_equilibrium_network_scope(),
+                self.parameter_labelling,
+            )
+        )
+
+    @property
+    def _rapid_equilibrium_network(self) -> RapidEquilibriumNetwork:
+        if self.rapid_equilibrium_network is None:
+            return RapidEquilibriumNetwork(reactions={})
+        return self.rapid_equilibrium_network
+
+    def _rapid_equilibrium_network_scope(self) -> RapidEquilibriumNetworkScope:
+        network = self._rapid_equilibrium_network
+        return RapidEquilibriumNetworkScope(
+            species=tuple(self.species),
+            balanced_species=tuple(self.balanced_species),
+            moiety_label_species=tuple(self.moiety_label_species),
+            S=get_stoichiometric_matrix(
+                {
+                    r: reaction.stoichiometry
+                    for r, reaction in network.reactions.items()
+                },
+                self.species,
+            ),
+            species_to_dgf_ix=self.species_to_dgf_ix,
+            water_dgf=self.water_dgf,
+        )
 
     @property
     def species_to_dgf_ix(self) -> SpeciesIx:
@@ -466,14 +483,14 @@ class KineticModel(eqx.Module):
 
     @property
     def S_fast(self) -> StoichiometricMatrix:
-        return self.rapid_equilibria.S
+        return self.fast_moieties.S
 
     @property
     def S_reduced(self) -> StoichiometricMatrix:
         """The stoichiometric matrix of the reactions with fluxes, in terms of
         fast moieties rather than balanced species."""
         return (
-            self.rapid_equilibria.fast_moiety_matrix
+            self.fast_moieties.fast_moiety_matrix
             @ self.S[self.balanced_species_ix, :]
         )
 
@@ -481,10 +498,7 @@ class KineticModel(eqx.Module):
         """Get the rows of `S_reduced` that belong to the fast moieties with
         these labels."""
         return np.array(
-            [
-                self.rapid_equilibria.fast_moiety_labels.index(s)
-                for s in species
-            ],
+            [self.fast_moieties.fast_moiety_labels.index(s) for s in species],
             dtype=np.int16,
         )
 
@@ -511,11 +525,9 @@ class KineticModel(eqx.Module):
             for reaction in self.reaction_ids
             for species_id in self.reactions[reaction].get_species()
         ]
-        from_rapid_equilibria = [
-            species_id
-            for reaction in self.rapid_equilibrium_reactions.values()
-            for species_id in reaction.stoichiometry
-        ]
+        from_rapid_equilibria = list(
+            self._rapid_equilibrium_network.get_species()
+        )
         return list(
             dict.fromkeys(
                 from_stoichiometry + from_reactions + from_rapid_equilibria
@@ -621,7 +633,7 @@ class KineticModel(eqx.Module):
         the ones that belong to conserved moieties from the conserved moiety
         totals."""
         dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
-        totals = jnp.zeros(len(self.rapid_equilibria.fast_moiety_labels))
+        totals = jnp.zeros(len(self.fast_moieties.fast_moiety_labels))
         totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
             ode_state
         )
@@ -640,21 +652,20 @@ class KineticModel(eqx.Module):
         equilibrium.
         """
         totals = self.get_fast_moiety_totals(ode_state, parameters)
-        if not self.rapid_equilibrium_reactions:
+        if not self._rapid_equilibrium_network.reactions:
             return totals
-        return solve_rapid_equilibria(
-            self.rapid_equilibria,
+        return self._rapid_equilibrium_network.solve(
+            self.fast_moieties,
             totals,
-            self.get_log_conc_unbalanced(parameters),
-            parameters["dgf"][self.species_to_dgf_ix],
-            parameters["temperature"],
-            self.water_dgf,
+            self._rapid_equilibrium_network.get_input(
+                parameters, self.rapid_equilibrium_network_ix
+            ),
         )
 
     def get_ode_state(self, conc_balanced: BalancedConcArr) -> OdeStateArr:
         """Get the ODE state that corresponds to some balanced species'
         concentrations."""
-        totals = self.rapid_equilibria.fast_moiety_matrix @ conc_balanced
+        totals = self.fast_moieties.fast_moiety_matrix @ conc_balanced
         return totals[self.fast_moiety_rows(self.ode_state_species)]
 
     def dcdt(
@@ -679,7 +690,7 @@ class KineticModel(eqx.Module):
         where `log_conc` holds the log concentrations of the species in fast
         subnetworks, found by solving for rapid equilibrium."""
         conc_balanced = self.get_balanced_conc(ode_state, parameters)
-        subnetwork_ix = self.rapid_equilibria.subnetwork_species_ix
+        subnetwork_ix = self.fast_moieties.subnetwork_species_ix
         return ode_state, jnp.log(conc_balanced[subnetwork_ix])
 
     def dae_vector_field(
@@ -702,21 +713,20 @@ class KineticModel(eqx.Module):
         ode_state, log_conc = y
         totals = self.get_fast_moiety_totals(ode_state, parameters)
         conc_balanced = assemble_balanced_conc(
-            self.rapid_equilibria, totals, jnp.exp(log_conc)
+            self.fast_moieties, totals, jnp.exp(log_conc)
         )
         v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
         ode_rows = self.fast_moiety_rows(self.ode_state_species)
         rates = self.S_reduced[ode_rows] @ v
-        if not self.rapid_equilibrium_reactions:
+        if not self._rapid_equilibrium_network.reactions:
             return rates, jnp.zeros(0)
-        constraints = get_rapid_equilibrium_residual(
-            self.rapid_equilibria,
+        constraints = self._rapid_equilibrium_network.get_residuals(
+            self.fast_moieties,
             log_conc,
             totals,
-            self.get_log_conc_unbalanced(parameters),
-            parameters["dgf"][self.species_to_dgf_ix],
-            parameters["temperature"],
-            self.water_dgf,
+            self._rapid_equilibrium_network.get_input(
+                parameters, self.rapid_equilibrium_network_ix
+            ),
         )
         return rates, constraints
 
