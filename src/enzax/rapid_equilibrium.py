@@ -602,6 +602,15 @@ def solve_fast_subnetwork(
 
 @dataclass(frozen=True)
 class RapidEquilibriumNetworkScope:
+    """What a rapid equilibrium network needs to know about the model it
+    belongs to.
+
+    Built at model construction and handed to
+    `RapidEquilibriumNetwork.get_structure` and
+    `RapidEquilibriumNetwork.get_input_indexes`. `S` is the rapid equilibrium
+    reactions' stoichiometric matrix, with one row per species in the model.
+    """
+
     species: tuple[str, ...]
     balanced_species: tuple[str, ...]
     moiety_label_species: tuple[str, ...]
@@ -611,12 +620,18 @@ class RapidEquilibriumNetworkScope:
 
 
 class RapidEquilibriumNetworkIx(Module):
+    """Where a rapid equilibrium network reads its inputs. Built once, when
+    the model is constructed."""
+
     ix_dgf: np.ndarray
     has_unbalanced: bool
     water_dgf: float
 
 
 class RapidEquilibriumNetworkInput(Module):
+    """The values a rapid equilibrium network's equilibrium constants need,
+    gathered at each evaluation."""
+
     dgf: Float[Array, " n_species"]
     temperature: Scalar
     log_conc_unbalanced: UnbalancedConcArr
@@ -624,10 +639,27 @@ class RapidEquilibriumNetworkInput(Module):
 
 
 class RapidEquilibriumNetwork(Module):
+    """A model's rapid equilibrium reactions, with its choice of fast moiety
+    labels.
+
+    The reactions in `reactions` have no rate law as they are always at
+    equilibrium. Together they conserve fast moieties, ie combinations of
+    balanced species. The model integrates these moieties instead of the
+    species themselves, and the species' concentrations are found by solving
+    for rapid equilibrium. Each fast moiety is labelled by one of its species,
+    which can be set using `fast_moiety_label_species`.
+    """
+
     reactions: dict[str, RapidEquilibriumReaction]
     fast_moiety_label_species: list[str] = field(default_factory=list)
 
     def get_species(self) -> tuple[str, ...]:
+        """Get every species the rapid equilibrium reactions involve, in order
+        of first appearance.
+
+        A species that only they name joins the model after the species that
+        the reactions with fluxes name.
+        """
         return tuple(
             dict.fromkeys(
                 species_id
@@ -684,6 +716,7 @@ class RapidEquilibriumNetwork(Module):
     def get_input_indexes(
         self, scope: RapidEquilibriumNetworkScope, labelling: ParamLabelling
     ) -> RapidEquilibriumNetworkIx:
+        """Get an index container from a scope and a labelling."""
         return RapidEquilibriumNetworkIx(
             ix_dgf=scope.species_to_dgf_ix,
             has_unbalanced="log_conc_unbalanced" in labelling,
@@ -693,6 +726,8 @@ class RapidEquilibriumNetwork(Module):
     def get_input(
         self, parameters: ParamDict, ix: RapidEquilibriumNetworkIx
     ) -> RapidEquilibriumNetworkInput:
+        """Gather the formation energies, temperature and unbalanced
+        concentrations needed to calculate equilibrium constants."""
         return RapidEquilibriumNetworkInput(
             dgf=parameters["dgf"][ix.ix_dgf],
             temperature=parameters["temperature"],
@@ -710,6 +745,9 @@ class RapidEquilibriumNetwork(Module):
         fast_moiety_totals: FastMoietyTotalsArr,
         network_input: RapidEquilibriumNetworkInput,
     ) -> BalancedConcArr:
+        """Get the balanced species' concentrations at which every rapid
+        equilibrium reaction is at equilibrium and the fast moieties have the
+        given totals. See `solve_rapid_equilibria`."""
         return solve_rapid_equilibria(
             structure,
             fast_moiety_totals,
@@ -726,6 +764,10 @@ class RapidEquilibriumNetwork(Module):
         fast_moiety_totals: FastMoietyTotalsArr,
         network_input: RapidEquilibriumNetworkInput,
     ) -> Float[Array, " n_subnetwork_species"]:
+        """Get the residuals of the fast subnetwork's rapid equilibrium
+        conditions, given log concentrations in the order of
+        `FastMoieties.subnetwork_species_ix`. See
+        `get_rapid_equilibrium_residual`."""
         return get_rapid_equilibrium_residual(
             structure,
             log_conc,
