@@ -46,12 +46,12 @@ def get_reversibility(
       1 - exp(((dgr + (RT * quotient)) / RT))
 
     but it's implemented a bit differently so as to be more numerically stable.
-    Reactant concentrations are clipped below at 1e-9 and the exponent to
+    Reactant concentrations are clipped below at 1e-12 and the exponent to
     between -100 and 100, so the result can differ slightly from the formula
     in extreme cases, and a NaN result raises an error.
     """
     RT = temperature * GAS_CONSTANT
-    conc_clipped = jnp.clip(reactant_conc, min=1e-9)
+    conc_clipped = jnp.clip(reactant_conc, min=1e-12)
     dgr_std = (
         reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf
     ).flatten()

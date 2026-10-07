@@ -74,6 +74,7 @@ KINETIC_PARAMETERS = (
     "log_enzyme",
     "log_tc",
     "log_drain",
+    "log_k_plus",
     "log_custom",
     "custom",
 )

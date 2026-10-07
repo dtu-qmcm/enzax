@@ -243,9 +243,7 @@ def build_problem(example, seed: int) -> tuple[Problem, jax.Array]:
     )
     default_guess = example.steady_state
     steady = get_steady_state_hybrid(model, default_guess, true_parameters)
-    balanced = model.get_balanced_conc(
-        steady, model.get_moiety_totals(true_parameters)
-    )
+    balanced = model.get_balanced_conc(steady, true_parameters)
     true_conc = model.get_conc(
         balanced, model.get_log_conc_unbalanced(true_parameters)
     )
@@ -344,9 +342,7 @@ def make_density(problem: Problem, configuration: Configuration) -> Callable:
         free_parameters = problem.unflatten(position)
         parameters = combine_parameters(problem.split, free_parameters)
         steady = solve(model, guess, parameters)
-        balanced = model.get_balanced_conc(
-            steady, model.get_moiety_totals(parameters)
-        )
+        balanced = model.get_balanced_conc(steady, parameters)
         conc_hat = model.get_conc(
             balanced, model.get_log_conc_unbalanced(parameters)
         )
@@ -880,7 +876,7 @@ def main() -> None:
     problem, _ = build_problem(glycolysis, SEED)
     n_free = count_free_parameters(problem.split)
     print(
-        f"glycolysis: {len(problem.model.independent_species)} balanced "
+        f"glycolysis: {len(problem.model.ode_state_species)} balanced "
         f"species, {len(problem.model.reaction_ids)} reactions, {n_free} free "
         "parameters"
     )
@@ -916,7 +912,7 @@ def main() -> None:
         rows,
         f"{OUT_PREFIX}.png",
         subtitle=(
-            f"glycolysis: {len(problem.model.independent_species)} balanced "
+            f"glycolysis: {len(problem.model.ode_state_species)} balanced "
             f"species, {n_free} free parameters, {n_step} leapfrog steps per "
             f"iteration. Each row adds one optimisation to the row above."
         ),

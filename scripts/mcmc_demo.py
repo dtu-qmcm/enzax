@@ -95,9 +95,7 @@ def main():
     free_true = get_free_parameters(split, true_parameters)
     prior = prior_from_truth(free_true, sd=PRIOR_SD)
     steady = get_steady_state_hybrid(model, default_guess, true_parameters)
-    balanced = model.get_balanced_conc(
-        steady, model.get_moiety_totals(true_parameters)
-    )
+    balanced = model.get_balanced_conc(steady, true_parameters)
     true_conc = model.get_conc(
         balanced, model.get_log_conc_unbalanced(true_parameters)
     )

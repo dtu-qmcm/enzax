@@ -18,7 +18,7 @@ import optimistix as optx
 from jax import numpy as jnp
 from jaxtyping import PyTree
 
-from enzax.array_types import IndConcArr
+from enzax.array_types import OdeStateArr
 from enzax.kinetic_model import KineticModel
 
 # The step count a steady state solve is allowed before it is called a
@@ -36,7 +36,7 @@ NEWTON_LINEAR_SOLVER = lx.AutoLinearSolver(well_posed=False)
 @eqx.filter_jit()
 def get_steady_state(
     rhs,
-    guess: IndConcArr,
+    guess: OdeStateArr,
     parameters: PyTree,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
@@ -46,7 +46,7 @@ def get_steady_state(
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
     adjoint: diffrax.AbstractAdjoint | None = None,
-) -> IndConcArr:
+) -> OdeStateArr:
     """Get the steady state of a kinetic model, using diffrax.
 
     Returns NaN if no steady state was found, so that a sampler treats the
@@ -136,12 +136,12 @@ def get_steady_state(
 @eqx.filter_jit()
 def refine_guess_newton(
     model: KineticModel,
-    guess: IndConcArr,
+    guess: OdeStateArr,
     parameters: PyTree,
     newton_max_steps: int = 10,
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
-) -> IndConcArr:
+) -> OdeStateArr:
     """Improve a steady state guess with a bounded Newton root find on `dcdt`.
 
     Returns the root Newton found if it converged to finite, positive
@@ -152,7 +152,7 @@ def refine_guess_newton(
 
     :param model: the kinetic model whose `dcdt` is being solved.
 
-    :param guess: the concentrations of the independent species to start from,
+    :param guess: the concentrations of the ODE state species to start from,
     and to fall back to.
 
     :param parameters: a PyTree of parameters.
@@ -177,9 +177,7 @@ def refine_guess_newton(
         throw=False,
     )
     conc_ind = jax.lax.stop_gradient(sol.value)
-    conc_balanced = model.get_balanced_conc(
-        conc_ind, model.get_moiety_totals(parameters)
-    )
+    conc_balanced = model.get_balanced_conc(conc_ind, parameters)
     trustworthy = (
         (sol.result == optx.RESULTS.successful)
         & jnp.isfinite(conc_ind).all()
@@ -191,7 +189,7 @@ def refine_guess_newton(
 @eqx.filter_jit()
 def get_steady_state_hybrid(
     model: KineticModel,
-    guess: IndConcArr,
+    guess: OdeStateArr,
     parameters: PyTree,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
@@ -204,7 +202,7 @@ def get_steady_state_hybrid(
     newton_max_steps: int = 10,
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
-) -> IndConcArr:
+) -> OdeStateArr:
     """Get a steady state, trying Newton first and integrating from its answer.
 
     Takes `get_steady_state`'s arguments plus `refine_guess_newton`'s. The
@@ -233,3 +231,67 @@ def get_steady_state_hybrid(
         stepsize_controller=stepsize_controller,
         adjoint=adjoint,
     )
+
+
+@eqx.filter_jit()
+def get_steady_state_dae(
+    model: KineticModel,
+    guess: OdeStateArr,
+    parameters: PyTree,
+    ivp_rtol: float = 1e-9,
+    ivp_atol: float = 1e-9,
+    steady_state_rtol: float = 1e-12,
+    steady_state_atol: float = 1e-12,
+    max_steps: int | None = DEFAULT_MAX_STEPS,
+    suppress_algebraic_error: bool = True,
+    adjoint: diffrax.AbstractAdjoint | None = None,
+) -> OdeStateArr:
+    """Get the steady state of a model with rapid equilibria by integrating it
+    as a differential algebraic equation.
+
+    Alongside the ODE state, the integrator carries the log concentrations of
+    the species in fast subnetworks, and solves the rapid equilibria in its own
+    Newton iterations instead of in every evaluation of `dcdt`. Needs
+    diffrax-bdf.
+
+    Returns NaN if no steady state was found.
+
+    Takes the same arguments as `get_steady_state`, except `solver` and
+    `stepsize_controller`, plus:
+
+    :param suppress_algebraic_error: whether to leave the log concentrations
+    out of the integrator's error estimate. Their accuracy follows from the ODE
+    state's, and leaving them out saves steps.
+    """
+    from diffrax_bdf import BDF, BDFController, SemiExplicitDAETerm
+
+    y0 = jax.lax.stop_gradient(model.get_dae_state(guess, parameters))
+    if adjoint is None:
+        adjoint = diffrax.ImplicitAdjoint()
+    sol = diffrax.diffeqsolve(
+        terms=SemiExplicitDAETerm(model.dae_vector_field, (False, True)),
+        solver=BDF(suppress_algebraic_error=suppress_algebraic_error),
+        t0=jnp.array(0.0),
+        t1=jnp.inf,
+        dt0=jnp.array(0.000001),
+        y0=y0,
+        max_steps=max_steps,
+        stepsize_controller=BDFController(
+            rtol=ivp_rtol, atol=ivp_atol, dtmax=1e6
+        ),
+        event=diffrax.Event(
+            diffrax.steady_state_event(
+                rtol=steady_state_rtol, atol=steady_state_atol
+            )
+        ),
+        adjoint=adjoint,
+        args=parameters,
+        throw=False,
+    )
+    if sol.ys is None:
+        raise ValueError("No steady state found!")
+    ode_state = sol.ys[0][0]
+    found = (sol.result == diffrax.RESULTS.event_occurred) & jnp.isfinite(
+        ode_state
+    ).all()
+    return jnp.where(found, ode_state, jnp.nan)

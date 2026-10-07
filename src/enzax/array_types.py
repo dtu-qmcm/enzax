@@ -6,14 +6,14 @@ the flat arrays themselves, the labelling that says which label sits at which
 position, and the label-keyed values a reader writes.
 
 Model-level axes start with plain `n_*`: `n_species`, `n_reaction`,
-`n_balanced`, `n_unbalanced`, `n_ind_species`, `n_dep_species`. There is one
+`n_balanced`, `n_unbalanced`, `n_ode_state`, `n_moiety`. There is one
 value per `KineticModel`.
 
 The parameter axes are also model-level, because each parameter is stored
 as a single flat array for the whole model: `n_k` (every saturation constant
 -- Michaelis, competitive inhibition and allosteric), `n_kcat`, `n_enzyme`,
-`n_tc`, `n_drain` and `n_dgf`. A model's `parameter_labelling` says which
-label sits at which index along these axes.
+`n_tc`, `n_drain`, `n_k_plus` and `n_dgf`. A model's `parameter_labelling`
+says which label sits at which index along these axes.
 
 Reaction-level axes start with `n_rxn_*`. There is one value per reaction, so
 they are ragged across a model's reactions and only mean anything inside a
@@ -46,10 +46,11 @@ from jaxtyping import Array, Float, Int, ScalarLike
 ConcArray = Float[Array, " n_species"]
 BalancedConcArr = Float[Array, " n_balanced"]
 UnbalancedConcArr = Float[Array, " n_unbalanced"]
-IndConcArr = Float[Array, " n_ind_species"]
-# Rate of change of the independent species: same axis, different quantity.
-IndRateArr = Float[Array, " n_ind_species"]
-MoietyTotalsArr = Float[Array, " n_dep_species"]
+OdeStateArr = Float[Array, " n_ode_state"]
+# Rate of change of the ODE state: same axis, different quantity.
+OdeStateRateArr = Float[Array, " n_ode_state"]
+MoietyTotalsArr = Float[Array, " n_moiety"]
+FastMoietyTotalsArr = Float[Array, " n_fast_moiety"]
 Flux = Float[Array, " n_reaction"]
 
 # --------------------------------------------------------------------------
@@ -64,6 +65,7 @@ KcatArr = Float[Array, " n_kcat"]
 EnzymeArr = Float[Array, " n_enzyme"]
 TcArr = Float[Array, " n_tc"]
 DrainArr = Float[Array, " n_drain"]
+KPlusArr = Float[Array, " n_k_plus"]
 DgfArr = Float[Array, " n_dgf"]
 
 # --------------------------------------------------------------------------
@@ -71,14 +73,15 @@ DgfArr = Float[Array, " n_dgf"]
 # --------------------------------------------------------------------------
 StaticSpeciesArr = Float[np.ndarray, " n_species"]
 StoichiometricMatrix = Float[np.ndarray, " n_species n_reaction"]
-LinkMatrix = Float[np.ndarray, " n_dep_species n_ind_species"]
+LinkMatrix = Float[np.ndarray, " n_moiety n_ode_state"]
+FastMoietyMatrix = Float[np.ndarray, " n_fast_moiety n_balanced"]
 # Index arrays: the axis gives the array's length, and the comment says which
 # axis its values point into.
 SpeciesIx = Int[np.ndarray, " n_species"]  # values index n_dgf
 BalancedSpeciesIx = Int[np.ndarray, " n_balanced"]  # values index n_species
 UnbalancedSpeciesIx = Int[np.ndarray, " n_unbalanced"]  # values index n_species
-IndSpeciesIx = Int[np.ndarray, " n_ind_species"]  # values index n_species
-DepSpeciesIx = Int[np.ndarray, " n_dep_species"]  # values index n_species
+OdeStateSpeciesIx = Int[np.ndarray, " n_ode_state"]  # values index n_species
+MoietyLabelSpeciesIx = Int[np.ndarray, " n_moiety"]  # values index n_species
 
 # --------------------------------------------------------------------------
 # Reaction-level, traced
@@ -174,3 +177,23 @@ ParamValueSpec = dict[str, ParamEntry]
 # Misc
 # --------------------------------------------------------------------------
 FloatArray1d = Float[Array, " _"]
+
+
+# A pair (shape, values) for a static field
+FrozenArray = tuple[tuple[int, ...], tuple[int | float, ...]]
+
+
+def freeze_array(values) -> FrozenArray:
+    """Put an array into a form that a static field can hold.
+
+    This is required because static fields need to be comparable with ==, which
+    numpy arrays are not. See https://github.com/dtu-qmcm/enzax/issues/65.
+    """
+    array = np.asarray(values)
+    return array.shape, tuple(array.ravel().tolist())
+
+
+def unfreeze_array(frozen: FrozenArray, dtype) -> np.ndarray:
+    """Turn a frozen array into a numpy array with the given dtype."""
+    shape, values = frozen
+    return np.array(values, dtype=dtype).reshape(shape)

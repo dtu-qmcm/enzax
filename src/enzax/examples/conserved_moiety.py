@@ -20,8 +20,8 @@ Two features of the model:
 
 - The cofactors X1_c and X2_c form a conserved moiety `X`: reactions r3
   and regX interconvert them, so their total is constant. X2_c is therefore
-  declared a dependent species, leaving five independent species to solve for,
-  and the total X1_c + X2_c is the parameter `moiety_totals`.
+  declared a moiety label species, leaving five ODE state species to solve
+  for, and the total X1_c + X2_c is the parameter `moiety_totals`.
 
 """
 
@@ -32,7 +32,7 @@ from enzax.parameters import pack_parameters
 from enzax.reactions import MichaelisMenten
 
 balanced_species = ["A_c", "B_c", "C_c", "D_c", "X1_c", "X2_c"]
-dependent_species = ["X2_c"]
+moiety_label_species = ["X2_c"]
 # A and D each live in two compartments, so they share a formation energy.
 # Every other species is a compound of its own, so it needs no entry here.
 compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
@@ -62,7 +62,7 @@ reactions = {
 }
 model = KineticModel(
     balanced_species=balanced_species,
-    dependent_species=dependent_species,
+    moiety_label_species=moiety_label_species,
     compound_to_species=compound_to_species,
     reactions=reactions,
 )
@@ -135,7 +135,7 @@ parameters = pack_parameters(
         "temperature": 298.15,
     },
 )
-# Concentrations of the independent balanced species at steady state. X2_c's
+# Concentrations of the ODE state species at steady state. X2_c's
 # concentration follows from X1_c's and the conserved pool total.
 steady_state = jnp.array(
     [
