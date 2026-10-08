@@ -7,4 +7,5 @@
         - MichaelisMenten
         - SaturableReaction
         - Drain
+        - MassAction
         - SymbolicReaction

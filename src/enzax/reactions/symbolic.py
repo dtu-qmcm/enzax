@@ -99,6 +99,26 @@ def get_species_declaration(
     return {species_id: species_id for species_id in species}
 
 
+def get_variable_declaration(
+    variables: Mapping[str, str] | Sequence[str],
+) -> dict[str, str]:
+    """Normalise an algebraic variable declaration into a
+    `{symbol: variable}` dict.
+
+    A sequence of variable names means each variable is its own symbol.
+    """
+    if isinstance(variables, str):
+        msg = (
+            "A symbolic rate equation's algebraic variable declaration is the "
+            f"string {variables!r}. Use a list of variable names, or a mapping "
+            "from symbol to variable name."
+        )
+        raise ValueError(msg)
+    if isinstance(variables, Mapping):
+        return dict(variables)
+    return {variable: variable for variable in variables}
+
+
 def get_symbol_names(expression: sympy.Expr) -> set[str]:
     """Get the names of the symbols an expression uses."""
     return {symbol.name for symbol in expression.free_symbols}
@@ -197,7 +217,8 @@ def check_symbols(
     if undeclared:
         msg = (
             f"Reaction {reaction_id}'s expression uses {sorted(undeclared)}, "
-            "which are not declared as species or parameters."
+            "which are not declared as species, parameters or algebraic "
+            "variables."
         )
         raise ValueError(msg)
     unused = (set(species) | set(parameters)) - symbol_names
@@ -325,6 +346,10 @@ class SymbolicReaction(Reaction):
       gives the parameter its default label, or a mapping
       `{"kind": ..., "label": ...}`. The expression sees values on their natural
       scale, so a `log_` parameter arrives exponentiated.
+    * `algebraic_variables`: `{symbol: variable}` for every algebraic variable
+      the expression uses, or a list of variable names to use them as their own
+      symbols. The values come from the model's algebraic constraints, on their
+      natural scale, and enter the expression as parameters do.
     * `default_parameter_kind`: a parameter kind for every symbol that is not
       declared, e.g. `"log_custom"`. Each such symbol gets that kind's default
       label. A misspelt symbol then becomes a parameter of its own, which
@@ -383,7 +408,7 @@ class SymbolicReaction(Reaction):
     default_parameter_kind: str | None = None
     algebraic_variables: dict[str, str] = eqx.field(
         default_factory=dict,
-        converter=get_species_declaration,
+        converter=get_variable_declaration,
     )
 
     def get_parameter_declarations(self) -> dict[str, str | dict[str, str]]:

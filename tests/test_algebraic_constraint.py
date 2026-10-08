@@ -377,3 +377,14 @@ def test_algebraic_variables_can_be_negative():
     (x,) = algebraic["variables"]
     assert x < 0
     assert np.isclose(x**3 + x, -KC * 1.5, rtol=1e-10)
+
+
+def test_a_variable_declaration_cannot_be_a_string():
+    with pytest.raises(ValueError, match="algebraic variable declaration"):
+        SymbolicReaction(
+            stoichiometry={"a": -1.0},
+            expression="k * x * a",
+            species=["a"],
+            parameters={"k": "log_kcat"},
+            algebraic_variables="x",
+        )
