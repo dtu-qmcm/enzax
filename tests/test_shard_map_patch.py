@@ -46,9 +46,9 @@ def test_shard_map_gradient_matches_sequential():
             in_specs=(PartitionSpec("batch"),),
             out_specs=PartitionSpec("batch"),
             check_vma=False,
-        )
+        ),
     )
     sequential = jnp.array(
-        [jax.grad(steady_state)(rate) for rate in decay_rates]
+        [jax.grad(steady_state)(rate) for rate in decay_rates],
     )
     assert jnp.allclose(sharded(decay_rates), sequential)

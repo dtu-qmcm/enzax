@@ -4,12 +4,16 @@ import warnings
 from collections.abc import Mapping, Sequence
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import numpy as np
+import optimistix as optx
 import sympy
-from jaxtyping import Array, Float, PyTree, ScalarLike
+from jaxtyping import Array, PyTree, ScalarLike
 
+from enzax.algebraic_constraint import AlgebraicConstraint, ConstraintScope
 from enzax.array_types import (
+    AlgebraicVariableArr,
     FastMoietyTotalsArr,
     FrozenArray,
     BalancedConcArr,
@@ -36,12 +40,10 @@ from enzax.parameters import (
     merge_labels,
 )
 from enzax.rapid_equilibrium import (
-    RapidEquilibria,
-    RapidEquilibriumReaction,
+    FastMoieties,
+    RapidEquilibriumNetwork,
+    RapidEquilibriumNetworkScope,
     assemble_balanced_conc,
-    get_rapid_equilibria,
-    get_rapid_equilibrium_residual,
-    solve_rapid_equilibria,
 )
 from enzax.reaction import Reaction, ReactionScope
 
@@ -194,7 +196,8 @@ class UndeclaredMoietyWarning(UserWarning):
 
 
 def format_linear_combination(
-    coefficients: Sequence[sympy.Rational], names: Sequence[str]
+    coefficients: Sequence[sympy.Rational],
+    names: Sequence[str],
 ) -> str:
     """Write a linear combination of names, such as `A + 2 B - C`.
 
@@ -212,7 +215,8 @@ def format_linear_combination(
 
 
 def get_conserved_moieties(
-    S: StoichiometricMatrix, species: Sequence[str]
+    S: StoichiometricMatrix,
+    species: Sequence[str],
 ) -> list[str]:
     """Get the conserved moieties of a stoichiometric matrix.
 
@@ -244,7 +248,7 @@ def warn_about_undeclared_moieties(model: "KineticModel") -> None:
         (
             model.S[model.balanced_species_ix, :],
             model.S_fast[model.balanced_species_ix, :],
-        )
+        ),
     )
     if np.linalg.matrix_rank(S_balanced) == len(model.balanced_species):
         return
@@ -271,12 +275,13 @@ class KineticModel(eqx.Module):
     assembled from the reactions' stoichiometries and effectors.
 
     A model's balanced species are the ones whose concentrations the model
-    determines, rather than taking them as parameters. Reactions in
-    `rapid_equilibrium_reactions` have no rate law: they are always at
+    determines, rather than taking them as parameters. The reactions in
+    `rapid_equilibrium_network` have no rate law: they are always at
     equilibrium, so the model tracks the fast moieties they conserve rather
     than the species they involve. Each fast moiety is labelled by one of its
-    species, which `fast_moiety_label_species` can choose. Without rapid
-    equilibrium reactions, every balanced species is a fast moiety of its own.
+    species, which the `fast_moiety_label_species` of
+    `rapid_equilibrium_network` can choose. Without rapid equilibrium
+    reactions, every balanced species is a fast moiety of its own.
 
     Each conserved moiety is a combination of fast moieties.
     `moiety_label_species` names one fast moiety for each conserved moiety,
@@ -285,6 +290,13 @@ class KineticModel(eqx.Module):
     labels are `ode_state_species`, whose totals are the ODE state.
     Instantiating a model checks this, along with the other conditions listed
     in `validate_kinetic_model`.
+
+    `algebraic_constraints` maps ids to `AlgebraicConstraint` objects. An
+    algebraic constraint is an equation that the model's algebraic variables
+    must satisfy. The model's `algebraic_variables` are the variables its
+    constraints own, in constraint order. Rate laws can read them like
+    parameters, and the model solves for them alongside the concentrations: in
+    a nested solve for `dcdt`, or as part of the state for `dae_vector_field`.
 
     Formation energies belong to compounds rather than species, so species
     that represent the same compound in different compartments share one. Use
@@ -307,24 +319,32 @@ class KineticModel(eqx.Module):
     reactions: dict[str, Reaction] = eqx.field(static=True)
     balanced_species: list[str] = eqx.field(static=True)
     moiety_label_species: list[str] = eqx.field(
-        static=True, default_factory=list
+        static=True,
+        default_factory=list,
     )
-    rapid_equilibrium_reactions: dict[str, RapidEquilibriumReaction] = (
-        eqx.field(static=True, default_factory=dict)
+    rapid_equilibrium_network: RapidEquilibriumNetwork | None = eqx.field(
+        static=True,
+        default=None,
     )
-    fast_moiety_label_species: list[str] = eqx.field(
-        static=True, default_factory=list
+    algebraic_constraints: dict[str, AlgebraicConstraint] = eqx.field(
+        static=True,
+        default_factory=dict,
     )
     compound_to_species: dict[str, list[str]] | None = eqx.field(
-        static=True, default=None
+        static=True,
+        default=None,
     )
     water_dgf: float = eqx.field(static=True, default=-150.9)
     stoichiometry: dict[str, dict[str, float]] = eqx.field(
-        static=True, init=False
+        static=True,
+        init=False,
     )
     species: list[str] = eqx.field(static=True, init=False)
     reaction_ids: list[str] = eqx.field(static=True, init=False)
-    rapid_equilibria: RapidEquilibria = eqx.field(static=True, init=False)
+    fast_moieties: FastMoieties = eqx.field(static=True, init=False)
+    rapid_equilibrium_network_ix: PyTree = eqx.field(static=True, init=False)
+    algebraic_variables: list[str] = eqx.field(static=True, init=False)
+    constraint_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
     ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
@@ -345,7 +365,9 @@ class KineticModel(eqx.Module):
         }
         self.reaction_ids = list(self.reactions)
         clash = [
-            r for r in self.rapid_equilibrium_reactions if r in self.reactions
+            r
+            for r in self._rapid_equilibrium_network.reactions
+            if r in self.reactions
         ]
         if clash:
             msg = (
@@ -353,11 +375,14 @@ class KineticModel(eqx.Module):
                 "reactions with fluxes. Every reaction needs an id of its own."
             )
             raise ValueError(msg)
+        self._check_constraint_ids()
+        self.algebraic_variables = self._build_algebraic_variables()
         self.species = self._build_species()
+        self._check_algebraic_variable_names()
         named = dict.fromkeys(
             self.balanced_species
             + self.moiety_label_species
-            + self.fast_moiety_label_species
+            + self._rapid_equilibrium_network.fast_moiety_label_species,
         )
         not_species = [s for s in named if s not in self.species]
         if not_species:
@@ -368,51 +393,44 @@ class KineticModel(eqx.Module):
             )
             raise ValueError(msg)
         self.species_to_compound = get_species_to_compound(
-            self.species, self.compound_to_species
+            self.species,
+            self.compound_to_species,
         )
         compounds = self._dgf_labels()
         self._species_to_dgf_ix = freeze_array(
-            [compounds.index(c) for c in self.species_to_compound.values()]
+            [compounds.index(c) for c in self.species_to_compound.values()],
         )
         self.unbalanced_species = [
             s for s in self.species if s not in self.balanced_species
         ]
         self._balanced_species_ix = freeze_array(
-            [get_ix_from_list(s, self.species) for s in self.balanced_species]
+            [get_ix_from_list(s, self.species) for s in self.balanced_species],
         )
         self._unbalanced_species_ix = freeze_array(
-            [get_ix_from_list(s, self.species) for s in self.unbalanced_species]
+            [
+                get_ix_from_list(s, self.species)
+                for s in self.unbalanced_species
+            ],
         )
         self._S = freeze_array(
-            get_stoichiometric_matrix(self.stoichiometry, self.species)
+            get_stoichiometric_matrix(self.stoichiometry, self.species),
         )
-        self.rapid_equilibria = get_rapid_equilibria(
-            self.rapid_equilibrium_reactions,
-            get_stoichiometric_matrix(
-                {
-                    r: reaction.stoichiometry
-                    for r, reaction in self.rapid_equilibrium_reactions.items()
-                },
-                self.species,
-            ),
-            self.species,
-            self.balanced_species,
-            self.moiety_label_species,
-            self.fast_moiety_label_species,
+        self.fast_moieties = self._rapid_equilibrium_network.get_structure(
+            self._rapid_equilibrium_network_scope(),
         )
         self.ode_state_species = [
             s
-            for s in self.rapid_equilibria.fast_moiety_labels
+            for s in self.fast_moieties.fast_moiety_labels
             if s not in self.moiety_label_species
         ]
         self._ode_state_species_ix = freeze_array(
-            [get_ix_from_list(s, self.species) for s in self.ode_state_species]
+            [get_ix_from_list(s, self.species) for s in self.ode_state_species],
         )
         self._moiety_label_species_ix = freeze_array(
             [
                 get_ix_from_list(s, self.species)
                 for s in self.moiety_label_species
-            ]
+            ],
         )
         validate_kinetic_model(self)
         warn_about_undeclared_moieties(self)
@@ -421,24 +439,66 @@ class KineticModel(eqx.Module):
                 self.S_reduced,
                 self.fast_moiety_rows(self.ode_state_species),
                 self.fast_moiety_rows(self.moiety_label_species),
-            )
+            ),
         )
         for species_i in self.species:
             check_id_has_no_separator(species_i, "Species")
         for reaction in self.reaction_ids + list(
-            self.rapid_equilibrium_reactions
+            self._rapid_equilibrium_network.reactions,
         ):
             check_id_has_no_separator(reaction, "Reaction")
         for compound in self._dgf_labels():
             check_id_has_no_separator(compound, "Compound")
+        for constraint_id in self.algebraic_constraints:
+            check_id_has_no_separator(constraint_id, "Constraint")
+        for variable in self.algebraic_variables:
+            check_id_has_no_separator(variable, "Algebraic variable")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
         self.reaction_ix = [
             self.reactions[scope.reaction_id].get_input_indexes(
-                scope, self.parameter_labelling
+                scope,
+                self.parameter_labelling,
             )
             for scope in self._scopes()
         ]
+        self.constraint_ix = [
+            self.algebraic_constraints[scope.constraint_id].get_input_indexes(
+                scope,
+                self.parameter_labelling,
+            )
+            for scope in self._constraint_scopes()
+        ]
+        self._check_residual_counts()
+        self.rapid_equilibrium_network_ix = (
+            self._rapid_equilibrium_network.get_input_indexes(
+                self._rapid_equilibrium_network_scope(),
+                self.parameter_labelling,
+            )
+        )
+
+    @property
+    def _rapid_equilibrium_network(self) -> RapidEquilibriumNetwork:
+        if self.rapid_equilibrium_network is None:
+            return RapidEquilibriumNetwork(reactions={})
+        return self.rapid_equilibrium_network
+
+    def _rapid_equilibrium_network_scope(self) -> RapidEquilibriumNetworkScope:
+        network = self._rapid_equilibrium_network
+        return RapidEquilibriumNetworkScope(
+            species=tuple(self.species),
+            balanced_species=tuple(self.balanced_species),
+            moiety_label_species=tuple(self.moiety_label_species),
+            S=get_stoichiometric_matrix(
+                {
+                    r: reaction.stoichiometry
+                    for r, reaction in network.reactions.items()
+                },
+                self.species,
+            ),
+            species_to_dgf_ix=self.species_to_dgf_ix,
+            water_dgf=self.water_dgf,
+        )
 
     @property
     def species_to_dgf_ix(self) -> SpeciesIx:
@@ -466,14 +526,14 @@ class KineticModel(eqx.Module):
 
     @property
     def S_fast(self) -> StoichiometricMatrix:
-        return self.rapid_equilibria.S
+        return self.fast_moieties.S
 
     @property
     def S_reduced(self) -> StoichiometricMatrix:
         """The stoichiometric matrix of the reactions with fluxes, in terms of
         fast moieties rather than balanced species."""
         return (
-            self.rapid_equilibria.fast_moiety_matrix
+            self.fast_moieties.fast_moiety_matrix
             @ self.S[self.balanced_species_ix, :]
         )
 
@@ -481,10 +541,7 @@ class KineticModel(eqx.Module):
         """Get the rows of `S_reduced` that belong to the fast moieties with
         these labels."""
         return np.array(
-            [
-                self.rapid_equilibria.fast_moiety_labels.index(s)
-                for s in species
-            ],
+            [self.fast_moieties.fast_moiety_labels.index(s) for s in species],
             dtype=np.int16,
         )
 
@@ -511,16 +568,111 @@ class KineticModel(eqx.Module):
             for reaction in self.reaction_ids
             for species_id in self.reactions[reaction].get_species()
         ]
-        from_rapid_equilibria = [
+        from_rapid_equilibria = list(
+            self._rapid_equilibrium_network.get_species(),
+        )
+        from_constraints = [
             species_id
-            for reaction in self.rapid_equilibrium_reactions.values()
-            for species_id in reaction.stoichiometry
+            for constraint in self.algebraic_constraints.values()
+            for species_id in constraint.get_species()
         ]
         return list(
             dict.fromkeys(
-                from_stoichiometry + from_reactions + from_rapid_equilibria
-            )
+                from_stoichiometry
+                + from_reactions
+                + from_rapid_equilibria
+                + from_constraints,
+            ),
         )
+
+    def _check_constraint_ids(self) -> None:
+        reaction_ids = set(self.reactions) | set(
+            self._rapid_equilibrium_network.reactions,
+        )
+        clash = [c for c in self.algebraic_constraints if c in reaction_ids]
+        if clash:
+            msg = (
+                f"Algebraic constraints {clash} have the same ids as "
+                "reactions. Every constraint needs an id of its own."
+            )
+            raise ValueError(msg)
+
+    def _build_algebraic_variables(self) -> list[str]:
+        owners: dict[str, list[str]] = {}
+        for constraint_id, constraint in self.algebraic_constraints.items():
+            for variable in constraint.variables:
+                owners.setdefault(variable, []).append(constraint_id)
+        shared = {v: c for v, c in owners.items() if len(c) > 1}
+        if shared:
+            msg = (
+                "Each algebraic variable must belong to exactly one "
+                f"constraint, but these belong to several: {shared}."
+            )
+            raise ValueError(msg)
+        return list(owners)
+
+    def _check_algebraic_variable_names(self) -> None:
+        are_species = [v for v in self.algebraic_variables if v in self.species]
+        if are_species:
+            msg = (
+                f"Algebraic variables {are_species} have the same names as "
+                "species."
+            )
+            raise ValueError(msg)
+        for constraint_id, constraint in self.algebraic_constraints.items():
+            unknown = [
+                v
+                for v in constraint.get_variables_read()
+                if v not in self.algebraic_variables
+            ]
+            if unknown:
+                msg = (
+                    f"Constraint {constraint_id} reads algebraic variables "
+                    f"{unknown}, which no constraint has."
+                )
+                raise ValueError(msg)
+
+    def _constraint_scopes(self) -> list[ConstraintScope]:
+        return [
+            ConstraintScope(
+                constraint_id=constraint_id,
+                species=tuple(self.species),
+                algebraic_variables=tuple(self.algebraic_variables),
+            )
+            for constraint_id in self.algebraic_constraints
+        ]
+
+    def _check_residual_counts(self) -> None:
+        dummy_parameters = {
+            parameter: jax.ShapeDtypeStruct(
+                (len(labels),) if labels else (),
+                jnp.float64,
+            )
+            for parameter, labels in self.parameter_labelling.items()
+        }
+        conc = jax.ShapeDtypeStruct((len(self.species),), jnp.float64)
+        variables = jax.ShapeDtypeStruct(
+            (len(self.algebraic_variables),),
+            jnp.float64,
+        )
+        for (constraint_id, constraint), ix in zip(
+            self.algebraic_constraints.items(),
+            self.constraint_ix,
+        ):
+            residuals = eqx.filter_eval_shape(
+                lambda c, v, p: constraint(c, v, constraint.get_input(p, ix)),
+                conc,
+                variables,
+                dummy_parameters,
+            )
+            n_variables = len(constraint.variables)
+            if residuals.shape != (n_variables,):
+                msg = (
+                    f"Constraint {constraint_id} has {n_variables} algebraic "
+                    "variables, so it needs as many residuals, but it returns "
+                    f"an array of shape {residuals.shape}."
+                )
+                raise ValueError(msg)
 
     def _build_parameter_labelling(self) -> ParamLabelling:
         """Collect parameter labels from the rate equations and the structure.
@@ -536,13 +688,23 @@ class KineticModel(eqx.Module):
             self.reactions[scope.reaction_id].get_labels_by_parameter(scope)
             for scope in self._scopes()
         ]
+        from_constraints = [
+            self.algebraic_constraints[
+                scope.constraint_id
+            ].get_labels_by_parameter(scope)
+            for scope in self._constraint_scopes()
+        ]
         from_structure: dict[str, Sequence[str]] = {"dgf": self._dgf_labels()}
         if self.unbalanced_species:
             from_structure["log_conc_unbalanced"] = self.unbalanced_species
         if self.moiety_label_species:
             from_structure["moiety_totals"] = self.moiety_label_species
         from_structure["temperature"] = ()
-        return merge_labels(*from_rate_equations, from_structure)
+        return merge_labels(
+            *from_rate_equations,
+            *from_constraints,
+            from_structure,
+        )
 
     def _scopes(self) -> list[ReactionScope]:
         """Get one static description per reaction, in reaction order."""
@@ -553,6 +715,7 @@ class KineticModel(eqx.Module):
                 stoichiometry=self.S[:, ix_reaction],
                 species_to_dgf_ix=self.species_to_dgf_ix,
                 water_dgf=self.water_dgf,
+                algebraic_variables=tuple(self.algebraic_variables),
             )
             for ix_reaction, reaction in enumerate(self.reaction_ids)
         ]
@@ -575,17 +738,31 @@ class KineticModel(eqx.Module):
         conc = conc.at[self.unbalanced_species_ix].set(jnp.exp(log_unbalanced))
         return conc
 
-    def flux(self, conc_balanced: BalancedConcArr, parameters: PyTree) -> Flux:
+    def flux(
+        self,
+        conc_balanced: BalancedConcArr,
+        parameters: PyTree,
+        algebraic_variables: AlgebraicVariableArr | None = None,
+    ) -> Flux:
         """Get fluxes from balanced species concentrations.
 
         :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+
+        :param algebraic_variables: the algebraic variables' values, which
+        rate laws read like parameters. Only needed by models whose rate laws
+        read algebraic variables.
 
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
         """  # Noqa: E501
         conc = self.get_conc(
-            conc_balanced, self.get_log_conc_unbalanced(parameters)
+            conc_balanced,
+            self.get_log_conc_unbalanced(parameters),
         )
+        if algebraic_variables is not None:
+            parameters = parameters | {
+                "algebraic_variables": algebraic_variables,
+            }
         flux_list = []
         for reaction, ix in zip(self.reaction_ids, self.reaction_ix):
             rate_equation = self.reactions[reaction]
@@ -615,15 +792,17 @@ class KineticModel(eqx.Module):
         return parameters["moiety_totals"]
 
     def get_fast_moiety_totals(
-        self, ode_state: OdeStateArr, parameters: PyTree
+        self,
+        ode_state: OdeStateArr,
+        parameters: PyTree,
     ) -> FastMoietyTotalsArr:
         """Get the totals of every fast moiety from the ODE state, working out
         the ones that belong to conserved moieties from the conserved moiety
         totals."""
         dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
-        totals = jnp.zeros(len(self.rapid_equilibria.fast_moiety_labels))
+        totals = jnp.zeros(len(self.fast_moieties.fast_moiety_labels))
         totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
-            ode_state
+            ode_state,
         )
         totals = totals.at[
             self.fast_moiety_rows(self.moiety_label_species)
@@ -631,7 +810,9 @@ class KineticModel(eqx.Module):
         return totals
 
     def get_balanced_conc(
-        self, ode_state: OdeStateArr, parameters: PyTree
+        self,
+        ode_state: OdeStateArr,
+        parameters: PyTree,
     ) -> BalancedConcArr:
         """Get the balanced species' concentrations from the ODE state.
 
@@ -640,25 +821,27 @@ class KineticModel(eqx.Module):
         equilibrium.
         """
         totals = self.get_fast_moiety_totals(ode_state, parameters)
-        if not self.rapid_equilibrium_reactions:
+        if not self._rapid_equilibrium_network.reactions:
             return totals
-        return solve_rapid_equilibria(
-            self.rapid_equilibria,
+        return self._rapid_equilibrium_network.solve(
+            self.fast_moieties,
             totals,
-            self.get_log_conc_unbalanced(parameters),
-            parameters["dgf"][self.species_to_dgf_ix],
-            parameters["temperature"],
-            self.water_dgf,
+            self._rapid_equilibrium_network.get_input(
+                parameters,
+                self.rapid_equilibrium_network_ix,
+            ),
         )
 
     def get_ode_state(self, conc_balanced: BalancedConcArr) -> OdeStateArr:
         """Get the ODE state that corresponds to some balanced species'
         concentrations."""
-        totals = self.rapid_equilibria.fast_moiety_matrix @ conc_balanced
+        totals = self.fast_moieties.fast_moiety_matrix @ conc_balanced
         return totals[self.fast_moiety_rows(self.ode_state_species)]
 
     def dcdt(
-        self, conc_ind: OdeStateArr, parameters: PyTree
+        self,
+        conc_ind: OdeStateArr,
+        parameters: PyTree,
     ) -> OdeStateRateArr:
         """Get the rate of change of balanced species concentrations.
 
@@ -668,59 +851,177 @@ class KineticModel(eqx.Module):
 
         :return: a one dimensional array of floats representing the rate of change of the ODE state. Has the same size as `self.ode_state_species`.
         """  # Noqa: E501
-        conc_balanced = self.get_balanced_conc(conc_ind, parameters)
-        v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
+        conc_balanced = jnp.clip(
+            self.get_balanced_conc(conc_ind, parameters),
+            min=1e-12,
+        )
+        variables = None
+        if self.algebraic_constraints:
+            variables = self._solve_algebraic_variables(
+                conc_balanced,
+                parameters,
+            )
+        v = self.flux(conc_balanced, parameters, variables)
         return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
 
+    def get_initial_variables(self) -> AlgebraicVariableArr:
+        """Get the initial guess array for an algebraic variables solve."""
+        initial = [
+            constraint.get_initial_variables()
+            for constraint in self.algebraic_constraints.values()
+        ]
+        return jnp.concatenate(initial) if initial else jnp.zeros(0)
+
+    def get_constraint_residuals(
+        self,
+        conc: ConcArray,
+        variables: AlgebraicVariableArr,
+        parameters: PyTree,
+    ) -> AlgebraicVariableArr:
+        """Get the residual array for the model's algebraic constraints."""
+        residuals = [
+            constraint(conc, variables, constraint.get_input(parameters, ix))
+            for constraint, ix in zip(
+                self.algebraic_constraints.values(),
+                self.constraint_ix,
+            )
+        ]
+        return jnp.concatenate(residuals) if residuals else jnp.zeros(0)
+
+    def get_algebraic_variables(
+        self,
+        ode_state: OdeStateArr,
+        parameters: PyTree,
+    ) -> AlgebraicVariableArr:
+        """Get algebraic variables satisfying the model's constraints."""
+        conc_balanced = jnp.clip(
+            self.get_balanced_conc(ode_state, parameters),
+            min=1e-12,
+        )
+        return self._solve_algebraic_variables(conc_balanced, parameters)
+
+    def _solve_algebraic_variables(
+        self,
+        conc_balanced: BalancedConcArr,
+        parameters: PyTree,
+        rtol: float = 1e-10,
+        atol: float = 1e-10,
+        max_steps: int = 256,
+    ) -> AlgebraicVariableArr:
+        if not self.algebraic_constraints:
+            return jnp.zeros(0)
+        conc = self.get_conc(
+            conc_balanced,
+            self.get_log_conc_unbalanced(parameters),
+        )
+
+        def residual(variables, args):
+            conc, parameters = args
+            return self.get_constraint_residuals(conc, variables, parameters)
+
+        args = (conc, parameters)
+        sol = optx.least_squares(
+            residual,
+            optx.Dogleg(rtol=rtol, atol=atol),
+            self.get_initial_variables(),
+            args=args,
+            max_steps=max_steps,
+            throw=False,
+        )
+        solved = (sol.result == optx.RESULTS.successful) & jnp.all(
+            jnp.abs(residual(sol.value, args)) < 1e3 * atol,
+        )
+        return jnp.where(solved, sol.value, jnp.nan)
+
     def get_dae_state(
-        self, ode_state: OdeStateArr, parameters: PyTree
-    ) -> tuple[OdeStateArr, Float[Array, " n_subnetwork_species"]]:
-        """Get the pair `(ode_state, log_conc)` that `dae_vector_field` takes,
-        where `log_conc` holds the log concentrations of the species in fast
-        subnetworks, found by solving for rapid equilibrium."""
+        self,
+        ode_state: OdeStateArr,
+        parameters: PyTree,
+    ) -> tuple[OdeStateArr, dict[str, Array]]:
+        """Get the pair `(ode_state, algebraic)` that `dae_vector_field` takes.
+
+        `algebraic` is a dict: `"log_conc"` holds the log concentrations of the
+        species in fast subnetworks, found by solving for rapid equilibrium, and
+        `"variables"` the algebraic variables, found by solving the algebraic
+        constraints.
+        """
         conc_balanced = self.get_balanced_conc(ode_state, parameters)
-        subnetwork_ix = self.rapid_equilibria.subnetwork_species_ix
-        return ode_state, jnp.log(conc_balanced[subnetwork_ix])
+        subnetwork_ix = self.fast_moieties.subnetwork_species_ix
+        variables = self._solve_algebraic_variables(
+            jnp.clip(conc_balanced, min=1e-12),
+            parameters,
+        )
+        return ode_state, {
+            "log_conc": jnp.log(conc_balanced[subnetwork_ix]),
+            "variables": variables,
+        }
 
     def dae_vector_field(
         self,
         t: ScalarLike,
-        y: tuple[OdeStateArr, Float[Array, " n_subnetwork_species"]],
+        y: tuple[OdeStateArr, dict[str, Array]],
         parameters: PyTree,
-    ) -> tuple[OdeStateRateArr, Float[Array, " n_subnetwork_species"]]:
-        """Get the vector field of the model as a differential algebraic
-        equation in `y = (ode_state, log_conc)`, where `log_conc` holds the log
-        concentrations of the species in fast subnetworks.
+    ) -> tuple[OdeStateRateArr, dict[str, Array]]:
+        """Get the model's vector field as a differential algebraic equation.
 
-        Returns the rate of change of the ODE state, and the residuals of the
-        rapid equilibrium conditions. For each fast subnetwork these are the
-        log of each fast moiety's total from `log_conc` minus the log of its
-        total from `ode_state`, and each rapid equilibrium reaction's log mass
-        action ratio minus its log equilibrium constant. The residuals are zero
-        when `log_conc` agrees with `ode_state`.
+        The DAE is in `y = (ode_state, algebraic)`, where `algebraic` is as
+        returned by `get_dae_state`.
+
+        Returns the rate of change of the ODE state, and a dict of residuals
+        with the same keys as `algebraic`. Under `"log_conc"` are the residuals
+        of the rapid equilibrium conditions. For each fast subnetwork these are
+        the log of each fast moiety's total from `log_conc` minus the log of
+        its total from `ode_state`, and each rapid equilibrium reaction's log
+        mass action ratio minus its log equilibrium constant. Under
+        `"variables"` are the residuals of the algebraic constraints. The
+        residuals are zero when `algebraic` agrees with `ode_state`.
         """
-        ode_state, log_conc = y
+        ode_state, algebraic = y
+        log_conc = algebraic["log_conc"]
         totals = self.get_fast_moiety_totals(ode_state, parameters)
-        conc_balanced = assemble_balanced_conc(
-            self.rapid_equilibria, totals, jnp.exp(log_conc)
+        conc_balanced = jnp.clip(
+            assemble_balanced_conc(
+                self.fast_moieties,
+                totals,
+                jnp.exp(log_conc),
+            ),
+            min=1e-12,
         )
-        v = self.flux(jnp.clip(conc_balanced, min=1e-12), parameters)
+        variables = None
+        constraint_residuals = jnp.zeros(0)
+        if self.algebraic_constraints:
+            variables = algebraic["variables"]
+            constraint_residuals = self.get_constraint_residuals(
+                self.get_conc(
+                    conc_balanced,
+                    self.get_log_conc_unbalanced(parameters),
+                ),
+                variables,
+                parameters,
+            )
+        v = self.flux(conc_balanced, parameters, variables)
         ode_rows = self.fast_moiety_rows(self.ode_state_species)
         rates = self.S_reduced[ode_rows] @ v
-        if not self.rapid_equilibrium_reactions:
-            return rates, jnp.zeros(0)
-        constraints = get_rapid_equilibrium_residual(
-            self.rapid_equilibria,
-            log_conc,
-            totals,
-            self.get_log_conc_unbalanced(parameters),
-            parameters["dgf"][self.species_to_dgf_ix],
-            parameters["temperature"],
-            self.water_dgf,
-        )
-        return rates, constraints
+        network_residuals = jnp.zeros(0)
+        if self._rapid_equilibrium_network.reactions:
+            network_residuals = self._rapid_equilibrium_network.get_residuals(
+                self.fast_moieties,
+                log_conc,
+                totals,
+                self._rapid_equilibrium_network.get_input(
+                    parameters,
+                    self.rapid_equilibrium_network_ix,
+                ),
+            )
+        return rates, {
+            "log_conc": network_residuals,
+            "variables": constraint_residuals,
+        }
 
     def __call__(
-        self, t: ScalarLike, y: OdeStateArr, parameters: PyTree
+        self,
+        t: ScalarLike,
+        y: OdeStateArr,
+        parameters: PyTree,
     ) -> OdeStateRateArr:
         return self.dcdt(y, parameters)

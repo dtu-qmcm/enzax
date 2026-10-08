@@ -34,6 +34,7 @@ class ReactionScope:
     stoichiometry: StaticSpeciesArr
     species_to_dgf_ix: SpeciesIx
     water_dgf: float
+    algebraic_variables: tuple[str, ...] = ()
 
 
 def get_species_positions(
@@ -126,7 +127,9 @@ def get_species_labels(
 
 
 def check_species_labels_are_distinct(
-    labels: Mapping[str, str], reaction_id: str, what: str
+    labels: Mapping[str, str],
+    reaction_id: str,
+    what: str,
 ) -> None:
     """Raise if two species in one declaration of one reaction share a label."""
     seen: dict[str, str] = {}

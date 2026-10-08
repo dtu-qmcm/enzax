@@ -2,7 +2,7 @@
 moieties they conserve."""
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -19,6 +19,8 @@ from enzax.array_types import (
     FastMoietyMatrix,
     FastMoietyTotalsArr,
     FrozenArray,
+    ParamDict,
+    ParamLabelling,
     StoichiometricMatrix,
     UnbalancedConcArr,
     freeze_array,
@@ -55,7 +57,7 @@ class FastSubnetwork:
 
 
 @dataclass(frozen=True)
-class RapidEquilibria:
+class FastMoieties:
     """The rapid equilibrium reactions' structure: their stoichiometries and
     fast moieties.
 
@@ -98,7 +100,8 @@ class RapidEquilibria:
                 if coefficient != 0.0
             }
             for label, row in zip(
-                self.fast_moiety_labels, self.fast_moiety_matrix.tolist()
+                self.fast_moiety_labels,
+                self.fast_moiety_matrix.tolist(),
             )
         }
 
@@ -145,7 +148,8 @@ def check_fast_moiety_label_species(
 
 
 def check_fast_moieties(
-    S_fb: StoichiometricMatrix, reaction_ids: Sequence[str]
+    S_fb: StoichiometricMatrix,
+    reaction_ids: Sequence[str],
 ) -> None:
     """Raise a ValueError if a rapid equilibrium reaction involves no balanced
     species, or if the reactions are not linearly independent."""
@@ -226,7 +230,7 @@ def get_extreme_conservation_relations(
                     (
                         [a * x + b * y for x, y in zip(c_p, c_q)],
                         [a * x + b * y for x, y in zip(e_p, e_q)],
-                    )
+                    ),
                 )
         supports = [
             frozenset(k for k, x in enumerate(e) if x != 0)
@@ -356,7 +360,9 @@ def get_fast_moieties(
         by_preference = sorted(members, key=rank.__getitem__)
         required = [local[i] for i in required_ix if i in local]
         result = get_subnetwork_fast_moieties(
-            S_subnetwork, [local[i] for i in by_preference], required
+            S_subnetwork,
+            [local[i] for i in by_preference],
+            required,
         )
         if result is None:
             names = [balanced_species[i] for i in members]
@@ -386,54 +392,8 @@ def get_fast_moieties(
     return matrix, [balanced_species[i] for i in label_ix], subnetworks
 
 
-def get_rapid_equilibria(
-    reactions: Mapping[str, RapidEquilibriumReaction],
-    S: StoichiometricMatrix,
-    species: Sequence[str],
-    balanced_species: Sequence[str],
-    moiety_label_species: Sequence[str],
-    fast_moiety_label_species: Sequence[str],
-) -> RapidEquilibria:
-    """Build a model's rapid equilibrium structure from its rapid equilibrium
-    reactions and label choices."""
-    check_fast_moiety_label_species(
-        fast_moiety_label_species, balanced_species, species, S
-    )
-    balanced_ix = [species.index(s) for s in balanced_species]
-    check_fast_moieties(S[balanced_ix, :], list(reactions))
-    required_labels = [
-        s
-        for s in dict.fromkeys(
-            list(moiety_label_species) + list(fast_moiety_label_species)
-        )
-        if s in balanced_species
-    ]
-    matrix, labels, subnetworks = get_fast_moieties(
-        S[balanced_ix, :],
-        balanced_species,
-        list(reactions),
-        sorted(balanced_species, key=species.index),
-        required_labels,
-    )
-    return RapidEquilibria(
-        reaction_ids=tuple(reactions),
-        water_stoichiometry=tuple(
-            reaction.water_stoichiometry for reaction in reactions.values()
-        ),
-        balanced_species=tuple(balanced_species),
-        balanced_species_ix=tuple(balanced_ix),
-        unbalanced_species_ix=tuple(
-            i for i, s in enumerate(species) if s not in balanced_species
-        ),
-        subnetworks=tuple(subnetworks),
-        fast_moiety_labels=tuple(labels),
-        _S=freeze_array(S),
-        _fast_moiety_matrix=freeze_array(matrix),
-    )
-
-
 def solve_rapid_equilibria(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     dgf: Float[Array, " n_species"],
@@ -451,12 +411,13 @@ def solve_rapid_equilibria(
     species and water enter them at their fixed concentrations. Returns NaN
     where there is no solution, for example when a total is not positive.
     """
-    log_keq = get_log_keq(rapid_equilibria, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
     solved = jnp.all(fast_moiety_totals > 0)
     subnetwork_conc = []
-    for subnetwork in rapid_equilibria.subnetworks:
+    for subnetwork in fast_moieties.subnetworks:
         S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
-            rapid_equilibria, subnetwork
+            fast_moieties,
+            subnetwork,
         )
         conc = solve_fast_subnetwork(
             S_balanced,
@@ -472,7 +433,7 @@ def solve_rapid_equilibria(
         solved &= jnp.all(jnp.isfinite(conc))
         subnetwork_conc.append(conc)
     conc = assemble_balanced_conc(
-        rapid_equilibria,
+        fast_moieties,
         fast_moiety_totals,
         jnp.concatenate(subnetwork_conc) if subnetwork_conc else jnp.zeros(0),
     )
@@ -480,30 +441,34 @@ def solve_rapid_equilibria(
 
 
 def get_log_keq(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     dgf: Float[Array, " n_species"],
     temperature: Scalar,
     water_dgf: float,
 ) -> Float[Array, " n_rapid_equilibrium_reaction"]:
     """Get the rapid equilibrium reactions' log equilibrium constants from the
     formation energies of their species and of water."""
-    water_stoichiometry = np.array(rapid_equilibria.water_stoichiometry)
+    water_stoichiometry = np.array(fast_moieties.water_stoichiometry)
     RT = temperature * GAS_CONSTANT
-    return -(rapid_equilibria.S.T @ dgf + water_stoichiometry * water_dgf) / RT
+    return -(fast_moieties.S.T @ dgf + water_stoichiometry * water_dgf) / RT
 
 
 def get_subnetwork_blocks(
-    rapid_equilibria: RapidEquilibria, subnetwork: FastSubnetwork
+    fast_moieties: FastMoieties,
+    subnetwork: FastSubnetwork,
 ) -> tuple[
-    StoichiometricMatrix, StoichiometricMatrix, FastMoietyMatrix, np.ndarray
+    StoichiometricMatrix,
+    StoichiometricMatrix,
+    FastMoietyMatrix,
+    np.ndarray,
 ]:
     """Get one fast subnetwork's blocks of the rapid equilibrium stoichiometric
     matrix, for its balanced and for the unbalanced species, and of the fast
     moiety matrix, together with the rows of the fast moieties it involves."""
-    S = rapid_equilibria.S
-    P = rapid_equilibria.fast_moiety_matrix
-    balanced_ix = np.array(rapid_equilibria.balanced_species_ix, dtype=int)
-    unbalanced_ix = np.array(rapid_equilibria.unbalanced_species_ix, dtype=int)
+    S = fast_moieties.S
+    P = fast_moieties.fast_moiety_matrix
+    balanced_ix = np.array(fast_moieties.balanced_species_ix, dtype=int)
+    unbalanced_ix = np.array(fast_moieties.unbalanced_species_ix, dtype=int)
     members = np.array(subnetwork.balanced_species_ix, dtype=int)
     rows = np.flatnonzero(np.any(P[:, members] != 0, axis=1))
     return (
@@ -515,7 +480,7 @@ def get_subnetwork_blocks(
 
 
 def assemble_balanced_conc(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     fast_moiety_totals: FastMoietyTotalsArr,
     subnetwork_conc: Float[Array, " n_subnetwork_species"],
 ) -> BalancedConcArr:
@@ -523,8 +488,8 @@ def assemble_balanced_conc(
     and the concentrations of the species in fast subnetworks. A species in no
     fast subnetwork is a fast moiety of its own, so its concentration is its
     total."""
-    P = rapid_equilibria.fast_moiety_matrix
-    subnetwork_ix = rapid_equilibria.subnetwork_species_ix
+    P = fast_moieties.fast_moiety_matrix
+    subnetwork_ix = fast_moieties.subnetwork_species_ix
     isolated = np.setdiff1d(np.arange(P.shape[1]), subnetwork_ix)
     conc = jnp.zeros(P.shape[1])
     if isolated.size:
@@ -534,7 +499,7 @@ def assemble_balanced_conc(
 
 
 def get_rapid_equilibrium_residual(
-    rapid_equilibria: RapidEquilibria,
+    fast_moieties: FastMoieties,
     log_conc: Float[Array, " n_subnetwork_species"],
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
@@ -545,12 +510,13 @@ def get_rapid_equilibrium_residual(
     """Get the residuals of every fast subnetwork's rapid equilibrium
     conditions, given log concentrations in the order of
     `subnetwork_species_ix`."""
-    log_keq = get_log_keq(rapid_equilibria, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
     residuals = []
     start = 0
-    for subnetwork in rapid_equilibria.subnetworks:
+    for subnetwork in fast_moieties.subnetworks:
         S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
-            rapid_equilibria, subnetwork
+            fast_moieties,
+            subnetwork,
         )
         stop = start + len(subnetwork.balanced_species_ix)
         residuals.append(
@@ -562,7 +528,7 @@ def get_rapid_equilibrium_residual(
                 fast_moiety_totals[rows],
                 log_conc_unbalanced,
                 log_keq[np.array(subnetwork.reaction_ix, dtype=int)],
-            )
+            ),
         )
         start = stop
     return jnp.concatenate(residuals) if residuals else jnp.zeros(0)
@@ -587,7 +553,7 @@ def get_fast_subnetwork_residual(
             S_balanced.T @ log_conc
             + S_unbalanced.T @ log_conc_unbalanced
             - log_keq,
-        ]
+        ],
     )
 
 
@@ -613,7 +579,13 @@ def solve_fast_subnetwork(
     def residual(log_conc, args):
         totals, log_unbalanced, log_k = args
         return get_fast_subnetwork_residual(
-            log_conc, S_balanced, S_unbalanced, P, totals, log_unbalanced, log_k
+            log_conc,
+            S_balanced,
+            S_unbalanced,
+            P,
+            totals,
+            log_unbalanced,
+            log_k,
         )
 
     in_a_moiety = P > 0
@@ -627,7 +599,7 @@ def solve_fast_subnetwork(
         initial=jnp.inf,
     )
     guess = jnp.log(
-        jnp.where(jnp.isfinite(largest_possible), largest_possible / 2, 1.0)
+        jnp.where(jnp.isfinite(largest_possible), largest_possible / 2, 1.0),
     )
     args = (totals, log_conc_unbalanced, log_keq)
     sol = optx.least_squares(
@@ -639,6 +611,193 @@ def solve_fast_subnetwork(
         throw=False,
     )
     solved = (sol.result == optx.RESULTS.successful) & jnp.all(
-        jnp.abs(residual(sol.value, args)) < 1e3 * atol
+        jnp.abs(residual(sol.value, args)) < 1e3 * atol,
     )
     return jnp.where(solved, jnp.exp(sol.value), jnp.nan)
+
+
+@dataclass(frozen=True)
+class RapidEquilibriumNetworkScope:
+    """What a rapid equilibrium network needs to know about the model it
+    belongs to.
+
+    Built at model construction and handed to
+    `RapidEquilibriumNetwork.get_structure` and
+    `RapidEquilibriumNetwork.get_input_indexes`. `S` is the rapid equilibrium
+    reactions' stoichiometric matrix, with one row per species in the model.
+    """
+
+    species: tuple[str, ...]
+    balanced_species: tuple[str, ...]
+    moiety_label_species: tuple[str, ...]
+    S: StoichiometricMatrix
+    species_to_dgf_ix: np.ndarray
+    water_dgf: float
+
+
+class RapidEquilibriumNetworkIx(Module):
+    """Where a rapid equilibrium network reads its inputs. Built once, when
+    the model is constructed."""
+
+    ix_dgf: np.ndarray
+    has_unbalanced: bool
+    water_dgf: float
+
+
+class RapidEquilibriumNetworkInput(Module):
+    """The values a rapid equilibrium network's equilibrium constants need,
+    gathered at each evaluation."""
+
+    dgf: Float[Array, " n_species"]
+    temperature: Scalar
+    log_conc_unbalanced: UnbalancedConcArr
+    water_dgf: float
+
+
+class RapidEquilibriumNetwork(Module):
+    """A model's rapid equilibrium reactions, with its choice of fast moiety
+    labels.
+
+    The reactions in `reactions` have no rate law as they are always at
+    equilibrium. Together they conserve fast moieties, ie combinations of
+    balanced species. The model integrates these moieties instead of the
+    species themselves, and the species' concentrations are found by solving
+    for rapid equilibrium. Each fast moiety is labelled by one of its species,
+    which can be set using `fast_moiety_label_species`.
+    """
+
+    reactions: dict[str, RapidEquilibriumReaction]
+    fast_moiety_label_species: list[str] = field(default_factory=list)
+
+    def get_species(self) -> tuple[str, ...]:
+        """Get every species the rapid equilibrium reactions involve, in order
+        of first appearance.
+
+        A species that only they name joins the model after the species that
+        the reactions with fluxes name.
+        """
+        return tuple(
+            dict.fromkeys(
+                species_id
+                for reaction in self.reactions.values()
+                for species_id in reaction.stoichiometry
+            ),
+        )
+
+    def get_structure(
+        self,
+        scope: RapidEquilibriumNetworkScope,
+    ) -> FastMoieties:
+        """Build a model's rapid equilibrium structure from its rapid
+        equilibrium reactions and label choices."""
+        species = scope.species
+        balanced_species = scope.balanced_species
+        S = scope.S
+        check_fast_moiety_label_species(
+            self.fast_moiety_label_species,
+            balanced_species,
+            species,
+            S,
+        )
+        balanced_ix = [species.index(s) for s in balanced_species]
+        check_fast_moieties(S[balanced_ix, :], list(self.reactions))
+        required_labels = [
+            s
+            for s in dict.fromkeys(
+                list(scope.moiety_label_species)
+                + list(self.fast_moiety_label_species),
+            )
+            if s in balanced_species
+        ]
+        matrix, labels, subnetworks = get_fast_moieties(
+            S[balanced_ix, :],
+            balanced_species,
+            list(self.reactions),
+            sorted(balanced_species, key=species.index),
+            required_labels,
+        )
+        return FastMoieties(
+            reaction_ids=tuple(self.reactions),
+            water_stoichiometry=tuple(
+                reaction.water_stoichiometry
+                for reaction in self.reactions.values()
+            ),
+            balanced_species=tuple(balanced_species),
+            balanced_species_ix=tuple(balanced_ix),
+            unbalanced_species_ix=tuple(
+                i for i, s in enumerate(species) if s not in balanced_species
+            ),
+            subnetworks=tuple(subnetworks),
+            fast_moiety_labels=tuple(labels),
+            _S=freeze_array(S),
+            _fast_moiety_matrix=freeze_array(matrix),
+        )
+
+    def get_input_indexes(
+        self,
+        scope: RapidEquilibriumNetworkScope,
+        labelling: ParamLabelling,
+    ) -> RapidEquilibriumNetworkIx:
+        """Get an index container from a scope and a labelling."""
+        return RapidEquilibriumNetworkIx(
+            ix_dgf=scope.species_to_dgf_ix,
+            has_unbalanced="log_conc_unbalanced" in labelling,
+            water_dgf=scope.water_dgf,
+        )
+
+    def get_input(
+        self,
+        parameters: ParamDict,
+        ix: RapidEquilibriumNetworkIx,
+    ) -> RapidEquilibriumNetworkInput:
+        """Gather the formation energies, temperature and unbalanced
+        concentrations needed to calculate equilibrium constants."""
+        return RapidEquilibriumNetworkInput(
+            dgf=parameters["dgf"][ix.ix_dgf],
+            temperature=parameters["temperature"],
+            log_conc_unbalanced=(
+                parameters["log_conc_unbalanced"]
+                if ix.has_unbalanced
+                else jnp.zeros(0)
+            ),
+            water_dgf=ix.water_dgf,
+        )
+
+    def solve(
+        self,
+        structure: FastMoieties,
+        fast_moiety_totals: FastMoietyTotalsArr,
+        network_input: RapidEquilibriumNetworkInput,
+    ) -> BalancedConcArr:
+        """Get the balanced species' concentrations at which every rapid
+        equilibrium reaction is at equilibrium and the fast moieties have the
+        given totals. See `solve_rapid_equilibria`."""
+        return solve_rapid_equilibria(
+            structure,
+            fast_moiety_totals,
+            network_input.log_conc_unbalanced,
+            network_input.dgf,
+            network_input.temperature,
+            network_input.water_dgf,
+        )
+
+    def get_residuals(
+        self,
+        structure: FastMoieties,
+        log_conc: Float[Array, " n_subnetwork_species"],
+        fast_moiety_totals: FastMoietyTotalsArr,
+        network_input: RapidEquilibriumNetworkInput,
+    ) -> Float[Array, " n_subnetwork_species"]:
+        """Get the residuals of the fast subnetwork's rapid equilibrium
+        conditions, given log concentrations in the order of
+        `FastMoieties.subnetwork_species_ix`. See
+        `get_rapid_equilibrium_residual`."""
+        return get_rapid_equilibrium_residual(
+            structure,
+            log_conc,
+            fast_moiety_totals,
+            network_input.log_conc_unbalanced,
+            network_input.dgf,
+            network_input.temperature,
+            network_input.water_dgf,
+        )

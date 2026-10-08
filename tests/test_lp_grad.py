@@ -146,7 +146,7 @@ def get_methionine_gradient():
             ivp_atol=1e-11,
             steady_state_rtol=1e-11,
             steady_state_atol=1e-11,
-        )
+        ),
     )
     return jax.jacrev(posterior_log_density)(true_parameters)
 
@@ -172,7 +172,7 @@ def get_methionine_log_density_and_grad(guess):
         guess=guess,
     )
     gradient, _ = jax.jacrev(posterior_log_density, has_aux=True)(
-        methionine.parameters
+        methionine.parameters,
     )
     log_density, _ = posterior_log_density(methionine.parameters)
     return log_density, gradient
@@ -203,7 +203,7 @@ def test_log_density_is_guess_invariant():
         methionine.parameters,
     )
     expected_lp, expected_grad = get_methionine_log_density_and_grad(
-        DEFAULT_STATE_GUESS
+        DEFAULT_STATE_GUESS,
     )
     guesses = {
         "steady state": steady,
@@ -216,7 +216,10 @@ def test_log_density_is_guess_invariant():
         assert jnp.isclose(log_density, expected_lp, rtol=1e-9, atol=1e-6), name
         for key, actual in gradient.items():
             assert jnp.isclose(
-                actual, expected_grad[key], rtol=1e-5, atol=1e-6
+                actual,
+                expected_grad[key],
+                rtol=1e-5,
+                atol=1e-6,
             ).all(), f"{name}, {key}"
 
 

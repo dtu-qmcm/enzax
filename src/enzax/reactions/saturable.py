@@ -95,12 +95,15 @@ def get_michaelis_constant_labels(
         raise ValueError(msg)
     labels = {
         species_id: given.get(
-            species_id, get_species_label("km", reaction_id, species_id)
+            species_id,
+            get_species_label("km", reaction_id, species_id),
         )
         for species_id in species_ids
     }
     check_species_labels_are_distinct(
-        labels, reaction_id, "michaelis_constants"
+        labels,
+        reaction_id,
+        "michaelis_constants",
     )
     return labels
 
@@ -360,7 +363,7 @@ class MichaelisMenten(Reaction):
                 self.tc is not None,
                 self.get_tense_state_expression() is not None,
                 self.get_relaxed_state_expression() is not None,
-            )
+            ),
         )
 
     def get_species(self) -> tuple[str, ...]:
@@ -390,13 +393,15 @@ class MichaelisMenten(Reaction):
         return tuple(dict.fromkeys(s for group in declared for s in group))
 
     def get_competitive_inhibitors(
-        self, scope: ReactionScope
+        self,
+        scope: ReactionScope,
     ) -> tuple[str, ...]:
         """Get the reaction's competitive inhibitors, in declaration order."""
         return tuple(self.get_competitive_inhibitor_labels(scope))
 
     def get_competitive_inhibitor_labels(
-        self, scope: ReactionScope
+        self,
+        scope: ReactionScope,
     ) -> dict[str, str]:
         """Get the reaction's competitive inhibitors, as `{species: label}`."""
         return get_species_labels(
@@ -463,7 +468,8 @@ class MichaelisMenten(Reaction):
         return tuple(dict.fromkeys(labels))
 
     def get_allosteric_expressions(
-        self, scope: ReactionScope
+        self,
+        scope: ReactionScope,
     ) -> tuple[BindingPolynomialExpression, BindingPolynomialExpression]:
         """Get the tense and relaxed states' binding polynomials.
 
@@ -478,14 +484,16 @@ class MichaelisMenten(Reaction):
         if tense is None:
             tense = ONE
             for species_id, label in self.get_allosteric_labels(
-                scope, "allosteric_inhibitors"
+                scope,
+                "allosteric_inhibitors",
             ).items():
                 tense = tense + dead_end({species_id: label})
         relaxed = self.get_relaxed_state_expression()
         if relaxed is None:
             relaxed = ONE
             for species_id, label in self.get_allosteric_labels(
-                scope, "allosteric_activators"
+                scope,
+                "allosteric_activators",
             ).items():
                 relaxed = relaxed + dead_end({species_id: label})
             relaxed = self.get_expression(scope) * relaxed
@@ -498,7 +506,9 @@ class MichaelisMenten(Reaction):
         return get_substrates(scope)
 
     def get_allosteric_labels(
-        self, scope: ReactionScope, what: str
+        self,
+        scope: ReactionScope,
+        what: str,
     ) -> dict[str, str]:
         """Get one of the reaction's allosteric declarations, as a dict."""
         declaration = (
@@ -511,7 +521,8 @@ class MichaelisMenten(Reaction):
         return get_allosteric_species(scope, declaration, what)
 
     def get_expression(
-        self, scope: ReactionScope
+        self,
+        scope: ReactionScope,
     ) -> BindingPolynomialExpression:
         """Get the reaction's binding polynomial, as species and labels.
 
@@ -531,7 +542,10 @@ class MichaelisMenten(Reaction):
         expression = self.get_binding_polynomial_expression()
         if expression is None:
             expression = get_default_expression(
-                scope, k_map, ki_map, self.reversible
+                scope,
+                k_map,
+                ki_map,
+                self.reversible,
             )
         dead_end_states = self.get_dead_end_states_expression()
         if dead_end_states is not None:
@@ -539,17 +553,23 @@ class MichaelisMenten(Reaction):
         return expression
 
     def get_input_indexes(
-        self, scope: ReactionScope, labelling: ParamLabelling
+        self,
+        scope: ReactionScope,
+        labelling: ParamLabelling,
     ) -> MichaelisMentenIx:
         lab = self.get_labels(scope)
         ix_reactant = get_species_positions(scope, get_reactants(scope))
         return MichaelisMentenIx(
             ix_kcat=get_parameter_position(labelling, "log_kcat", lab.kcat),
             ix_enzyme=get_parameter_position(
-                labelling, "log_enzyme", lab.enzyme
+                labelling,
+                "log_enzyme",
+                lab.enzyme,
             ),
             ix_substrate_k=get_parameter_positions(
-                labelling, "log_saturation_constant", lab.substrate_k
+                labelling,
+                "log_saturation_constant",
+                lab.substrate_k,
             ),
             ix_substrate=get_species_positions(scope, get_substrates(scope)),
             ix_reactant=ix_reactant,
@@ -558,7 +578,10 @@ class MichaelisMenten(Reaction):
             water_stoichiometry=self.water_stoichiometry,
             water_dgf=scope.water_dgf,
             binding_polynomial=get_polynomial_indexes(
-                self.get_expression(scope), scope, labelling, "km"
+                self.get_expression(scope),
+                scope,
+                labelling,
+                "km",
             ),
             allostery=self.get_allostery_indexes(scope, labelling, lab),
         )
@@ -587,7 +610,9 @@ class MichaelisMenten(Reaction):
                 )
                 raise ValueError(msg)
             positions[reactants.index(species_id)] = get_parameter_position(
-                labelling, "dgf", compound
+                labelling,
+                "dgf",
+                compound,
             )
         return positions
 
@@ -605,7 +630,10 @@ class MichaelisMenten(Reaction):
             ix_tc=get_parameter_position(labelling, "log_tc", lab.tc),
             tense_state=get_polynomial_indexes(tense, scope, labelling, "dc"),
             relaxed_state=get_polynomial_indexes(
-                relaxed, scope, labelling, "dc"
+                relaxed,
+                scope,
+                labelling,
+                "dc",
             ),
         )
 
@@ -625,7 +653,7 @@ class MichaelisMenten(Reaction):
             kcat=jnp.exp(parameters["log_kcat"][ix.ix_kcat]),
             enzyme=jnp.exp(parameters["log_enzyme"][ix.ix_enzyme]),
             substrate_kms=jnp.exp(
-                parameters["log_saturation_constant"][ix.ix_substrate_k]
+                parameters["log_saturation_constant"][ix.ix_substrate_k],
             ),
             k=jnp.exp(parameters["log_saturation_constant"]),
             dgf=parameters["dgf"][ix.ix_dgf],
@@ -654,7 +682,9 @@ class MichaelisMenten(Reaction):
             substrate_kms=rate_input.substrate_kms,
         )
         fer = get_free_enzyme_ratio(
-            conc, rate_input.k, rate_input.binding_polynomial
+            conc,
+            rate_input.k,
+            rate_input.binding_polynomial,
         )
         rev: Scalar | float = 1.0
         if self.reversible:

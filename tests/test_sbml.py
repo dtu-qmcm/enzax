@@ -27,25 +27,28 @@ def test_load_libsbml_model(file_path):
 
 def load_example(name):
     return sbml.load_libsbml_model_from_file(
-        importlib.resources.files(examples) / name
+        importlib.resources.files(examples) / name,
     )
 
 
 def test_converted_glycolysis_reproduces_the_file_fluxes():
     model, parameters = sbml.sbml_to_enzax(
-        load_example("mammalian_glycolysis.xml")
+        load_example("mammalian_glycolysis.xml"),
     )
     with open(
-        importlib.resources.files(data) / "expected_glycolysis_flux.json"
+        importlib.resources.files(data) / "expected_glycolysis_flux.json",
     ) as f:
         expected = json.load(f)
     conc = jnp.array(
-        [expected["initial_concentration"][s] for s in model.balanced_species]
+        [expected["initial_concentration"][s] for s in model.balanced_species],
     )
     flux = model.flux(conc, parameters)
     for position, reaction in enumerate(model.reaction_ids):
         assert jnp.isclose(
-            flux[position], expected["flux"][reaction], rtol=1e-10, atol=0.0
+            flux[position],
+            expected["flux"][reaction],
+            rtol=1e-10,
+            atol=0.0,
         )
 
 
@@ -58,25 +61,27 @@ def test_converted_exampleode_has_the_expected_steady_state():
 
 def test_converted_smallbone_matches_the_retired_kinetic_model_sbml():
     model, parameters = sbml.sbml_to_enzax(
-        load_example("smallbone2013_model18_modified.xml")
+        load_example("smallbone2013_model18_modified.xml"),
     )
     with open(importlib.resources.files(data) / "smallbone_fluxes.json") as f:
         expected = json.load(f)
     conc = jnp.array(
-        [expected["balanced_concentration"][s] for s in model.balanced_species]
+        [expected["balanced_concentration"][s] for s in model.balanced_species],
     )
     unbalanced = model.parameter_labelling["log_conc_unbalanced"]
     parameters = parameters | {
         "log_conc_unbalanced": jnp.log(
             jnp.array(
-                [expected["unbalanced_concentration"][s] for s in unbalanced]
-            )
-        )
+                [expected["unbalanced_concentration"][s] for s in unbalanced],
+            ),
+        ),
     }
     flux = model.flux(conc, parameters)
     for position, reaction in enumerate(model.reaction_ids):
         assert jnp.isclose(
-            flux[position], expected["flux"][reaction], rtol=1e-10
+            flux[position],
+            expected["flux"][reaction],
+            rtol=1e-10,
         )
 
 
@@ -84,12 +89,14 @@ def test_parameter_kinds_can_be_overridden():
     libsbml_model = sbml.load_libsbml_model_from_file(exampleode_file)
     model, parameters = sbml.sbml_to_enzax(libsbml_model)
     custom_model, custom_parameters = sbml.sbml_to_enzax(
-        libsbml_model, parameter_kinds={"cu|r1|Kcat_r1": "custom"}
+        libsbml_model,
+        parameter_kinds={"cu|r1|Kcat_r1": "custom"},
     )
     assert "cu|r1|Kcat_r1" in custom_model.parameter_labelling["custom"]
     conc = jnp.array([0.2, 0.3])
     assert jnp.allclose(
-        custom_model.flux(conc, custom_parameters), model.flux(conc, parameters)
+        custom_model.flux(conc, custom_parameters),
+        model.flux(conc, parameters),
     )
 
 
@@ -100,7 +107,8 @@ def test_a_non_positive_value_cannot_be_log_custom():
     reaction.getKineticLaw().getParameter("Kcat_r1").setValue(-1.0)
     with pytest.raises(ValueError, match="cannot be log_custom"):
         sbml.sbml_to_enzax(
-            libsbml_model, parameter_kinds={"cu|r1|Kcat_r1": "log_custom"}
+            libsbml_model,
+            parameter_kinds={"cu|r1|Kcat_r1": "log_custom"},
         )
 
 

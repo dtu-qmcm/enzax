@@ -104,7 +104,8 @@ model = KineticModel(
             allosteric_activators=["ahcys"],
         ),
         "PROT1": MichaelisMenten(
-            stoichiometry={"met-L": -1.0}, reversible=False
+            stoichiometry={"met-L": -1.0},
+            reversible=False,
         ),
     },
 )
@@ -223,5 +224,5 @@ steady_state = jnp.array(
         2.170170e-07,  # ahcys
         3.521780e-06,  # hcys
         6.534400e-06,  # 5mthf
-    ]
+    ],
 )

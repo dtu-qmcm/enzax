@@ -107,7 +107,9 @@ def test_validate_kinetic_model_valid(structure, moiety_label_species):
     ],
 )
 def test_validate_kinetic_model_invalid(
-    structure, moiety_label_species, expected_msg
+    structure,
+    moiety_label_species,
+    expected_msg,
 ):
     """Test that invalid models are rejected when they are instantiated."""
     with pytest.raises(ValueError, match=expected_msg):
@@ -165,7 +167,8 @@ def test_undeclared_moieties_warn(structure, expected_msg):
     ids=["cycle-label-b", "two-moieties", "no-moieties"],
 )
 def test_declared_or_absent_moieties_do_not_warn(
-    structure, moiety_label_species
+    structure,
+    moiety_label_species,
 ):
     with warnings.catch_warnings():
         warnings.simplefilter("error", UndeclaredMoietyWarning)
@@ -184,7 +187,9 @@ def get_two_reaction_model(kcat_label):
         reactions={
             "r1": MichaelisMenten(stoichiometry={"x": -1.0, "a": 1.0}),
             "r2": MichaelisMenten(
-                stoichiometry={"a": -1.0}, reversible=False, kcat=kcat_label
+                stoichiometry={"a": -1.0},
+                reversible=False,
+                kcat=kcat_label,
             ),
         },
     )
@@ -207,6 +212,6 @@ def test_differently_structured_models_share_a_jitted_solver():
     for kcat_label in ["r2", "k2"]:
         model, parameters = get_two_reaction_model(kcat_label)
         steady_states.append(
-            get_steady_state_hybrid(model, jnp.array([0.1]), parameters)
+            get_steady_state_hybrid(model, jnp.array([0.1]), parameters),
         )
     assert jnp.allclose(steady_states[0], steady_states[1])

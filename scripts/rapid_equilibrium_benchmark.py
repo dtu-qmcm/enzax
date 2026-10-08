@@ -36,7 +36,10 @@ def make_ode_solve(model, method):
     if method == "kvaerno5":
         solver = diffrax.Kvaerno5()
         controller = diffrax.PIDController(
-            pcoeff=0.1, icoeff=0.3, rtol=1e-9, atol=1e-9
+            pcoeff=0.1,
+            icoeff=0.3,
+            rtol=1e-9,
+            atol=1e-9,
         )
     else:
         solver = BDF(suppress_algebraic_error=method == "dae")
@@ -46,8 +49,11 @@ def make_ode_solve(model, method):
     @eqx.filter_jit
     def solve(y0, parameters, tol):
         if is_dae:
-            term = SemiExplicitDAETerm(model.dae_vector_field, (False, True))
             y0 = model.get_dae_state(y0, parameters)
+            term = SemiExplicitDAETerm(
+                model.dae_vector_field,
+                (False, jax.tree.map(lambda _: True, y0[1])),
+            )
         else:
             term = diffrax.ODETerm(model)
         sol = diffrax.diffeqsolve(
@@ -132,11 +138,14 @@ def run(model, parameters, guess, label, methods, tolerances=TOLERANCES):
                 seconds=seconds,
                 seconds_per_step=np.nan,
                 state=state,
-            )
+            ),
         )
         for method, solve in ode.items():
             (state, accepted, rejected), seconds = timed(
-                solve, PERTURBATION * guess, parameters, tol_
+                solve,
+                PERTURBATION * guess,
+                parameters,
+                tol_,
             )
             success, residual = check(model, state, parameters)
             steps = int(accepted) + int(rejected)
@@ -152,7 +161,7 @@ def run(model, parameters, guess, label, methods, tolerances=TOLERANCES):
                     seconds=seconds,
                     seconds_per_step=seconds / steps if steps else np.nan,
                     state=state,
-                )
+                ),
             )
     return rows
 
@@ -209,7 +218,7 @@ def main():
             conc_error, flux_error = errors(approx, re_solution)
         records.append(
             row
-            | dict(ratio=np.inf, conc_error=conc_error, flux_error=flux_error)
+            | dict(ratio=np.inf, conc_error=conc_error, flux_error=flux_error),
         )
         print(
             f"rapid equilibrium {describe(row)} | error vs hybrid "
@@ -247,7 +256,7 @@ def main():
                     ratio=float(ratio),
                     conc_error=conc_error,
                     flux_error=flux_error,
-                )
+                ),
             )
             print(
                 f"R {ratio:9.3g} {describe(row)} | rapid equilibrium error "

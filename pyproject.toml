@@ -64,7 +64,7 @@ line-length = 80
 
 [tool.ruff.lint]
 ignore = ["F722"]
-extend-select = ["E501"]  # line length is checked
+extend-select = ["E501", "COM812"]  # line length is checked
 
 [tool.ruff.lint.isort]
 known-first-party = ["enzax"]

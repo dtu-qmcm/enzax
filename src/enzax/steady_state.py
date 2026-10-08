@@ -128,7 +128,7 @@ def get_steady_state(
     if sol.ys is None:
         raise ValueError("No steady state found!")
     found = (sol.result == diffrax.RESULTS.event_occurred) & jnp.isfinite(
-        sol.ys[0]
+        sol.ys[0],
     ).all()
     return jnp.where(found, sol.ys[0], jnp.nan)
 
@@ -269,7 +269,10 @@ def get_steady_state_dae(
     if adjoint is None:
         adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
-        terms=SemiExplicitDAETerm(model.dae_vector_field, (False, True)),
+        terms=SemiExplicitDAETerm(
+            model.dae_vector_field,
+            (False, jax.tree.map(lambda _: True, y0[1])),
+        ),
         solver=BDF(suppress_algebraic_error=suppress_algebraic_error),
         t0=jnp.array(0.0),
         t1=jnp.inf,
@@ -277,12 +280,15 @@ def get_steady_state_dae(
         y0=y0,
         max_steps=max_steps,
         stepsize_controller=BDFController(
-            rtol=ivp_rtol, atol=ivp_atol, dtmax=1e6
+            rtol=ivp_rtol,
+            atol=ivp_atol,
+            dtmax=1e6,
         ),
         event=diffrax.Event(
             diffrax.steady_state_event(
-                rtol=steady_state_rtol, atol=steady_state_atol
-            )
+                rtol=steady_state_rtol,
+                atol=steady_state_atol,
+            ),
         ),
         adjoint=adjoint,
         args=parameters,
@@ -292,6 +298,6 @@ def get_steady_state_dae(
         raise ValueError("No steady state found!")
     ode_state = sol.ys[0][0]
     found = (sol.result == diffrax.RESULTS.event_occurred) & jnp.isfinite(
-        ode_state
+        ode_state,
     ).all()
     return jnp.where(found, ode_state, jnp.nan)

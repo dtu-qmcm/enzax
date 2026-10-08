@@ -82,18 +82,22 @@ class MassAction(Reaction):
 
     def get_labels(self, scope: ReactionScope) -> MassActionLabels:
         return MassActionLabels(
-            k_plus=get_reaction_label(self.k_plus_label, scope.reaction_id)
+            k_plus=get_reaction_label(self.k_plus_label, scope.reaction_id),
         )
 
     def get_input_indexes(
-        self, scope: ReactionScope, labelling: ParamLabelling
+        self,
+        scope: ReactionScope,
+        labelling: ParamLabelling,
     ) -> MassActionIx:
         lab = self.get_labels(scope)
         ix_substrate = get_species_positions(scope, get_substrates(scope))
         ix_reactant = get_species_positions(scope, get_reactants(scope))
         return MassActionIx(
             ix_k_plus=get_parameter_position(
-                labelling, "log_k_plus", lab.k_plus
+                labelling,
+                "log_k_plus",
+                lab.k_plus,
             ),
             ix_substrate=ix_substrate,
             substrate_order=-scope.stoichiometry[ix_substrate],
@@ -105,7 +109,9 @@ class MassAction(Reaction):
         )
 
     def get_input(
-        self, parameters: ParamDict, ix: MassActionIx
+        self,
+        parameters: ParamDict,
+        ix: MassActionIx,
     ) -> MassActionInput:
         return MassActionInput(
             k_plus=jnp.exp(parameters["log_k_plus"][ix.ix_k_plus]),
@@ -121,7 +127,7 @@ class MassAction(Reaction):
 
     def __call__(self, conc: ConcArray, rate_input: MassActionInput) -> Scalar:
         forward = rate_input.k_plus * jnp.prod(
-            conc[rate_input.ix_substrate] ** rate_input.substrate_order
+            conc[rate_input.ix_substrate] ** rate_input.substrate_order,
         )
         if not self.reversible:
             return forward

@@ -6,8 +6,8 @@ the flat arrays themselves, the labelling that says which label sits at which
 position, and the label-keyed values a reader writes.
 
 Model-level axes start with plain `n_*`: `n_species`, `n_reaction`,
-`n_balanced`, `n_unbalanced`, `n_ode_state`, `n_moiety`. There is one
-value per `KineticModel`.
+`n_balanced`, `n_unbalanced`, `n_ode_state`, `n_moiety`, `n_fast_moiety`,
+`n_algebraic_variable`. There is one value per `KineticModel`.
 
 The parameter axes are also model-level, because each parameter is stored
 as a single flat array for the whole model: `n_k` (every saturation constant
@@ -52,6 +52,8 @@ OdeStateRateArr = Float[Array, " n_ode_state"]
 MoietyTotalsArr = Float[Array, " n_moiety"]
 FastMoietyTotalsArr = Float[Array, " n_fast_moiety"]
 Flux = Float[Array, " n_reaction"]
+# An array containing a model's algebraic variables
+AlgebraicVariableArr = Float[Array, " n_algebraic_variable"]
 
 # --------------------------------------------------------------------------
 # Model-level, traced: the flat parameter arrays
@@ -177,7 +179,6 @@ ParamValueSpec = dict[str, ParamEntry]
 # Misc
 # --------------------------------------------------------------------------
 FloatArray1d = Float[Array, " _"]
-
 
 # A pair (shape, values) for a static field
 FrozenArray = tuple[tuple[int, ...], tuple[int | float, ...]]

@@ -39,7 +39,8 @@ compound_to_species = {"A": ["A_c", "A_e"], "D": ["D_c", "D_e"]}
 reactions = {
     "transA": MichaelisMenten(stoichiometry={"A_e": -1.0, "A_c": 1.0}),
     "r1": MichaelisMenten(
-        stoichiometry={"A_c": -1.0, "B_c": 1.0}, competitive_inhibitors=["D_c"]
+        stoichiometry={"A_c": -1.0, "B_c": 1.0},
+        competitive_inhibitors=["D_c"],
     ),
     "r2A": MichaelisMenten(
         stoichiometry={"A_c": -1.0, "C_c": 1.0},
@@ -52,12 +53,12 @@ reactions = {
         subunits=1,
     ),
     "r3": MichaelisMenten(
-        stoichiometry={"B_c": -1.0, "X1_c": -1.0, "D_c": 1.0, "X2_c": 1.0}
+        stoichiometry={"B_c": -1.0, "X1_c": -1.0, "D_c": 1.0, "X2_c": 1.0},
     ),
     "r4": MichaelisMenten(stoichiometry={"C_c": -1.0, "D_c": 1.0}),
     "transD": MichaelisMenten(stoichiometry={"D_c": -1.0, "D_e": 1.0}),
     "regX": MichaelisMenten(
-        stoichiometry={"Z_c": -1.0, "X2_c": -1.0, "X1_c": 1.0}
+        stoichiometry={"Z_c": -1.0, "X2_c": -1.0, "X1_c": 1.0},
     ),
 }
 model = KineticModel(
@@ -144,5 +145,5 @@ steady_state = jnp.array(
         0.06575086,  # C_c
         0.20105146,  # D_c
         0.81022648,  # X1_c
-    ]
+    ],
 )

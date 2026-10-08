@@ -148,14 +148,16 @@ def merge_labels(*groups: Mapping[str, Sequence[str]]) -> ParamLabelling:
         parameter: tuple(
             dict.fromkeys(
                 label for group in groups for label in group.get(parameter, ())
-            )
+            ),
         )
         for parameter in parameters
     }
 
 
 def get_parameter_position(
-    labelling: ParamLabelling, parameter: str, label: str
+    labelling: ParamLabelling,
+    parameter: str,
+    label: str,
 ) -> int:
     """Get the position of one label in one flat parameter array."""
     try:
@@ -169,7 +171,9 @@ def get_parameter_position(
 
 
 def get_parameter_positions(
-    labelling: ParamLabelling, parameter: str, wanted: Sequence[str]
+    labelling: ParamLabelling,
+    parameter: str,
+    wanted: Sequence[str],
 ) -> Int[np.ndarray, " _"]:
     """Get an index of several labels' positions in one parameter array."""
     return np.array(
@@ -182,7 +186,8 @@ def get_parameter_positions(
 
 
 def check_spec_covers_labelling(
-    labelling: ParamLabelling, spec: ParamValueSpec
+    labelling: ParamLabelling,
+    spec: ParamValueSpec,
 ) -> None:
     """Raise unless a spec gives values for exactly a model's parameters."""
     check_parameters_are_known(spec)
@@ -197,7 +202,9 @@ def check_spec_covers_labelling(
 
 
 def check_entry_covers_labels(
-    parameter: str, labels: ParamLabels, given: ParamEntry
+    parameter: str,
+    labels: ParamLabels,
+    given: ParamEntry,
 ) -> None:
     """Raise unless an entry maps exactly the parameter's labels to values."""
     if not isinstance(given, dict):
@@ -217,7 +224,9 @@ def check_entry_covers_labels(
 
 
 def pack_one_parameter(
-    parameter: str, labels: ParamLabels, entry: ParamEntry
+    parameter: str,
+    labels: ParamLabels,
+    entry: ParamEntry,
 ) -> ParamLeaf:
     """Build one flat parameter array from the values given for it.
 
@@ -231,7 +240,8 @@ def pack_one_parameter(
 
 
 def pack_parameters(
-    labelling: ParamLabelling, spec: ParamValueSpec
+    labelling: ParamLabelling,
+    spec: ParamValueSpec,
 ) -> ParamDict:
     """Build a parameter PyTree from `{parameter: {label: value}}`.
 
@@ -246,7 +256,9 @@ def pack_parameters(
     check_spec_covers_labelling(labelling, spec)
     return {
         parameter: pack_one_parameter(
-            parameter, labelling[parameter], spec[parameter]
+            parameter,
+            labelling[parameter],
+            spec[parameter],
         )
         for parameter in PARAMETERS
         if parameter in labelling
@@ -261,7 +273,8 @@ def unpack_one_parameter(labels: ParamLabels, leaf: ParamLeaf) -> ParamEntry:
 
 
 def unpack_parameters(
-    labelling: ParamLabelling, parameters: ParamDict
+    labelling: ParamLabelling,
+    parameters: ParamDict,
 ) -> ParamValueSpec:
     """Turn a parameter PyTree back into `{parameter: {label: value}}`.
 

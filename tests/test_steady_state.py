@@ -70,7 +70,9 @@ def test_methionines_default_guess_is_outside_its_basin():
     """
     guess = cold_guess(methionine)
     refined = refine_guess_newton(
-        methionine.model, guess, methionine.parameters
+        methionine.model,
+        guess,
+        methionine.parameters,
     )
     assert jnp.array_equal(refined, guess)
 
@@ -131,7 +133,7 @@ def test_refine_never_returns_a_non_physical_state(name, example):
         key, key_scale, key_sign = jax.random.split(key, 3)
         shape = example.steady_state.shape
         guess = example.steady_state * jnp.exp(
-            jax.random.normal(key_scale, shape) * 3.0
+            jax.random.normal(key_scale, shape) * 3.0,
         )
         guess = guess * jnp.sign(jax.random.normal(key_sign, shape))
         refined = refine_guess_newton(model, guess, parameters)
@@ -151,7 +153,9 @@ def test_hybrid_finds_the_same_steady_state(name, example):
     for guess in [cold_guess(example), example.steady_state * 1.01]:
         by_ode = get_steady_state(example.model, guess, example.parameters)
         by_hybrid = get_steady_state_hybrid(
-            example.model, guess, example.parameters
+            example.model,
+            guess,
+            example.parameters,
         )
         assert jnp.isclose(by_hybrid, by_ode, rtol=1e-5).all()
         dcdt = example.model.dcdt(by_hybrid, example.parameters)
@@ -179,7 +183,10 @@ def test_a_refined_guess_costs_the_integrator_no_steps(name, example):
         y0=seed,
         max_steps=10000,
         stepsize_controller=diffrax.PIDController(
-            pcoeff=0.1, icoeff=0.3, rtol=1e-9, atol=1e-9
+            pcoeff=0.1,
+            icoeff=0.3,
+            rtol=1e-9,
+            atol=1e-9,
         ),
         event=diffrax.Event(diffrax.steady_state_event(rtol=1e-12, atol=1e-12)),
         adjoint=diffrax.ImplicitAdjoint(),
@@ -210,10 +217,10 @@ def test_refine_under_vmap_does_not_let_one_guess_spoil_the_others():
     warm = methionine.steady_state * 1.01
     batch = jnp.stack([cold_guess(methionine), warm, methionine.steady_state])
     refined = jax.vmap(
-        lambda guess: refine_guess_newton(model, guess, parameters)
+        lambda guess: refine_guess_newton(model, guess, parameters),
     )(batch)
     one_at_a_time = jnp.stack(
-        [refine_guess_newton(model, guess, parameters) for guess in batch]
+        [refine_guess_newton(model, guess, parameters) for guess in batch],
     )
     # Not bit for bit: batching reassociates the linear algebra, which moves
     # the accepted rows by an ulp. The rejected row is exact, since it is the
@@ -250,7 +257,9 @@ def test_hybrid_gradient_is_finite_from_a_cold_start():
 
     def total(parameters):
         steady = get_steady_state_hybrid(
-            methionine.model, cold_guess(methionine), parameters
+            methionine.model,
+            cold_guess(methionine),
+            parameters,
         )
         return steady.sum()
 
@@ -280,11 +289,11 @@ def test_a_failed_solve_gives_a_nan_log_density_rather_than_raising():
     )
     guess = cold_guess(methionine)
     assert jnp.isfinite(
-        enzax_log_density(parameters, model, measurements, prior, guess=guess)
+        enzax_log_density(parameters, model, measurements, prior, guess=guess),
     )
     parameters["log_kcat"] = methionine.parameters["log_kcat"] + 30.0
     assert jnp.isnan(
-        enzax_log_density(parameters, model, measurements, prior, guess=guess)
+        enzax_log_density(parameters, model, measurements, prior, guess=guess),
     )
 
 

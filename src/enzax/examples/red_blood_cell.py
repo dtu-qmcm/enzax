@@ -6,7 +6,10 @@ from scipy.optimize import brentq
 
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
-from enzax.rapid_equilibrium import RapidEquilibriumReaction
+from enzax.rapid_equilibrium import (
+    RapidEquilibriumNetwork,
+    RapidEquilibriumReaction,
+)
 from enzax.reactions import MassAction, SymbolicReaction
 from enzax.thermodynamics import GAS_CONSTANT
 
@@ -318,7 +321,12 @@ RATE_CONSTANTS = {
         l0=1.07e-3,
     ),
     "PK": dict(
-        vmax=250.0, k_adp=0.474, k_pep=0.225, k_fdp=0.005, k_atp=3.39, l0=19.0
+        vmax=250.0,
+        k_adp=0.474,
+        k_pep=0.225,
+        k_fdp=0.005,
+        k_atp=3.39,
+        l0=19.0,
     ),
     "DPGM": dict(k=2.75e5, ki=0.04),
     "DPGase": dict(vmax=0.52, km=0.20),
@@ -459,7 +467,7 @@ TOTALS_EQUILIBRIUM_CONSTANTS = {
 }
 
 NEAR_EQUILIBRIUM = [
-    "PGI", "ALD", "GAPDH", "PGK", "PGM", "EN", "LDH", "R5PI", "Xu5PE", "ApK"
+    "PGI", "ALD", "GAPDH", "PGK", "PGM", "EN", "LDH", "R5PI", "Xu5PE", "ApK",
 ]  # fmt: skip
 
 
@@ -496,10 +504,14 @@ def get_model(rapid_equilibrium: bool = False) -> KineticModel:
     }
     return KineticModel(
         reactions=SLOW_REACTIONS | fast,
-        rapid_equilibrium_reactions={
-            reaction_id: RapidEquilibriumReaction(stoichiometry=stoichiometry)
-            for reaction_id, stoichiometry in equilibrating.items()
-        },
+        rapid_equilibrium_network=RapidEquilibriumNetwork(
+            reactions={
+                reaction_id: RapidEquilibriumReaction(
+                    stoichiometry=stoichiometry,
+                )
+                for reaction_id, stoichiometry in equilibrating.items()
+            },
+        ),
         balanced_species=BALANCED_SPECIES,
         moiety_label_species=list(MOIETY_TOTALS),
     )
@@ -513,14 +525,15 @@ def get_dgf(model: KineticModel) -> dict[str, float]:
         if reaction_id in model.reaction_ids
     } | {
         reaction_id: model.S_fast[
-            :, model.rapid_equilibria.reaction_ids.index(reaction_id)
+            :,
+            model.fast_moieties.reaction_ids.index(reaction_id),
         ]
         for reaction_id in constants
-        if reaction_id in model.rapid_equilibria.reaction_ids
+        if reaction_id in model.fast_moieties.reaction_ids
     }
     S = np.array([columns[r] for r in constants]).T
     rhs = np.array(
-        [-TEMPERATURE * GAS_CONSTANT * np.log(k) for k in constants.values()]
+        [-TEMPERATURE * GAS_CONSTANT * np.log(k) for k in constants.values()],
     )
     dgf, *_ = np.linalg.lstsq(S.T, rhs, rcond=None)
     return dict(zip(model.species, dgf.tolist()))
@@ -543,7 +556,7 @@ def get_steady_state_conc() -> dict[str, float]:
 def get_steady_state(model: KineticModel) -> jnp.ndarray:
     conc = get_steady_state_conc()
     return model.get_ode_state(
-        jnp.array([conc[s] for s in model.balanced_species])
+        jnp.array([conc[s] for s in model.balanced_species]),
     )
 
 
@@ -587,10 +600,10 @@ def get_parameters(
             conc,
             jnp.log(
                 jnp.array(
-                    [UNBALANCED_CONC[s] for s in model.unbalanced_species]
-                )
+                    [UNBALANCED_CONC[s] for s in model.unbalanced_species],
+                ),
             ),
-        )
+        ),
     )
     for reaction_id, stoichiometry in FAST_REACTIONS.items():
         target = STEADY_STATE_FLUXES[reaction_id]
@@ -600,10 +613,10 @@ def get_parameters(
                     all_conc[model.species.index(s)] ** -n
                     for s, n in stoichiometry.items()
                     if n < 0
-                ]
+                ],
             )
             spec["log_k_plus"][reaction_id] = np.log(
-                forward_to_net_ratio * target / forward
+                forward_to_net_ratio * target / forward,
             )
         else:
             spec["log_k_plus"][reaction_id] = np.log(target / flux[reaction_id])
@@ -620,6 +633,7 @@ parameters = get_parameters(model)
 steady_state = get_steady_state(model)
 rapid_equilibrium_model = get_model(rapid_equilibrium=True)
 rapid_equilibrium_parameters = get_parameters(
-    rapid_equilibrium_model, calibration_model=model
+    rapid_equilibrium_model,
+    calibration_model=model,
 )
 rapid_equilibrium_steady_state = get_steady_state(rapid_equilibrium_model)

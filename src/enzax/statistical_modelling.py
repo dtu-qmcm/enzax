@@ -156,7 +156,9 @@ def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
     enz_hat, enz_obs, enz_err = enzyme
     flux_hat, flux_obs, flux_err = flux
     llik_conc = norm.logpdf(
-        jnp.log(conc_obs), jnp.log(conc_hat), conc_err
+        jnp.log(conc_obs),
+        jnp.log(conc_hat),
+        conc_err,
     ).sum()
     llik_enz = norm.logpdf(jnp.log(enz_obs), jnp.log(enz_hat), enz_err).sum()
     llik_flux = norm.logpdf(flux_obs, loc=flux_hat, scale=flux_err).sum()
@@ -258,7 +260,8 @@ def _log_density_and_steady_state(
     conc_ind = jnp.where(found, steady, guess)
     conc_balanced = model.get_balanced_conc(conc_ind, parameters)
     conc_hat = model.get_conc(
-        conc_balanced, model.get_log_conc_unbalanced(parameters)
+        conc_balanced,
+        model.get_log_conc_unbalanced(parameters),
     )
     enz_hat = jnp.exp(parameters["log_enzyme"])
     flux_hat = model.flux(conc_balanced, parameters)
@@ -274,7 +277,8 @@ def _log_density_and_steady_state(
 
 
 enzax_log_density_grapevine = partial(
-    jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS
+    jax.jit,
+    static_argnames=_STATIC_SOLVE_ARGUMENTS,
 )(_log_density_and_steady_state)
 
 

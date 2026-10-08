@@ -19,7 +19,8 @@ reactions = {
         competitive_inhibitors=["m1c"],
     ),
     "r3": MichaelisMenten(
-        stoichiometry={"m2c": -1.0, "m2e": 1.0}, water_stoichiometry=0.0
+        stoichiometry={"m2c": -1.0, "m2e": 1.0},
+        water_stoichiometry=0.0,
     ),
 }
 model = KineticModel(

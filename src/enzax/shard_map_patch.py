@@ -49,7 +49,7 @@ def patch_for_shard_map() -> None:
         if module.__version__ != version:
             raise RuntimeError(
                 f"enzax's shard_map patch targets {module_name} "
-                f"{version}, but {module.__version__} is installed."
+                f"{version}, but {module.__version__} is installed.",
             )
     equinox._ad._strip_weak_dtype = _drop_sharding
     for module in (

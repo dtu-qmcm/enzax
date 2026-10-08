@@ -37,7 +37,7 @@ def main():
         print(f"\tSv: {sv}")
         print(
             "\tSaturation constant Jacobian: "
-            f"{jac['log_saturation_constant']}"
+            f"{jac['log_saturation_constant']}",
         )
         print(f"\tDgf Jacobian: {jac['dgf']}")
 
