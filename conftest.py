@@ -28,7 +28,8 @@ if os.environ.get("ENZAX_JAX_CACHE", "1") == "1":
     import jax
 
     jax.config.update(
-        "jax_compilation_cache_dir", str(Path(__file__).parent / ".jax_cache")
+        "jax_compilation_cache_dir",
+        str(Path(__file__).parent / ".jax_cache"),
     )
     jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
     jax.config.update("jax_persistent_cache_min_entry_size_bytes", 0)
