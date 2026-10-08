@@ -9,10 +9,11 @@ import jax.numpy as jnp
 import numpy as np
 import optimistix as optx
 import sympy
-from jaxtyping import Array, Float, PyTree, ScalarLike
+from jaxtyping import Array, PyTree, ScalarLike
 
 from enzax.algebraic_constraint import AlgebraicConstraint, ConstraintScope
 from enzax.array_types import (
+    AlgebraicVariableArr,
     FastMoietyTotalsArr,
     FrozenArray,
     BalancedConcArr,
@@ -289,6 +290,13 @@ class KineticModel(eqx.Module):
     labels are `ode_state_species`, whose totals are the ODE state.
     Instantiating a model checks this, along with the other conditions listed
     in `validate_kinetic_model`.
+
+    `algebraic_constraints` maps ids to `AlgebraicConstraint` objects. An
+    algebraic constraint is an equation that the model's algebraic variables
+    must satisfy. The model's `algebraic_variables` are the variables its
+    constraints own, in constraint order. Rate laws can read them like
+    parameters, and the model solves for them alongside the concentrations: in
+    a nested solve for `dcdt`, or as part of the state for `dae_vector_field`.
 
     Formation energies belong to compounds rather than species, so species
     that represent the same compound in different compartments share one. Use
@@ -734,11 +742,15 @@ class KineticModel(eqx.Module):
         self,
         conc_balanced: BalancedConcArr,
         parameters: PyTree,
-        variables: Float[Array, " n_algebraic_variable"] | None = None,
+        algebraic_variables: AlgebraicVariableArr | None = None,
     ) -> Flux:
         """Get fluxes from balanced species concentrations.
 
         :param conc_balanced: a one dimensional array of positive floats representing concentrations of balanced species. Must have same size as self.structure.ix_balanced
+
+        :param algebraic_variables: the algebraic variables' values, which
+        rate laws read like parameters. Only needed by models whose rate laws
+        read algebraic variables.
 
         :return: a one dimensional array of (possibly negative) floats representing reaction fluxes. Has same size as number of columns of self.structure.S.
 
@@ -747,8 +759,10 @@ class KineticModel(eqx.Module):
             conc_balanced,
             self.get_log_conc_unbalanced(parameters),
         )
-        if variables is not None:
-            parameters = parameters | {"algebraic_variables": variables}
+        if algebraic_variables is not None:
+            parameters = parameters | {
+                "algebraic_variables": algebraic_variables,
+            }
         flux_list = []
         for reaction, ix in zip(self.reaction_ids, self.reaction_ix):
             rate_equation = self.reactions[reaction]
@@ -850,7 +864,8 @@ class KineticModel(eqx.Module):
         v = self.flux(conc_balanced, parameters, variables)
         return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
 
-    def get_initial_variables(self) -> Float[Array, " n_algebraic_variable"]:
+    def get_initial_variables(self) -> AlgebraicVariableArr:
+        """Get the initial guess array for an algebraic variables solve."""
         initial = [
             constraint.get_initial_variables()
             for constraint in self.algebraic_constraints.values()
@@ -860,9 +875,10 @@ class KineticModel(eqx.Module):
     def get_constraint_residuals(
         self,
         conc: ConcArray,
-        variables: Float[Array, " n_algebraic_variable"],
+        variables: AlgebraicVariableArr,
         parameters: PyTree,
-    ) -> Float[Array, " n_algebraic_variable"]:
+    ) -> AlgebraicVariableArr:
+        """Get the residual array for the model's algebraic constraints."""
         residuals = [
             constraint(conc, variables, constraint.get_input(parameters, ix))
             for constraint, ix in zip(
@@ -876,7 +892,8 @@ class KineticModel(eqx.Module):
         self,
         ode_state: OdeStateArr,
         parameters: PyTree,
-    ) -> Float[Array, " n_algebraic_variable"]:
+    ) -> AlgebraicVariableArr:
+        """Get algebraic variables satisfying the model's constraints."""
         conc_balanced = jnp.clip(
             self.get_balanced_conc(ode_state, parameters),
             min=1e-12,
@@ -890,7 +907,7 @@ class KineticModel(eqx.Module):
         rtol: float = 1e-10,
         atol: float = 1e-10,
         max_steps: int = 256,
-    ) -> Float[Array, " n_algebraic_variable"]:
+    ) -> AlgebraicVariableArr:
         if not self.algebraic_constraints:
             return jnp.zeros(0)
         conc = self.get_conc(
@@ -921,9 +938,13 @@ class KineticModel(eqx.Module):
         ode_state: OdeStateArr,
         parameters: PyTree,
     ) -> tuple[OdeStateArr, dict[str, Array]]:
-        """Get the pair `(ode_state, log_conc)` that `dae_vector_field` takes,
-        where `log_conc` holds the log concentrations of the species in fast
-        subnetworks, found by solving for rapid equilibrium."""
+        """Get the pair `(ode_state, algebraic)` that `dae_vector_field` takes.
+
+        `algebraic` is a dict: `"log_conc"` holds the log concentrations of the
+        species in fast subnetworks, found by solving for rapid equilibrium, and
+        `"variables"` the algebraic variables, found by solving the algebraic
+        constraints.
+        """
         conc_balanced = self.get_balanced_conc(ode_state, parameters)
         subnetwork_ix = self.fast_moieties.subnetwork_species_ix
         variables = self._solve_algebraic_variables(
@@ -941,16 +962,19 @@ class KineticModel(eqx.Module):
         y: tuple[OdeStateArr, dict[str, Array]],
         parameters: PyTree,
     ) -> tuple[OdeStateRateArr, dict[str, Array]]:
-        """Get the vector field of the model as a differential algebraic
-        equation in `y = (ode_state, log_conc)`, where `log_conc` holds the log
-        concentrations of the species in fast subnetworks.
+        """Get the model's vector field as a differential algebraic equation.
 
-        Returns the rate of change of the ODE state, and the residuals of the
-        rapid equilibrium conditions. For each fast subnetwork these are the
-        log of each fast moiety's total from `log_conc` minus the log of its
-        total from `ode_state`, and each rapid equilibrium reaction's log mass
-        action ratio minus its log equilibrium constant. The residuals are zero
-        when `log_conc` agrees with `ode_state`.
+        The DAE is in `y = (ode_state, algebraic)`, where `algebraic` is as
+        returned by `get_dae_state`.
+
+        Returns the rate of change of the ODE state, and a dict of residuals
+        with the same keys as `algebraic`. Under `"log_conc"` are the residuals
+        of the rapid equilibrium conditions. For each fast subnetwork these are
+        the log of each fast moiety's total from `log_conc` minus the log of
+        its total from `ode_state`, and each rapid equilibrium reaction's log
+        mass action ratio minus its log equilibrium constant. Under
+        `"variables"` are the residuals of the algebraic constraints. The
+        residuals are zero when `algebraic` agrees with `ode_state`.
         """
         ode_state, algebraic = y
         log_conc = algebraic["log_conc"]

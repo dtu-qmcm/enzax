@@ -12,7 +12,12 @@ import jax.numpy as jnp
 from equinox import Module, field
 from jaxtyping import Array, Float, PyTree
 
-from enzax.array_types import ConcArray, ParamDict, ParamLabelling
+from enzax.array_types import (
+    AlgebraicVariableArr,
+    ConcArray,
+    ParamDict,
+    ParamLabelling,
+)
 
 
 @dataclass(frozen=True)
@@ -105,7 +110,7 @@ class AlgebraicConstraint(Module, ABC):
     def __call__(
         self,
         conc: ConcArray,
-        variables: Float[Array, " n_algebraic_variable"],
+        variables: AlgebraicVariableArr,
         constraint_input: PyTree,
     ) -> Float[Array, " n_residual"]:
         """Get the constraint's residuals, which are zero when it is
