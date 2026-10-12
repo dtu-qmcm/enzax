@@ -516,6 +516,7 @@ class KineticModel(eqx.Module):
             ),
             species_to_dgf_ix=self.species_to_dgf_ix,
             water_dgf=self.water_dgf,
+            volumes=tuple(self.species_volumes.tolist()),
         )
 
     @property
@@ -566,6 +567,55 @@ class KineticModel(eqx.Module):
     @property
     def L0(self) -> LinkMatrix:
         return unfreeze_array(self._L0, np.float64)
+
+    @property
+    def species_volumes(self) -> np.ndarray:
+        """The volume of each species' compartment, in species order."""
+        if self.compartments is None:
+            return np.ones(len(self.species))
+        return np.array(
+            [
+                self.compartments[self.species_to_compartment[s]].volume
+                for s in self.species
+            ],
+        )
+
+    @property
+    def reaction_volumes(self) -> np.ndarray:
+        """The volume of each reaction's compartment, in reaction order."""
+        if self.compartments is None:
+            return np.ones(len(self.reaction_ids))
+        return np.array(
+            [
+                self.compartments[self.reaction_to_compartment[r]].volume
+                for r in self.reaction_ids
+            ],
+        )
+
+    def _label_volumes(self, labels: Sequence[str]) -> np.ndarray:
+        ix = np.array([self.species.index(s) for s in labels], dtype=int)
+        return self.species_volumes[ix]
+
+    @property
+    def S_ode_state(self) -> StoichiometricMatrix:
+        """The rate of change of the ODE state per unit of each reaction's
+        flux."""
+        ode_rows = self.fast_moiety_rows(self.ode_state_species)
+        return (
+            self.S_reduced[ode_rows]
+            * self.reaction_volumes
+            / self._label_volumes(self.ode_state_species)[:, None]
+        )
+
+    @property
+    def volume_scaled_L0(self) -> LinkMatrix:
+        """The link matrix for fast moiety totals measured in their label
+        species' compartments."""
+        return (
+            self.L0
+            * self._label_volumes(self.ode_state_species)
+            / self._label_volumes(self.moiety_label_species)[:, None]
+        )
 
     def _build_species(self) -> list[str]:
         """Work out the model's species, in the order they are first named.
@@ -847,7 +897,11 @@ class KineticModel(eqx.Module):
         """Get the totals of every fast moiety from the ODE state, working out
         the ones that belong to conserved moieties from the conserved moiety
         totals."""
-        dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
+        dependent = (
+            self.get_moiety_totals(parameters)
+            / self._label_volumes(self.moiety_label_species)
+            + self.volume_scaled_L0 @ ode_state
+        )
         totals = jnp.zeros(len(self.fast_moieties.fast_moiety_labels))
         totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
             ode_state,
@@ -883,7 +937,9 @@ class KineticModel(eqx.Module):
     def get_ode_state(self, conc_balanced: BalancedConcArr) -> OdeStateArr:
         """Get the ODE state that corresponds to some balanced species'
         concentrations."""
-        totals = self.fast_moieties.fast_moiety_matrix @ conc_balanced
+        totals = (
+            self.fast_moieties.volume_scaled_fast_moiety_matrix @ conc_balanced
+        )
         return totals[self.fast_moiety_rows(self.ode_state_species)]
 
     def dcdt(
@@ -910,7 +966,19 @@ class KineticModel(eqx.Module):
                 parameters,
             )
         v = self.flux(conc_balanced, parameters, variables)
-        return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
+        return self.S_ode_state @ v
+
+    def dndt(
+        self,
+        conc_ind: OdeStateArr,
+        parameters: PyTree,
+    ) -> OdeStateRateArr:
+        """Get the rate of change of the amount of each ODE state species'
+        fast moiety."""
+        return self._label_volumes(self.ode_state_species) * self.dcdt(
+            conc_ind,
+            parameters,
+        )
 
     def get_initial_variables(self) -> AlgebraicVariableArr:
         """Get the initial guess array for an algebraic variables solve."""
@@ -1048,8 +1116,7 @@ class KineticModel(eqx.Module):
                 parameters,
             )
         v = self.flux(conc_balanced, parameters, variables)
-        ode_rows = self.fast_moiety_rows(self.ode_state_species)
-        rates = self.S_reduced[ode_rows] @ v
+        rates = self.S_ode_state @ v
         network_residuals = jnp.zeros(0)
         if self._rapid_equilibrium_network.reactions:
             network_residuals = self._rapid_equilibrium_network.get_residuals(

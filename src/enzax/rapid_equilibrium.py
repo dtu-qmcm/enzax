@@ -75,6 +75,7 @@ class FastMoieties:
     unbalanced_species_ix: tuple[int, ...]
     subnetworks: tuple[FastSubnetwork, ...]
     fast_moiety_labels: tuple[str, ...]
+    balanced_species_volumes: tuple[float, ...]
     _S: FrozenArray
     _fast_moiety_matrix: FrozenArray
 
@@ -89,6 +90,20 @@ class FastMoieties:
         """The fast moieties' coefficients, with one row per fast moiety, in
         label order, and one column per balanced species."""
         return unfreeze_array(self._fast_moiety_matrix, np.float64)
+
+    @property
+    def volume_scaled_fast_moiety_matrix(self) -> FastMoietyMatrix:
+        """The fast moiety matrix with each fast moiety's total measured in
+        its label species' compartment: each coefficient is scaled by its
+        species' volume over the label's."""
+        volumes = np.array(self.balanced_species_volumes)
+        label_volumes = np.array(
+            [
+                volumes[self.balanced_species.index(label)]
+                for label in self.fast_moiety_labels
+            ],
+        )
+        return self.fast_moiety_matrix * volumes / label_volumes[:, None]
 
     @property
     def fast_moiety_coefficients(self) -> dict[str, dict[str, float]]:
@@ -466,7 +481,7 @@ def get_subnetwork_blocks(
     matrix, for its balanced and for the unbalanced species, and of the fast
     moiety matrix, together with the rows of the fast moieties it involves."""
     S = fast_moieties.S
-    P = fast_moieties.fast_moiety_matrix
+    P = fast_moieties.volume_scaled_fast_moiety_matrix
     balanced_ix = np.array(fast_moieties.balanced_species_ix, dtype=int)
     unbalanced_ix = np.array(fast_moieties.unbalanced_species_ix, dtype=int)
     members = np.array(subnetwork.balanced_species_ix, dtype=int)
@@ -633,6 +648,7 @@ class RapidEquilibriumNetworkScope:
     S: StoichiometricMatrix
     species_to_dgf_ix: np.ndarray
     water_dgf: float
+    volumes: tuple[float, ...]
 
 
 class RapidEquilibriumNetworkIx(Module):
@@ -729,6 +745,9 @@ class RapidEquilibriumNetwork(Module):
             ),
             subnetworks=tuple(subnetworks),
             fast_moiety_labels=tuple(labels),
+            balanced_species_volumes=tuple(
+                scope.volumes[i] for i in balanced_ix
+            ),
             _S=freeze_array(S),
             _fast_moiety_matrix=freeze_array(matrix),
         )
