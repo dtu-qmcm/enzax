@@ -198,6 +198,7 @@ class Reaction(Module, ABC):
 
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
+    compartment: str | None = field(kw_only=True, default=None)
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species this reaction names, in declaration order.

@@ -12,6 +12,11 @@ import sympy
 from jaxtyping import Array, PyTree, ScalarLike
 
 from enzax.algebraic_constraint import AlgebraicConstraint, ConstraintScope
+from enzax.compartment import (
+    Compartment,
+    get_reaction_compartment,
+    get_species_to_compartment,
+)
 from enzax.array_types import (
     AlgebraicVariableArr,
     FastMoietyTotalsArr,
@@ -335,6 +340,10 @@ class KineticModel(eqx.Module):
         default=None,
     )
     water_dgf: float = eqx.field(static=True, default=-150.9)
+    compartments: dict[str, Compartment] | None = eqx.field(
+        static=True,
+        default=None,
+    )
     stoichiometry: dict[str, dict[str, float]] = eqx.field(
         static=True,
         init=False,
@@ -348,6 +357,14 @@ class KineticModel(eqx.Module):
     ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
+    species_to_compartment: dict[str, str] = eqx.field(
+        static=True,
+        init=False,
+    )
+    reaction_to_compartment: dict[str, str] = eqx.field(
+        static=True,
+        init=False,
+    )
     _species_to_dgf_ix: FrozenArray = eqx.field(static=True, init=False)
     _balanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _unbalanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
@@ -392,6 +409,7 @@ class KineticModel(eqx.Module):
                 "balanced species needs a reaction that changes it."
             )
             raise ValueError(msg)
+        self._assign_compartments()
         self.species_to_compound = get_species_to_compound(
             self.species,
             self.compound_to_species,
@@ -584,6 +602,36 @@ class KineticModel(eqx.Module):
                 + from_constraints,
             ),
         )
+
+    def _assign_compartments(self) -> None:
+        if self.compartments is None:
+            stated = [
+                r
+                for r, reaction in self.reactions.items()
+                if reaction.compartment is not None
+            ]
+            if stated:
+                msg = (
+                    f"Reactions {stated} say which compartment they are in, "
+                    "but the model declares no compartments."
+                )
+                raise ValueError(msg)
+            self.species_to_compartment = {}
+            self.reaction_to_compartment = {}
+            return
+        self.species_to_compartment = get_species_to_compartment(
+            self.compartments,
+            self.species,
+        )
+        self.reaction_to_compartment = {
+            r: get_reaction_compartment(
+                r,
+                reaction.stoichiometry,
+                reaction.compartment,
+                self.species_to_compartment,
+            )
+            for r, reaction in self.reactions.items()
+        }
 
     def _check_constraint_ids(self) -> None:
         reaction_ids = set(self.reactions) | set(
