@@ -145,6 +145,49 @@ Array([[-0.12574924,  0.08105433],
        [ 0.03229972, -0.28213634]], dtype=float64)
 ```
 
+### Compartments
+
+By default, all of a kinetic model's species are in one compartment with volume 1. To give species different volumes, use the `compartments` argument, which maps compartment ids to `Compartment` objects. Every species must then be in exactly one compartment.
+
+Each reaction's rate is per volume of its compartment. Enzax works out a reaction's compartment from its species, except for transport reactions like `"r1"` and `"r3"`, whose species are in two compartments. A transport reaction must say which compartment's volume its rate is per.
+
+Here is `my_model` with a cytosol `"c"` and a ten times larger extracellular space `"e"`. Now `"m2e"` is balanced, and a new reaction `"r4"` drains it from `"e"`:
+
+```python
+from enzax.compartment import Compartment
+from enzax.reactions import Drain
+
+my_compartment_model = KineticModel(
+    reactions={
+        "r1": MichaelisMenten(
+            stoichiometry={"m1e": -1.0, "m1c": 1.0},
+            allosteric_activators=["m2c"],
+            compartment="c",
+        ),
+        "r2": MichaelisMenten(
+            stoichiometry={"m1c": -1.0, "m2c": 1.0},
+            allosteric_inhibitors=["m1c"],
+            competitive_inhibitors=["m1c"],
+        ),
+        "r3": MichaelisMenten(
+            stoichiometry={"m2c": -1.0, "m2e": 1.0},
+            compartment="c",
+        ),
+        "r4": Drain(stoichiometry={"m2e": -1.0}),
+    },
+    balanced_species=["m1c", "m2c", "m2e"],
+    compound_to_species={"m1": ["m1e", "m1c"], "m2": ["m2c", "m2e"]},
+    compartments={
+        "c": Compartment(volume=1.0, species=["m1c", "m2c"]),
+        "e": Compartment(volume=10.0, species=["m1e", "m2e"]),
+    },
+)
+```
+
+The rate of `"r3"` is per volume of `"c"`, so each unit of its flux lowers the concentration of `"m2c"` by one unit and raises the concentration of `"m2e"` by a tenth of a unit.
+
+Volumes can be in any unit. Concentrations are per unit of volume, and the values in `moiety_totals` are amounts, i.e. sums of concentration times volume. As well as `dcdt`, a model has `dndt`, which gives the rate of change of the ODE state in amounts.
+
 ## Find a kinetic model's steady state
 
 To find a kinetic model's steady state, i.e. balanced species concentrations that do not change under the model's own dynamics, you can use enzax's `get_steady_state` function:

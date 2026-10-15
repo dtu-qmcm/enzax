@@ -68,8 +68,8 @@ def get_link_matrix(
     `S_ind` are the rows of the stoichiometric matrix belonging to,
     respectively, the moiety label species and the ODE state species.
 
-    Since `d/dt conc_dep = L0 @ d/dt conc_ind`, the quantity
-    `conc_dep - L0 @ conc_ind` is conserved: these are the moiety totals.
+    Since `d/dt amount_dep = L0 @ d/dt amount_ind`, the quantity
+    `amount_dep - L0 @ amount_ind` is conserved: these are the moiety totals.
 
     L0 only exists if the moiety label species and ODE state species satisfy the
     conditions checked by `validate_kinetic_model`, so validate a model
@@ -309,6 +309,14 @@ class KineticModel(eqx.Module):
     `{"m1": ["m1_e", "m1_c"]}`. It is partial: a species that no compound
     claims is a compound of its own, so only compounds with more than one
     species need mentioning.
+
+    `compartments` maps ids to `Compartment` objects. If it is None, every
+    species is in one compartment of volume 1. Each reaction's rate is per
+    volume of its compartment. The ODE state is each fast moiety's amount
+    divided by the volume of its label species' compartment. For a species in
+    no rapid equilibrium reaction the fast moiety and ODE state component is
+    just that species' concentration. The moiety totals in `moiety_totals` are
+    amounts, i.e. sums of concentration times volume.
 
     Water is not treated as a species. Reactions say how much of it they
     consume or produce with `water_stoichiometry`, and `water_dgf` is its
@@ -598,8 +606,10 @@ class KineticModel(eqx.Module):
 
     @property
     def S_ode_state(self) -> StoichiometricMatrix:
-        """The rate of change of the ODE state per unit of each reaction's
-        flux."""
+        """The matrix that turns fluxes into the rate of change of the ODE
+        state. Its rows are the rows of `S_reduced` belonging to the ODE state
+        species, with each column multiplied by its reaction's volume and each
+        row divided by its ODE state species' volume."""
         ode_rows = self.fast_moiety_rows(self.ode_state_species)
         return (
             self.S_reduced[ode_rows]
@@ -609,8 +619,10 @@ class KineticModel(eqx.Module):
 
     @property
     def volume_scaled_L0(self) -> LinkMatrix:
-        """The link matrix for fast moiety totals measured in their label
-        species' compartments."""
+        """The link matrix for the ODE state. `L0` relates fast moiety
+        amounts, whereas the ODE state is amounts divided by volumes, so each
+        row of `L0` is divided by its moiety label species' volume and each
+        column multiplied by its ODE state species' volume."""
         return (
             self.L0
             * self._label_volumes(self.ode_state_species)
@@ -973,8 +985,15 @@ class KineticModel(eqx.Module):
         conc_ind: OdeStateArr,
         parameters: PyTree,
     ) -> OdeStateRateArr:
-        """Get the rate of change of the amount of each ODE state species'
-        fast moiety."""
+        """Get the rate of change of the ODE state in amounts: each entry of
+        `dcdt` times the volume of its ODE state species' compartment.
+
+        :param conc_ind: a one dimensional array of positive floats representing concentrations of the ODE state species. Must have same size as self.ode_state_species.
+
+        :param parameters: A PyTree of parameters.
+
+        :return: a one dimensional array of floats representing the rate of change of the ODE state in amounts. Has the same size as `self.ode_state_species`.
+        """  # Noqa: E501
         return self._label_volumes(self.ode_state_species) * self.dcdt(
             conc_ind,
             parameters,

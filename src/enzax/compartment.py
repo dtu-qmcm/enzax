@@ -1,4 +1,4 @@
-"""Compartments: the volumes that a kinetic model's species live in."""
+"""Provides class `Compartment` for representing compartments."""
 
 from collections.abc import Mapping, Sequence
 
@@ -6,6 +6,15 @@ from equinox import Module
 
 
 class Compartment(Module):
+    """A fixed volume containing some of the model's species.
+
+    `volume` can be in any unit. Each species' concentration is per unit of its
+    compartment's volume.
+
+    `species` lists the species in the compartment. If a model has
+    compartments, every species must be in exactly one.
+    """
+
     volume: float
     species: list[str]
 

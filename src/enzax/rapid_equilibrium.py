@@ -93,9 +93,11 @@ class FastMoieties:
 
     @property
     def volume_scaled_fast_moiety_matrix(self) -> FastMoietyMatrix:
-        """The fast moiety matrix with each fast moiety's total measured in
-        its label species' compartment: each coefficient is scaled by its
-        species' volume over the label's."""
+        """The fast moiety matrix for concentrations. Multiplying it by the
+        balanced species' concentrations gives each fast moiety's amount
+        divided by its label species' volume. Each coefficient is the fast
+        moiety matrix's, multiplied by its species' volume and divided by its
+        label species' volume."""
         volumes = np.array(self.balanced_species_volumes)
         label_volumes = np.array(
             [
