@@ -178,6 +178,11 @@ class Reaction(Module, ABC):
     `water_stoichiometry`, also passed by keyword, says how much water the
     reaction consumes or produces, since water is not a species.
 
+    `compartment`, also passed by keyword, says which compartment's volume the
+    reaction's rate is per. Only transport reactions, whose species are in more
+    than one compartment, need it, since any other reaction is in its species'
+    compartment.
+
     A reaction refers to its parameters by label. Two reactions that
     use the same label share a value, allowing sharing of parameter values
     between reactions, or for the same parameter value to be used in different
@@ -198,6 +203,7 @@ class Reaction(Module, ABC):
 
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
+    compartment: str | None = field(kw_only=True, default=None)
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species this reaction names, in declaration order.

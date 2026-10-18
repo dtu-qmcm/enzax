@@ -12,6 +12,11 @@ import sympy
 from jaxtyping import Array, PyTree, ScalarLike
 
 from enzax.algebraic_constraint import AlgebraicConstraint, ConstraintScope
+from enzax.compartment import (
+    Compartment,
+    get_reaction_compartment,
+    get_species_to_compartment,
+)
 from enzax.array_types import (
     AlgebraicVariableArr,
     FastMoietyTotalsArr,
@@ -63,8 +68,8 @@ def get_link_matrix(
     `S_ind` are the rows of the stoichiometric matrix belonging to,
     respectively, the moiety label species and the ODE state species.
 
-    Since `d/dt conc_dep = L0 @ d/dt conc_ind`, the quantity
-    `conc_dep - L0 @ conc_ind` is conserved: these are the moiety totals.
+    Since `d/dt amount_dep = L0 @ d/dt amount_ind`, the quantity
+    `amount_dep - L0 @ amount_ind` is conserved: these are the moiety totals.
 
     L0 only exists if the moiety label species and ODE state species satisfy the
     conditions checked by `validate_kinetic_model`, so validate a model
@@ -305,6 +310,14 @@ class KineticModel(eqx.Module):
     claims is a compound of its own, so only compounds with more than one
     species need mentioning.
 
+    `compartments` maps ids to `Compartment` objects. If it is None, every
+    species is in one compartment of volume 1. Each reaction's rate is per
+    volume of its compartment. The ODE state is each fast moiety's amount
+    divided by the volume of its label species' compartment. For a species in
+    no rapid equilibrium reaction the fast moiety and ODE state component is
+    just that species' concentration. The moiety totals in `moiety_totals` are
+    amounts, i.e. sums of concentration times volume.
+
     Water is not treated as a species. Reactions say how much of it they
     consume or produce with `water_stoichiometry`, and `water_dgf` is its
     formation energy, which every reversible reaction in the model uses. The
@@ -335,6 +348,10 @@ class KineticModel(eqx.Module):
         default=None,
     )
     water_dgf: float = eqx.field(static=True, default=-150.9)
+    compartments: dict[str, Compartment] | None = eqx.field(
+        static=True,
+        default=None,
+    )
     stoichiometry: dict[str, dict[str, float]] = eqx.field(
         static=True,
         init=False,
@@ -348,6 +365,14 @@ class KineticModel(eqx.Module):
     ode_state_species: list[str] = eqx.field(static=True, init=False)
     unbalanced_species: list[str] = eqx.field(static=True, init=False)
     species_to_compound: dict[str, str] = eqx.field(static=True, init=False)
+    species_to_compartment: dict[str, str] = eqx.field(
+        static=True,
+        init=False,
+    )
+    reaction_to_compartment: dict[str, str] = eqx.field(
+        static=True,
+        init=False,
+    )
     _species_to_dgf_ix: FrozenArray = eqx.field(static=True, init=False)
     _balanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
     _unbalanced_species_ix: FrozenArray = eqx.field(static=True, init=False)
@@ -392,6 +417,7 @@ class KineticModel(eqx.Module):
                 "balanced species needs a reaction that changes it."
             )
             raise ValueError(msg)
+        self._assign_compartments()
         self.species_to_compound = get_species_to_compound(
             self.species,
             self.compound_to_species,
@@ -498,6 +524,7 @@ class KineticModel(eqx.Module):
             ),
             species_to_dgf_ix=self.species_to_dgf_ix,
             water_dgf=self.water_dgf,
+            volumes=tuple(self.species_volumes.tolist()),
         )
 
     @property
@@ -549,6 +576,59 @@ class KineticModel(eqx.Module):
     def L0(self) -> LinkMatrix:
         return unfreeze_array(self._L0, np.float64)
 
+    @property
+    def species_volumes(self) -> np.ndarray:
+        """The volume of each species' compartment, in species order."""
+        if self.compartments is None:
+            return np.ones(len(self.species))
+        return np.array(
+            [
+                self.compartments[self.species_to_compartment[s]].volume
+                for s in self.species
+            ],
+        )
+
+    @property
+    def reaction_volumes(self) -> np.ndarray:
+        """The volume of each reaction's compartment, in reaction order."""
+        if self.compartments is None:
+            return np.ones(len(self.reaction_ids))
+        return np.array(
+            [
+                self.compartments[self.reaction_to_compartment[r]].volume
+                for r in self.reaction_ids
+            ],
+        )
+
+    def _label_volumes(self, labels: Sequence[str]) -> np.ndarray:
+        ix = np.array([self.species.index(s) for s in labels], dtype=int)
+        return self.species_volumes[ix]
+
+    @property
+    def S_ode_state(self) -> StoichiometricMatrix:
+        """The matrix that turns fluxes into the rate of change of the ODE
+        state. Its rows are the rows of `S_reduced` belonging to the ODE state
+        species, with each column multiplied by its reaction's volume and each
+        row divided by its ODE state species' volume."""
+        ode_rows = self.fast_moiety_rows(self.ode_state_species)
+        return (
+            self.S_reduced[ode_rows]
+            * self.reaction_volumes
+            / self._label_volumes(self.ode_state_species)[:, None]
+        )
+
+    @property
+    def volume_scaled_L0(self) -> LinkMatrix:
+        """The link matrix for the ODE state. `L0` relates fast moiety
+        amounts, whereas the ODE state is amounts divided by volumes, so each
+        row of `L0` is divided by its moiety label species' volume and each
+        column multiplied by its ODE state species' volume."""
+        return (
+            self.L0
+            * self._label_volumes(self.ode_state_species)
+            / self._label_volumes(self.moiety_label_species)[:, None]
+        )
+
     def _build_species(self) -> list[str]:
         """Work out the model's species, in the order they are first named.
 
@@ -584,6 +664,36 @@ class KineticModel(eqx.Module):
                 + from_constraints,
             ),
         )
+
+    def _assign_compartments(self) -> None:
+        if self.compartments is None:
+            stated = [
+                r
+                for r, reaction in self.reactions.items()
+                if reaction.compartment is not None
+            ]
+            if stated:
+                msg = (
+                    f"Reactions {stated} say which compartment they are in, "
+                    "but the model declares no compartments."
+                )
+                raise ValueError(msg)
+            self.species_to_compartment = {}
+            self.reaction_to_compartment = {}
+            return
+        self.species_to_compartment = get_species_to_compartment(
+            self.compartments,
+            self.species,
+        )
+        self.reaction_to_compartment = {
+            r: get_reaction_compartment(
+                r,
+                reaction.stoichiometry,
+                reaction.compartment,
+                self.species_to_compartment,
+            )
+            for r, reaction in self.reactions.items()
+        }
 
     def _check_constraint_ids(self) -> None:
         reaction_ids = set(self.reactions) | set(
@@ -799,7 +909,11 @@ class KineticModel(eqx.Module):
         """Get the totals of every fast moiety from the ODE state, working out
         the ones that belong to conserved moieties from the conserved moiety
         totals."""
-        dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
+        dependent = (
+            self.get_moiety_totals(parameters)
+            / self._label_volumes(self.moiety_label_species)
+            + self.volume_scaled_L0 @ ode_state
+        )
         totals = jnp.zeros(len(self.fast_moieties.fast_moiety_labels))
         totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
             ode_state,
@@ -835,7 +949,9 @@ class KineticModel(eqx.Module):
     def get_ode_state(self, conc_balanced: BalancedConcArr) -> OdeStateArr:
         """Get the ODE state that corresponds to some balanced species'
         concentrations."""
-        totals = self.fast_moieties.fast_moiety_matrix @ conc_balanced
+        totals = (
+            self.fast_moieties.volume_scaled_fast_moiety_matrix @ conc_balanced
+        )
         return totals[self.fast_moiety_rows(self.ode_state_species)]
 
     def dcdt(
@@ -862,7 +978,26 @@ class KineticModel(eqx.Module):
                 parameters,
             )
         v = self.flux(conc_balanced, parameters, variables)
-        return self.S_reduced[self.fast_moiety_rows(self.ode_state_species)] @ v
+        return self.S_ode_state @ v
+
+    def dndt(
+        self,
+        conc_ind: OdeStateArr,
+        parameters: PyTree,
+    ) -> OdeStateRateArr:
+        """Get the rate of change of the ODE state in amounts: each entry of
+        `dcdt` times the volume of its ODE state species' compartment.
+
+        :param conc_ind: a one dimensional array of positive floats representing concentrations of the ODE state species. Must have same size as self.ode_state_species.
+
+        :param parameters: A PyTree of parameters.
+
+        :return: a one dimensional array of floats representing the rate of change of the ODE state in amounts. Has the same size as `self.ode_state_species`.
+        """  # Noqa: E501
+        return self._label_volumes(self.ode_state_species) * self.dcdt(
+            conc_ind,
+            parameters,
+        )
 
     def get_initial_variables(self) -> AlgebraicVariableArr:
         """Get the initial guess array for an algebraic variables solve."""
@@ -1000,8 +1135,7 @@ class KineticModel(eqx.Module):
                 parameters,
             )
         v = self.flux(conc_balanced, parameters, variables)
-        ode_rows = self.fast_moiety_rows(self.ode_state_species)
-        rates = self.S_reduced[ode_rows] @ v
+        rates = self.S_ode_state @ v
         network_residuals = jnp.zeros(0)
         if self._rapid_equilibrium_network.reactions:
             network_residuals = self._rapid_equilibrium_network.get_residuals(
