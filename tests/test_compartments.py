@@ -461,3 +461,137 @@ def test_across_compartments_the_dae_matches_the_nested_solve():
         steady = solve(ACROSS, jnp.array([1.0]), parameters)
         conc = ACROSS.get_balanced_conc(steady, parameters)
         assert np.allclose(conc, [a_e, a_e], rtol=1e-7)
+
+
+A_E, N_X, OSMOLARITY, K_EX = 2.0, 1.5, 3.0, 2.0
+
+
+def get_osmotic_cell(rapid_equilibria=None, dimer=False):
+    in_cell = ["a_c", "x", *(["m", "d"] if dimer else [])]
+    return KineticModel(
+        reactions={
+            "t": SymbolicReaction(
+                stoichiometry={"a_e": -1.0, "a_c": 1.0},
+                expression="k * (a_e - a_c)",
+                species=["a_e", "a_c"],
+                parameters={"k": "log_kcat"},
+                compartment="c",
+            ),
+        },
+        rapid_equilibrium_network=rapid_equilibria,
+        balanced_species=in_cell,
+        moiety_label_species=["x", *(["m"] if dimer else [])],
+        algebraic_constraints={
+            "osmotic": Osmotic(species_ids=in_cell, variables=["volume|c"]),
+        },
+        compartments={
+            "c": Compartment(species=in_cell, variable_volume=True),
+            "e": Compartment(species=["a_e"], volume=3.0),
+        },
+    )
+
+
+OSMOTIC_CELL = get_osmotic_cell()
+
+
+def get_osmotic_parameters(model, dgf_d=0.0):
+    totals = {"x": N_X, "m": 1.0}
+    return get_parameters(
+        model,
+        log_kcat={"t": np.log(K_EX)},
+        log_custom={"cu|osmotic|osmolarity": np.log(OSMOLARITY)},
+        log_conc_unbalanced={"a_e": np.log(A_E)},
+        moiety_totals={s: totals[s] for s in model.moiety_label_species},
+        dgf={"a_c": 0.0, "a_e": 0.0, "x": 0.0, "m": 0.0, "d": dgf_d},
+    )
+
+
+def test_the_volume_is_set_by_the_constraint():
+    parameters = get_osmotic_parameters(OSMOTIC_CELL)
+    n_a = 1.0
+    volume = (n_a + N_X) / OSMOLARITY
+    state = jnp.array([n_a])
+    assert np.allclose(
+        OSMOTIC_CELL.get_algebraic_variables(state, parameters),
+        [volume],
+    )
+    conc = OSMOTIC_CELL.get_balanced_conc(state, parameters)
+    assert np.allclose(conc, [n_a / volume, N_X / volume])
+    assert np.allclose(OSMOTIC_CELL.get_ode_state(conc, {"c": volume}), state)
+
+
+def test_rates_are_per_the_variable_volume():
+    parameters = get_osmotic_parameters(OSMOTIC_CELL)
+    n_a = 1.0
+    volume = (n_a + N_X) / OSMOLARITY
+    assert np.allclose(
+        OSMOTIC_CELL.dndt(jnp.array([n_a]), parameters),
+        [K_EX * (volume * A_E - n_a)],
+    )
+
+
+@pytest.mark.parametrize("solve", ["hybrid", "dae"])
+def test_the_osmotic_cell_reaches_its_closed_form_steady_state(solve):
+    if solve == "dae":
+        pytest.importorskip("diffrax_bdf")
+    get_steady_state = {
+        "hybrid": get_steady_state_hybrid,
+        "dae": get_steady_state_dae,
+    }[solve]
+    parameters = get_osmotic_parameters(OSMOTIC_CELL)
+    steady = get_steady_state(OSMOTIC_CELL, jnp.array([1.0]), parameters)
+    volume = N_X / (OSMOLARITY - A_E)
+    assert np.allclose(steady, [volume * A_E], rtol=1e-7)
+
+
+# Dimerisation isn't scale-invariant, so the volume shifts its equilibrium.
+DIMER_CELL = get_osmotic_cell(
+    rapid_equilibria=RapidEquilibriumNetwork(
+        reactions={
+            "dim": RapidEquilibriumReaction(
+                stoichiometry={"m": -2.0, "d": 1.0},
+            ),
+        },
+    ),
+    dimer=True,
+)
+
+
+def get_dimer_parameters():
+    return get_osmotic_parameters(DIMER_CELL, dgf_d=-2.0)
+
+
+def test_a_rapid_equilibrium_in_a_variable_compartment_follows_the_volume():
+    parameters = get_dimer_parameters()
+    ratios = []
+    for n_a in [0.5, 2.0]:
+        state = jnp.array([n_a])
+        (volume,) = DIMER_CELL.get_algebraic_variables(state, parameters)
+        conc = dict(
+            zip(
+                DIMER_CELL.balanced_species,
+                DIMER_CELL.get_balanced_conc(state, parameters),
+            ),
+        )
+        assert np.isclose(volume * conc["a_c"], n_a)
+        assert np.isclose(volume * conc["x"], N_X)
+        assert np.isclose(volume * (conc["m"] + 2 * conc["d"]), 1.0)
+        assert np.isclose(sum(conc.values()), OSMOLARITY)
+        ratios.append((conc["d"] / conc["m"] ** 2, conc["d"] / conc["m"]))
+    (k_1, dm_1), (k_2, dm_2) = ratios
+    assert np.isclose(k_1, k_2)
+    assert not np.isclose(dm_1, dm_2)
+
+
+def test_in_a_variable_compartment_the_dae_matches_the_nested_solve():
+    pytest.importorskip("diffrax_bdf")
+    parameters = get_dimer_parameters()
+    by_nested = get_steady_state_hybrid(
+        DIMER_CELL,
+        jnp.array([1.0]),
+        parameters,
+    )
+    by_dae = get_steady_state_dae(DIMER_CELL, jnp.array([1.0]), parameters)
+    assert np.allclose(by_dae, by_nested, rtol=1e-7)
+    conc = DIMER_CELL.get_balanced_conc(by_nested, parameters)
+    assert np.isclose(conc[DIMER_CELL.balanced_species.index("a_c")], A_E)

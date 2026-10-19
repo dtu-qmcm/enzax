@@ -569,6 +569,43 @@ def get_fast_subnetwork_residual(
     )
 
 
+def get_fast_subnetwork_guess(
+    P: FastMoietyMatrix,
+    totals: FastMoietyTotalsArr,
+) -> Float[Array, " n_subnetwork_species"]:
+    """Get a starting point for solving one fast subnetwork: the log of half
+    of the largest concentration each species could have given the totals."""
+    in_a_moiety = P > 0
+    largest_possible = jnp.min(
+        jnp.where(
+            in_a_moiety,
+            totals[:, None] / jnp.where(in_a_moiety, P, 1.0),
+            jnp.inf,
+        ),
+        axis=0,
+        initial=jnp.inf,
+    )
+    return jnp.log(
+        jnp.where(jnp.isfinite(largest_possible), largest_possible / 2, 1.0),
+    )
+
+
+def get_rapid_equilibrium_guess(
+    fast_moieties: FastMoieties,
+    fast_moiety_totals: FastMoietyTotalsArr,
+) -> Float[Array, " n_subnetwork_species"]:
+    """Get a starting point for every fast subnetwork's log concentrations,
+    in the order of `subnetwork_species_ix`. See
+    `get_fast_subnetwork_guess`."""
+    guesses = []
+    for subnetwork in fast_moieties.subnetworks:
+        _, _, P, rows = get_subnetwork_blocks(fast_moieties, subnetwork)
+        guesses.append(
+            get_fast_subnetwork_guess(P, fast_moiety_totals[rows]),
+        )
+    return jnp.concatenate(guesses) if guesses else jnp.zeros(0)
+
+
 def solve_fast_subnetwork(
     S_balanced: StoichiometricMatrix,
     S_unbalanced: StoichiometricMatrix,
@@ -600,19 +637,7 @@ def solve_fast_subnetwork(
             log_k,
         )
 
-    in_a_moiety = P > 0
-    largest_possible = jnp.min(
-        jnp.where(
-            in_a_moiety,
-            totals[:, None] / jnp.where(in_a_moiety, P, 1.0),
-            jnp.inf,
-        ),
-        axis=0,
-        initial=jnp.inf,
-    )
-    guess = jnp.log(
-        jnp.where(jnp.isfinite(largest_possible), largest_possible / 2, 1.0),
-    )
+    guess = get_fast_subnetwork_guess(P, totals)
     args = (totals, log_conc_unbalanced, log_keq)
     sol = optx.least_squares(
         residual,
@@ -796,6 +821,16 @@ class RapidEquilibriumNetwork(Module):
             network_input.temperature,
             network_input.water_dgf,
         )
+
+    def get_guess(
+        self,
+        structure: FastMoieties,
+        fast_moiety_totals: FastMoietyTotalsArr,
+    ) -> Float[Array, " n_subnetwork_species"]:
+        """Get a starting point for the fast subnetworks' log concentrations,
+        in the order of `FastMoieties.subnetwork_species_ix`. See
+        `get_rapid_equilibrium_guess`."""
+        return get_rapid_equilibrium_guess(structure, fast_moiety_totals)
 
     def get_residuals(
         self,
