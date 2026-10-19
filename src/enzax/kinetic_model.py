@@ -348,7 +348,10 @@ class KineticModel(eqx.Module):
     i.e. its species' concentrations times their compartments' volumes, summed
     with the fast moiety's coefficients. For a species in no rapid equilibrium
     reaction the ODE state component is just that species' amount. The moiety
-    totals in `moiety_totals` are amounts too.
+    totals in `moiety_totals` are amounts too. A compartment whose
+    `variable_volume` is True has the algebraic variable `volume|<id>` as its
+    volume, so its species' concentrations and its reactions' rates depend on
+    the solved volume.
 
     Water is not treated as a species. Reactions say how much of it they
     consume or produce with `water_stoichiometry`, and `water_dgf` is its

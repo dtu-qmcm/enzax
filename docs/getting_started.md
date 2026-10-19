@@ -188,6 +188,12 @@ The rate of `"r3"` is per volume of `"c"`, so each unit of its flux lowers the c
 
 Volumes can be in any unit. Concentrations are per unit of volume, and the ODE state and the values in `moiety_totals` are amounts, i.e. sums of concentration times volume.
 
+A compartment's volume can also vary. Give it `variable_volume=True` instead of a `volume`, and its volume becomes the algebraic variable `"volume|<id>"`, which one of the model's algebraic constraints must own, for example an osmotic balance. The ODE state is still made of amounts, so a changing volume dilutes or concentrates the compartment's species without changing the state. To turn concentrations into an ODE state, pass the variable volumes to `get_ode_state`, as in `model.get_ode_state(conc, {"c": 1.0})`.
+
+Variable volumes are easiest to solve when they are near 1, so a good unit is the compartment's volume in some reference condition.
+
+A solute whose amount is fixed, such as an impermeable protein in a cell whose volume varies, needn't be a species. Unless it takes part in a reaction or rapid equilibrium, it can be a parameter holding its amount, and any constraint or rate law that needs its concentration can divide that amount by the volume: both can read parameters and algebraic variables. If it does take part in a reaction or rapid equilibrium, make it a balanced species and declare it as its own conserved moiety, so that its value in `moiety_totals` is its amount.
+
 ## Find a kinetic model's steady state
 
 To find a kinetic model's steady state, i.e. balanced species concentrations that do not change under the model's own dynamics, you can use enzax's `get_steady_state` function:
