@@ -613,7 +613,7 @@ def test_get_ode_state_inverts_get_balanced_conc():
     parameters = get_energy_parameters()
     state = jnp.array([1.2, 0.9])
     conc = ENERGY.get_balanced_conc(state, parameters)
-    assert np.allclose(ENERGY.get_ode_state(conc, parameters), state)
+    assert np.allclose(ENERGY.get_ode_state(conc), state)
 
 
 def test_dndt_is_the_fast_moieties_rate_of_change():
@@ -690,7 +690,7 @@ def test_the_dae_state_holds_the_balanced_concentrations():
         jnp.exp(algebraic["log_conc"]),
     )
     assert np.allclose(conc, ENERGY.get_balanced_conc(state, parameters))
-    assert np.allclose(ENERGY.get_ode_state(conc, parameters), state)
+    assert np.allclose(ENERGY.get_ode_state(conc), state)
 
 
 @pytest.mark.parametrize("suppress_algebraic_error", [True, False])

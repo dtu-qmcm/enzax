@@ -14,8 +14,11 @@ from jaxtyping import Array, PyTree, ScalarLike
 from enzax.algebraic_constraint import AlgebraicConstraint, ConstraintScope
 from enzax.compartment import (
     Compartment,
+    check_fast_moiety_compartments,
+    check_volume_variables,
     get_reaction_compartment,
     get_species_to_compartment,
+    get_volume_variables,
 )
 from enzax.array_types import (
     AlgebraicVariableArr,
@@ -444,6 +447,11 @@ class KineticModel(eqx.Module):
         self.fast_moieties = self._rapid_equilibrium_network.get_structure(
             self._rapid_equilibrium_network_scope(),
         )
+        check_fast_moiety_compartments(
+            self.compartments,
+            self.species_to_compartment,
+            self.fast_moieties.fast_moiety_coefficients,
+        )
         self.ode_state_species = [
             s
             for s in self.fast_moieties.fast_moiety_labels
@@ -478,7 +486,8 @@ class KineticModel(eqx.Module):
         for constraint_id in self.algebraic_constraints:
             check_id_has_no_separator(constraint_id, "Constraint")
         for variable in self.algebraic_variables:
-            check_id_has_no_separator(variable, "Algebraic variable")
+            if variable not in self.volume_variables:
+                check_id_has_no_separator(variable, "Algebraic variable")
         self.parameter_labelling = self._build_parameter_labelling()
         check_parameter_labelling(self.parameter_labelling)
         self.reaction_ix = [
@@ -577,25 +586,37 @@ class KineticModel(eqx.Module):
         return unfreeze_array(self._L0, np.float64)
 
     @property
+    def volume_variables(self) -> dict[str, str]:
+        """The algebraic variables that are compartments' volumes, mapped to
+        their compartments."""
+        return get_volume_variables(self.compartments)
+
+    def _static_volume(self, compartment_id: str) -> float:
+        compartment = self.compartments[compartment_id]
+        return 1.0 if compartment.variable_volume else compartment.volume
+
+    @property
     def species_volumes(self) -> np.ndarray:
-        """The volume of each species' compartment, in species order."""
+        """The volume of each species' compartment, in species order, or 1
+        for a compartment with a variable volume."""
         if self.compartments is None:
             return np.ones(len(self.species))
         return np.array(
             [
-                self.compartments[self.species_to_compartment[s]].volume
+                self._static_volume(self.species_to_compartment[s])
                 for s in self.species
             ],
         )
 
     @property
     def reaction_volumes(self) -> np.ndarray:
-        """The volume of each reaction's compartment, in reaction order."""
+        """The volume of each reaction's compartment, in reaction order, or 1
+        for a compartment with a variable volume."""
         if self.compartments is None:
             return np.ones(len(self.reaction_ids))
         return np.array(
             [
-                self.compartments[self.reaction_to_compartment[r]].volume
+                self._static_volume(self.reaction_to_compartment[r])
                 for r in self.reaction_ids
             ],
         )
@@ -657,6 +678,7 @@ class KineticModel(eqx.Module):
                     "but the model declares no compartments."
                 )
                 raise ValueError(msg)
+            check_volume_variables(None, self.algebraic_variables)
             self.species_to_compartment = {}
             self.reaction_to_compartment = {}
             return
@@ -664,6 +686,7 @@ class KineticModel(eqx.Module):
             self.compartments,
             self.species,
         )
+        check_volume_variables(self.compartments, self.algebraic_variables)
         self.reaction_to_compartment = {
             r: get_reaction_compartment(
                 r,
@@ -924,14 +947,39 @@ class KineticModel(eqx.Module):
     def get_ode_state(
         self,
         conc_balanced: BalancedConcArr,
-        parameters: PyTree,
+        variable_volumes: Mapping[str, ScalarLike] | None = None,
     ) -> OdeStateArr:
         """Get the ODE state that corresponds to some balanced species'
-        concentrations."""
+        concentrations. `variable_volumes` maps each compartment with a
+        variable volume to its volume."""
+        variable_volumes = dict(variable_volumes or {})
+        variable = sorted(self.volume_variables.values())
+        if sorted(variable_volumes) != variable:
+            msg = (
+                "`variable_volumes` must give the volume of each compartment "
+                f"with a variable volume, {variable}, and no others, but it "
+                f"has {sorted(variable_volumes)}."
+            )
+            raise ValueError(msg)
+        if variable_volumes:
+            conc_balanced = (
+                self._balanced_volume_factors(variable_volumes) * conc_balanced
+            )
         totals = (
             self.fast_moieties.volume_scaled_fast_moiety_matrix @ conc_balanced
         )
         return totals[self.fast_moiety_rows(self.ode_state_species)]
+
+    def _balanced_volume_factors(
+        self,
+        volumes: Mapping[str, ScalarLike],
+    ) -> BalancedConcArr:
+        return jnp.array(
+            [
+                volumes.get(self.species_to_compartment.get(s), 1.0)
+                for s in self.balanced_species
+            ],
+        )
 
     def dndt(
         self,

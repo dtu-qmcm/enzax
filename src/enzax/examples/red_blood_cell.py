@@ -553,11 +553,10 @@ def get_steady_state_conc() -> dict[str, float]:
     return conc
 
 
-def get_steady_state(model: KineticModel, parameters: dict) -> jnp.ndarray:
+def get_steady_state(model: KineticModel) -> jnp.ndarray:
     conc = get_steady_state_conc()
     return model.get_ode_state(
         jnp.array([conc[s] for s in model.balanced_species]),
-        parameters,
     )
 
 
@@ -586,7 +585,7 @@ def get_parameters(
         "temperature": TEMPERATURE,
     }
     unscaled = pack_parameters(labelling, spec)
-    conc = model.get_balanced_conc(get_steady_state(model, unscaled), unscaled)
+    conc = model.get_balanced_conc(get_steady_state(model), unscaled)
     flux = dict(zip(model.reaction_ids, model.flux(conc, unscaled).tolist()))
     for reaction_id, symbols in [
         ("HK", ["vmax1", "vmax2"]),
@@ -631,13 +630,10 @@ def get_parameters(
 
 model = get_model()
 parameters = get_parameters(model)
-steady_state = get_steady_state(model, parameters)
+steady_state = get_steady_state(model)
 rapid_equilibrium_model = get_model(rapid_equilibrium=True)
 rapid_equilibrium_parameters = get_parameters(
     rapid_equilibrium_model,
     calibration_model=model,
 )
-rapid_equilibrium_steady_state = get_steady_state(
-    rapid_equilibrium_model,
-    rapid_equilibrium_parameters,
-)
+rapid_equilibrium_steady_state = get_steady_state(rapid_equilibrium_model)
