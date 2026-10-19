@@ -94,18 +94,12 @@ class FastMoieties:
     @property
     def volume_scaled_fast_moiety_matrix(self) -> FastMoietyMatrix:
         """The fast moiety matrix for concentrations. Multiplying it by the
-        balanced species' concentrations gives each fast moiety's amount
-        divided by its label species' volume. Each coefficient is the fast
-        moiety matrix's, multiplied by its species' volume and divided by its
-        label species' volume."""
-        volumes = np.array(self.balanced_species_volumes)
-        label_volumes = np.array(
-            [
-                volumes[self.balanced_species.index(label)]
-                for label in self.fast_moiety_labels
-            ],
+        balanced species' concentrations gives each fast moiety's amount. Each
+        coefficient is the fast moiety matrix's, multiplied by its species'
+        volume."""
+        return self.fast_moiety_matrix * np.array(
+            self.balanced_species_volumes,
         )
-        return self.fast_moiety_matrix * volumes / label_volumes[:, None]
 
     @property
     def fast_moiety_coefficients(self) -> dict[str, dict[str, float]]:
@@ -504,14 +498,15 @@ def assemble_balanced_conc(
     """Get every balanced species' concentration from the fast moiety totals
     and the concentrations of the species in fast subnetworks. A species in no
     fast subnetwork is a fast moiety of its own, so its concentration is its
-    total."""
+    total divided by its volume."""
     P = fast_moieties.fast_moiety_matrix
     subnetwork_ix = fast_moieties.subnetwork_species_ix
     isolated = np.setdiff1d(np.arange(P.shape[1]), subnetwork_ix)
     conc = jnp.zeros(P.shape[1])
     if isolated.size:
         own_row = np.argmax(P[:, isolated] != 0, axis=0)
-        conc = conc.at[isolated].set(fast_moiety_totals[own_row])
+        volumes = np.array(fast_moieties.balanced_species_volumes)[isolated]
+        conc = conc.at[isolated].set(fast_moiety_totals[own_row] / volumes)
     return conc.at[subnetwork_ix].set(subnetwork_conc)
 
 

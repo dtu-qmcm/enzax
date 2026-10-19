@@ -127,8 +127,8 @@ Array([0.00576084, 0.00576084, 0.00576084], dtype=float64)
 ```
 
 ```python
-dcdt = my_model.dcdt(conc, my_parameters)
-dcdt
+dndt = my_model.dndt(conc, my_parameters)
+dndt
 ```
 
 ```
@@ -140,7 +140,7 @@ These methods work with standard JAX transformations!
 ```python
 import jax
 
-jax.jacobian(my_model.dcdt)(conc, my_parameters)
+jax.jacobian(my_model.dndt)(conc, my_parameters)
 Array([[-0.12574924,  0.08105433],
        [ 0.03229972, -0.28213634]], dtype=float64)
 ```
@@ -186,7 +186,7 @@ my_compartment_model = KineticModel(
 
 The rate of `"r3"` is per volume of `"c"`, so each unit of its flux lowers the concentration of `"m2c"` by one unit and raises the concentration of `"m2e"` by a tenth of a unit.
 
-Volumes can be in any unit. Concentrations are per unit of volume, and the values in `moiety_totals` are amounts, i.e. sums of concentration times volume. As well as `dcdt`, a model has `dndt`, which gives the rate of change of the ODE state in amounts.
+Volumes can be in any unit. Concentrations are per unit of volume, and the ODE state and the values in `moiety_totals` are amounts, i.e. sums of concentration times volume.
 
 ## Find a kinetic model's steady state
 

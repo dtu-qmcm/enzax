@@ -301,7 +301,7 @@ class KineticModel(eqx.Module):
     must satisfy. The model's `algebraic_variables` are the variables its
     constraints own, in constraint order. Rate laws can read them like
     parameters, and the model solves for them alongside the concentrations: in
-    a nested solve for `dcdt`, or as part of the state for `dae_vector_field`.
+    a nested solve for `dndt`, or as part of the state for `dae_vector_field`.
 
     Formation energies belong to compounds rather than species, so species
     that represent the same compound in different compartments share one. Use
@@ -312,11 +312,11 @@ class KineticModel(eqx.Module):
 
     `compartments` maps ids to `Compartment` objects. If it is None, every
     species is in one compartment of volume 1. Each reaction's rate is per
-    volume of its compartment. The ODE state is each fast moiety's amount
-    divided by the volume of its label species' compartment. For a species in
-    no rapid equilibrium reaction the fast moiety and ODE state component is
-    just that species' concentration. The moiety totals in `moiety_totals` are
-    amounts, i.e. sums of concentration times volume.
+    volume of its compartment. The ODE state is each fast moiety's amount,
+    i.e. its species' concentrations times their compartments' volumes, summed
+    with the fast moiety's coefficients. For a species in no rapid equilibrium
+    reaction the ODE state component is just that species' amount. The moiety
+    totals in `moiety_totals` are amounts too.
 
     Water is not treated as a species. Reactions say how much of it they
     consume or produce with `water_stoichiometry`, and `water_dgf` is its
@@ -600,34 +600,13 @@ class KineticModel(eqx.Module):
             ],
         )
 
-    def _label_volumes(self, labels: Sequence[str]) -> np.ndarray:
-        ix = np.array([self.species.index(s) for s in labels], dtype=int)
-        return self.species_volumes[ix]
-
     @property
     def S_ode_state(self) -> StoichiometricMatrix:
         """The matrix that turns fluxes into the rate of change of the ODE
         state. Its rows are the rows of `S_reduced` belonging to the ODE state
-        species, with each column multiplied by its reaction's volume and each
-        row divided by its ODE state species' volume."""
+        species, with each column multiplied by its reaction's volume."""
         ode_rows = self.fast_moiety_rows(self.ode_state_species)
-        return (
-            self.S_reduced[ode_rows]
-            * self.reaction_volumes
-            / self._label_volumes(self.ode_state_species)[:, None]
-        )
-
-    @property
-    def volume_scaled_L0(self) -> LinkMatrix:
-        """The link matrix for the ODE state. `L0` relates fast moiety
-        amounts, whereas the ODE state is amounts divided by volumes, so each
-        row of `L0` is divided by its moiety label species' volume and each
-        column multiplied by its ODE state species' volume."""
-        return (
-            self.L0
-            * self._label_volumes(self.ode_state_species)
-            / self._label_volumes(self.moiety_label_species)[:, None]
-        )
+        return self.S_reduced[ode_rows] * self.reaction_volumes
 
     def _build_species(self) -> list[str]:
         """Work out the model's species, in the order they are first named.
@@ -909,11 +888,7 @@ class KineticModel(eqx.Module):
         """Get the totals of every fast moiety from the ODE state, working out
         the ones that belong to conserved moieties from the conserved moiety
         totals."""
-        dependent = (
-            self.get_moiety_totals(parameters)
-            / self._label_volumes(self.moiety_label_species)
-            + self.volume_scaled_L0 @ ode_state
-        )
+        dependent = self.get_moiety_totals(parameters) + self.L0 @ ode_state
         totals = jnp.zeros(len(self.fast_moieties.fast_moiety_labels))
         totals = totals.at[self.fast_moiety_rows(self.ode_state_species)].set(
             ode_state,
@@ -931,12 +906,12 @@ class KineticModel(eqx.Module):
         """Get the balanced species' concentrations from the ODE state.
 
         Without rapid equilibrium reactions these are the fast moiety totals
-        themselves; otherwise the species are found by solving for rapid
-        equilibrium.
+        divided by their species' volumes; otherwise the species are found by
+        solving for rapid equilibrium.
         """
         totals = self.get_fast_moiety_totals(ode_state, parameters)
         if not self._rapid_equilibrium_network.reactions:
-            return totals
+            return totals / self.species_volumes[self.balanced_species_ix]
         return self._rapid_equilibrium_network.solve(
             self.fast_moieties,
             totals,
@@ -946,7 +921,11 @@ class KineticModel(eqx.Module):
             ),
         )
 
-    def get_ode_state(self, conc_balanced: BalancedConcArr) -> OdeStateArr:
+    def get_ode_state(
+        self,
+        conc_balanced: BalancedConcArr,
+        parameters: PyTree,
+    ) -> OdeStateArr:
         """Get the ODE state that corresponds to some balanced species'
         concentrations."""
         totals = (
@@ -954,21 +933,22 @@ class KineticModel(eqx.Module):
         )
         return totals[self.fast_moiety_rows(self.ode_state_species)]
 
-    def dcdt(
+    def dndt(
         self,
-        conc_ind: OdeStateArr,
+        ode_state: OdeStateArr,
         parameters: PyTree,
     ) -> OdeStateRateArr:
-        """Get the rate of change of balanced species concentrations.
+        """Get the rate of change of the ODE state, i.e. of the amounts of the
+        ODE state species' fast moieties.
 
-        :param conc_ind: a one dimensional array of positive floats representing concentrations of the ODE state species. Must have same size as self.ode_state_species.
+        :param ode_state: a one dimensional array of positive floats representing the amounts of the ODE state species' fast moieties. Must have same size as self.ode_state_species.
 
         :param parameters: A PyTree of parameters.
 
         :return: a one dimensional array of floats representing the rate of change of the ODE state. Has the same size as `self.ode_state_species`.
         """  # Noqa: E501
         conc_balanced = jnp.clip(
-            self.get_balanced_conc(conc_ind, parameters),
+            self.get_balanced_conc(ode_state, parameters),
             min=1e-12,
         )
         variables = None
@@ -980,24 +960,18 @@ class KineticModel(eqx.Module):
         v = self.flux(conc_balanced, parameters, variables)
         return self.S_ode_state @ v
 
-    def dndt(
+    def dcdt(
         self,
-        conc_ind: OdeStateArr,
+        ode_state: OdeStateArr,
         parameters: PyTree,
     ) -> OdeStateRateArr:
-        """Get the rate of change of the ODE state in amounts: each entry of
-        `dcdt` times the volume of its ODE state species' compartment.
-
-        :param conc_ind: a one dimensional array of positive floats representing concentrations of the ODE state species. Must have same size as self.ode_state_species.
-
-        :param parameters: A PyTree of parameters.
-
-        :return: a one dimensional array of floats representing the rate of change of the ODE state in amounts. Has the same size as `self.ode_state_species`.
-        """  # Noqa: E501
-        return self._label_volumes(self.ode_state_species) * self.dcdt(
-            conc_ind,
-            parameters,
+        """Deprecated alias of `dndt`."""
+        warnings.warn(
+            "`dcdt` is deprecated and will be removed; use `dndt`.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        return self.dndt(ode_state, parameters)
 
     def get_initial_variables(self) -> AlgebraicVariableArr:
         """Get the initial guess array for an algebraic variables solve."""
@@ -1158,4 +1132,4 @@ class KineticModel(eqx.Module):
         y: OdeStateArr,
         parameters: PyTree,
     ) -> OdeStateRateArr:
-        return self.dcdt(y, parameters)
+        return self.dndt(y, parameters)

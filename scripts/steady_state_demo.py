@@ -21,14 +21,14 @@ def main():
     for guess in [BAD_GUESS, GOOD_GUESS]:
         # solve once for jitting
         steady = get_steady_state(model, GOOD_GUESS, parameters)
-        jax.jacrev(model.dcdt, argnums=1)(steady, parameters)
+        jax.jacrev(model.dndt, argnums=1)(steady, parameters)
         # timer on
         start = time.time()
         conc_steady = get_steady_state(model, guess, parameters)
-        jac = jax.jacrev(model.dcdt, argnums=1)(conc_steady, parameters)
+        jac = jax.jacrev(model.dndt, argnums=1)(conc_steady, parameters)
         # timer off
         runtime = (time.time() - start) * 1e3
-        sv = model.dcdt(conc_steady, parameters)
+        sv = model.dndt(conc_steady, parameters)
         flux = model.flux(conc_steady, parameters)
         print(f"Results with starting guess {guess}:")
         print(f"\tRun time in milliseconds: {round(runtime, 4)}")

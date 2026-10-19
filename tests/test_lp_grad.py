@@ -184,7 +184,7 @@ def test_log_density_is_guess_invariant():
 
     The grapevine method is only valid if the solver reaches the same answer
     whatever guess it starts from. The event stops the integration once
-    `norm(dcdt) < atol + rtol * norm(conc)`, so its terminal state does depend
+    `norm(dndt) < atol + rtol * norm(conc)`, so its terminal state does depend
     on where it started, and this test bounds by how much. Methionine's
     concentrations are of order 1e-5, so the event tolerances have to be
     tight relative to that: at 1e-9 the log density moves by ~1e-3 between

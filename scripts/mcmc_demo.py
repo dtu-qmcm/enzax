@@ -65,7 +65,7 @@ def get_guess_fn(model, split, free_parameters):
 
     def target_function(conc_ind, position):
         parameters = combine_parameters(split, unflatten(position))
-        return model.dcdt(conc_ind, parameters)
+        return model.dndt(conc_ind, parameters)
 
     return functools.partial(guess_implicit, target_function=target_function)
 

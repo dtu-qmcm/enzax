@@ -41,12 +41,12 @@ def get_expected(name: str) -> dict[str, list[float]]:
         ("conserved_moiety", conserved_moiety),
     ],
 )
-def test_flux_and_dcdt_are_unchanged(name, example):
+def test_flux_and_dndt_are_unchanged(name, example):
     model = example.model
     parameters = example.parameters
     expected = get_expected(name)
     conc_balanced = model.get_balanced_conc(example.steady_state, parameters)
     flux = model.flux(conc_balanced, parameters)
-    dcdt = model.dcdt(example.steady_state, parameters)
+    dndt = model.dndt(example.steady_state, parameters)
     assert jnp.array_equal(flux, jnp.array(expected["flux"]))
-    assert jnp.array_equal(dcdt, jnp.array(expected["dcdt"]))
+    assert jnp.array_equal(dndt, jnp.array(expected["dndt"]))

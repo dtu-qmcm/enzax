@@ -89,10 +89,10 @@ def test_refine_accepts_a_good_guess(name, example):
     guess = example.steady_state * 1.01
     refined = refine_guess_newton(example.model, guess, example.parameters)
     assert not jnp.array_equal(refined, guess)
-    dcdt = example.model.dcdt(refined, example.parameters)
+    dndt = example.model.dndt(refined, example.parameters)
     assert (
-        jnp.abs(dcdt).max()
-        < jnp.abs(example.model.dcdt(guess, example.parameters)).max()
+        jnp.abs(dndt).max()
+        < jnp.abs(example.model.dndt(guess, example.parameters)).max()
     )
 
 
@@ -114,13 +114,13 @@ def test_refine_never_returns_a_non_physical_state(name, example):
 
     `RESULTS.successful` is not enough on its own: a Newton solver has no
     notion of a physical concentration, and the steady state event would fire
-    on a non-physical root too, since it only tests whether `dcdt` is near
+    on a non-physical root too, since it only tests whether `dndt` is near
     zero. The check is on the *balanced* concentrations, so that a moiety
     label species whose concentration is `moiety_total + L0 @ conc_ind` is
     covered as well.
 
     No shipped example is known to reach that branch, and the reason looks
-    structural rather than lucky: `KineticModel.dcdt` clips concentrations at
+    structural rather than lucky: `KineticModel.dndt` clips concentrations at
     1e-12, so at a negative concentration the residual is the one at zero,
     which for these rate laws is not zero. A sweep of 400 random guesses per
     example, signs included, found no accepted root with a non-positive
@@ -158,8 +158,8 @@ def test_hybrid_finds_the_same_steady_state(name, example):
             example.parameters,
         )
         assert jnp.isclose(by_hybrid, by_ode, rtol=1e-5).all()
-        dcdt = example.model.dcdt(by_hybrid, example.parameters)
-        assert jnp.isclose(dcdt, 0.0, atol=1e-9).all()
+        dndt = example.model.dndt(by_hybrid, example.parameters)
+        assert jnp.isclose(dndt, 0.0, atol=1e-9).all()
 
 
 @pytest.mark.parametrize(["name", "example"], EXAMPLES)

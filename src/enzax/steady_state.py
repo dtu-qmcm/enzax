@@ -4,7 +4,7 @@ Given a structural kinetic model, a set of parameters and an initial guess, the 
 
 Two solvers live here. `get_steady_state` integrates the model's ODE until a
 steady state event fires: robust, and slow even from a good guess.
-`get_steady_state_hybrid` first tries a bounded Newton root find on `dcdt` and
+`get_steady_state_hybrid` first tries a bounded Newton root find on `dndt` and
 seeds the integration with whatever that produced, which costs almost nothing
 when Newton fails and skips the integration altogether when it succeeds.
 
@@ -66,7 +66,7 @@ def get_steady_state(
     :param ivp_atol: absolute tolerance of the initial value problem.
 
     :param steady_state_rtol: relative tolerance of the terminating event: the
-    solve stops once `norm(dcdt) < steady_state_atol + steady_state_rtol *
+    solve stops once `norm(dndt) < steady_state_atol + steady_state_rtol *
     norm(conc)`.
 
     :param steady_state_atol: absolute tolerance of the terminating event.
@@ -142,7 +142,7 @@ def refine_guess_newton(
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
 ) -> OdeStateArr:
-    """Improve a steady state guess with a bounded Newton root find on `dcdt`.
+    """Improve a steady state guess with a bounded Newton root find on `dndt`.
 
     Returns the root Newton found if it converged to finite, positive
     concentrations, and the original guess otherwise, so that the result can
@@ -150,7 +150,7 @@ def refine_guess_newton(
     `stop_gradient`, so gradients come only from the following solve's
     adjoint at the final root.
 
-    :param model: the kinetic model whose `dcdt` is being solved.
+    :param model: the kinetic model whose `dndt` is being solved.
 
     :param guess: the concentrations of the ODE state species to start from,
     and to fall back to.
@@ -251,7 +251,7 @@ def get_steady_state_dae(
 
     Alongside the ODE state, the integrator carries the log concentrations of
     the species in fast subnetworks, and solves the rapid equilibria in its own
-    Newton iterations instead of in every evaluation of `dcdt`. Needs
+    Newton iterations instead of in every evaluation of `dndt`. Needs
     diffrax-bdf.
 
     Returns NaN if no steady state was found.

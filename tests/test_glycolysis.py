@@ -192,5 +192,5 @@ def test_julias_steady_state_is_ours():
         conc,
         jnp.array([state[s] for s in glycolysis.model.ode_state_species]),
     )
-    dcdt = glycolysis.model.dcdt(conc, glycolysis.parameters)
-    assert (jnp.abs(dcdt / conc) < 1e-9).all()
+    dndt = glycolysis.model.dndt(conc, glycolysis.parameters)
+    assert (jnp.abs(dndt / conc) < 1e-9).all()

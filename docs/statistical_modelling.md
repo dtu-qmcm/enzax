@@ -259,7 +259,7 @@ from enzax.parameter_split import combine_parameters
 
 def target_function(conc_ind, position):
     parameters = combine_parameters(split, unflatten(position))
-    return model.dcdt(conc_ind, parameters)
+    return model.dndt(conc_ind, parameters)
 
 
 sampler = grapenuts(
@@ -277,7 +277,7 @@ array; `unflatten` above is the second return value of
 
 grapevine is exactly valid when the solver reaches the same answer whatever
 guess it starts from. The integration stops once
-`norm(dcdt) < steady_state_atol + steady_state_rtol * norm(conc)`, so its
+`norm(dndt) < steady_state_atol + steady_state_rtol * norm(conc)`, so its
 terminal state does depend on where it started, and a guess that already meets
 that bound is returned unchanged.
 

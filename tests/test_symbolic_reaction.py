@@ -386,7 +386,7 @@ def test_steady_state_gradient_matches_finite_differences():
 
     steady = get_steady_state_hybrid(model, guess, parameters)
     assert jnp.isfinite(steady).all()
-    assert jnp.allclose(model.dcdt(steady, parameters), 0.0, atol=1e-8)
+    assert jnp.allclose(model.dndt(steady, parameters), 0.0, atol=1e-8)
     log_kcat = parameters["log_kcat"]
     gradient = jax.grad(total)(log_kcat)
     step = 1e-5

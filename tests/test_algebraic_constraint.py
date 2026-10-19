@@ -200,11 +200,11 @@ def test_the_nested_solve_satisfies_the_constraint():
     assert np.isclose(x**3 + x, KC * 1.5, rtol=1e-10)
 
 
-def test_dcdt_reads_the_algebraic_variable():
+def test_dndt_reads_the_algebraic_variable():
     parameters = get_toy_parameters()
     (x,) = TOY.get_algebraic_variables(jnp.array([1.5]), parameters)
     assert np.isclose(
-        TOY.dcdt(jnp.array([1.5]), parameters)[0],
+        TOY.dndt(jnp.array([1.5]), parameters)[0],
         V - K2 * x * 1.5,
     )
 
@@ -316,7 +316,7 @@ def test_the_dae_residuals_vanish_at_a_consistent_state():
     rates, residuals = TOY_WITH_BINDING.dae_vector_field(0.0, y, parameters)
     assert np.allclose(
         rates,
-        TOY_WITH_BINDING.dcdt(jnp.array([2.0]), parameters),
+        TOY_WITH_BINDING.dndt(jnp.array([2.0]), parameters),
     )
     assert residuals["log_conc"].shape == (3,)
     assert np.allclose(residuals["log_conc"], 0.0, atol=1e-9)

@@ -384,7 +384,7 @@ def make_guess_fn(problem: Problem) -> Callable:
             problem.split,
             problem.unflatten(position),
         )
-        return problem.model.dcdt(conc_ind, parameters)
+        return problem.model.dndt(conc_ind, parameters)
 
     return functools.partial(guess_implicit, target_function=target_function)
 

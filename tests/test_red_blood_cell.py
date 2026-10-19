@@ -48,7 +48,7 @@ def test_the_steady_state_is_close_to_part_iv():
         rbc.steady_state,
         rbc.parameters,
     )
-    assert jnp.max(jnp.abs(rbc.model.dcdt(steady, rbc.parameters))) < 1e-9
+    assert jnp.max(jnp.abs(rbc.model.dndt(steady, rbc.parameters))) < 1e-9
     assert np.allclose(steady, rbc.steady_state, rtol=0.08)
     fluxes = get_fluxes(steady)
     for reaction_id, expected in rbc.STEADY_STATE_FLUXES.items():

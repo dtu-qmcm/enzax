@@ -195,20 +195,19 @@ def get_parameters(model, **extra):
 
 def test_rates_are_per_their_compartment_volume():
     state = jnp.array([0.7, 0.4])
-    dcdt = OPEN.dcdt(state, get_parameters(OPEN))
+    a_c, a_e = 0.7 / V_C, 0.4 / V_E
     assert np.allclose(
-        dcdt,
-        [V_IN - K_T * 0.7, V_C / V_E * K_T * 0.7 - K_OUT * 0.4],
+        OPEN.dndt(state, get_parameters(OPEN)),
+        [V_C * (V_IN - K_T * a_c), V_C * K_T * a_c - V_E * K_OUT * a_e],
     )
 
 
-def test_dndt_is_the_volume_times_dcdt():
+def test_dcdt_is_a_deprecated_alias_of_dndt():
     state = jnp.array([0.7, 0.4])
     parameters = get_parameters(OPEN)
-    assert np.allclose(
-        OPEN.dndt(state, parameters),
-        np.array([V_C, V_E]) * OPEN.dcdt(state, parameters),
-    )
+    with pytest.warns(DeprecationWarning, match="use `dndt`"):
+        dcdt = OPEN.dcdt(state, parameters)
+    assert np.array_equal(dcdt, OPEN.dndt(state, parameters))
 
 
 def test_the_open_model_reaches_its_closed_form_steady_state():
@@ -219,7 +218,7 @@ def test_the_open_model_reaches_its_closed_form_steady_state():
     )
     assert np.allclose(
         steady,
-        [V_IN / K_T, V_C * V_IN / (V_E * K_OUT)],
+        [V_C * V_IN / K_T, V_C * V_IN / K_OUT],
         rtol=1e-8,
     )
 
@@ -240,8 +239,8 @@ def test_a_moiety_total_is_an_amount():
     total = 2.0
     parameters = get_parameters(CLOSED, moiety_totals={"a_e": total})
     conc = CLOSED.get_balanced_conc(jnp.array([0.5]), parameters)
-    assert np.allclose(conc, [0.5, (total - V_C * 0.5) / V_E])
-    assert np.allclose(CLOSED.get_ode_state(conc), [0.5])
+    assert np.allclose(conc, [0.5 / V_C, (total - 0.5) / V_E])
+    assert np.allclose(CLOSED.get_ode_state(conc, parameters), [0.5])
 
 
 def test_the_closed_model_shares_its_amount_at_equilibrium():
@@ -249,7 +248,7 @@ def test_the_closed_model_shares_its_amount_at_equilibrium():
     parameters = get_parameters(CLOSED, moiety_totals={"a_e": total})
     steady = get_steady_state_hybrid(CLOSED, jnp.array([1.0]), parameters)
     a_c = total / (V_C + V_E * V_C * K_T / (V_E * K_BACK))
-    assert np.allclose(steady, [a_c], rtol=1e-8)
+    assert np.allclose(steady, [V_C * a_c], rtol=1e-8)
 
 
 # a_c and a_e are one compound, so the rapid equilibrium makes their
@@ -273,12 +272,16 @@ def test_a_rapid_equilibrium_across_compartments_shares_the_amount():
     parameters = get_parameters(ACROSS)
     assert ACROSS.ode_state_species == ["a_c"]
     conc = ACROSS.get_balanced_conc(jnp.array([2.0]), parameters)
-    shared = 2.0 * V_C / (V_C + V_E)
+    shared = 2.0 / (V_C + V_E)
     assert np.allclose(conc, [shared, shared], rtol=1e-9)
-    assert np.allclose(ACROSS.get_ode_state(conc), [2.0], rtol=1e-9)
     assert np.allclose(
-        ACROSS.dcdt(jnp.array([2.0]), parameters),
-        [(V_C * V_IN - V_E * K_OUT * shared) / V_C],
+        ACROSS.get_ode_state(conc, parameters),
+        [2.0],
+        rtol=1e-9,
+    )
+    assert np.allclose(
+        ACROSS.dndt(jnp.array([2.0]), parameters),
+        [V_C * V_IN - V_E * K_OUT * shared],
         rtol=1e-9,
     )
 
