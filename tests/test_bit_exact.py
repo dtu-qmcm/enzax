@@ -12,9 +12,14 @@ quantity associated differently, so every allosteric reaction moved by a
 couple of units in the last place -- at most 2 ulps, or 3.6e-16 relative, over
 the three examples. They were regenerated for jax 0.12.0, which moved the
 linear example's fluxes by 1 ulp. Nothing else has changed them.
+
+The expected values are Linux's. Other platforms' maths libraries can round
+the same calculation differently in the last bit, so the test only runs on
+Linux.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import jax
@@ -24,6 +29,12 @@ from jax import numpy as jnp
 from enzax.examples import conserved_moiety, linear, methionine
 
 jax.config.update("jax_enable_x64", True)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="exact floating-point results depend on the platform's maths "
+    "library",
+)
 
 HERE = Path(__file__).parent
 expected_flux_file = HERE / "data" / "expected_fluxes.json"
