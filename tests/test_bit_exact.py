@@ -10,7 +10,8 @@ Changeux factor became a ratio of two binding polynomials. That step replaced
 `free_enzyme_ratio * qnum / qdenom` with `Z_T / Z_R`, which is the same
 quantity associated differently, so every allosteric reaction moved by a
 couple of units in the last place -- at most 2 ulps, or 3.6e-16 relative, over
-the three examples. Nothing else has changed them.
+the three examples. They were regenerated for jax 0.12.0, which moved the
+linear example's fluxes by 1 ulp. Nothing else has changed them.
 """
 
 import json
