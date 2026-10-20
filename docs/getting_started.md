@@ -127,8 +127,8 @@ Array([0.00576084, 0.00576084, 0.00576084], dtype=float64)
 ```
 
 ```python
-dcdt = my_model.dcdt(conc, my_parameters)
-dcdt
+dndt = my_model.dndt(conc, my_parameters)
+dndt
 ```
 
 ```
@@ -140,7 +140,7 @@ These methods work with standard JAX transformations!
 ```python
 import jax
 
-jax.jacobian(my_model.dcdt)(conc, my_parameters)
+jax.jacobian(my_model.dndt)(conc, my_parameters)
 Array([[-0.12574924,  0.08105433],
        [ 0.03229972, -0.28213634]], dtype=float64)
 ```
@@ -186,7 +186,13 @@ my_compartment_model = KineticModel(
 
 The rate of `"r3"` is per volume of `"c"`, so each unit of its flux lowers the concentration of `"m2c"` by one unit and raises the concentration of `"m2e"` by a tenth of a unit.
 
-Volumes can be in any unit. Concentrations are per unit of volume, and the values in `moiety_totals` are amounts, i.e. sums of concentration times volume. As well as `dcdt`, a model has `dndt`, which gives the rate of change of the ODE state in amounts.
+Volumes can be in any unit. Concentrations are per unit of volume, and the ODE state and the values in `moiety_totals` are amounts, i.e. sums of concentration times volume.
+
+A compartment's volume can also vary. Give it `variable_volume=True` instead of a `volume`, and its volume becomes the algebraic variable `"volume|<id>"`, which one of the model's algebraic constraints must own, for example an osmotic balance. The ODE state is still made of amounts, so a changing volume dilutes or concentrates the compartment's species without changing the state. To turn concentrations into an ODE state, pass the variable volumes to `get_ode_state`, as in `model.get_ode_state(conc, {"c": 1.0})`.
+
+Variable volumes are easiest to solve when they are near 1, so a good unit is the compartment's volume in some reference condition.
+
+A solute whose amount is fixed, such as an impermeable protein in a cell whose volume varies, needn't be a species. Unless it takes part in a reaction or rapid equilibrium, it can be a parameter holding its amount, and any constraint or rate law that needs its concentration can divide that amount by the volume: both can read parameters and algebraic variables. If it does take part in a reaction or rapid equilibrium, make it a balanced species and declare it as its own conserved moiety, so that its value in `moiety_totals` is its amount.
 
 ## Find a kinetic model's steady state
 

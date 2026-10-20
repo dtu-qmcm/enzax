@@ -1,11 +1,19 @@
+from dataclasses import dataclass
+
+import equinox as eqx
 import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from enzax.algebraic_constraint import (
+    AlgebraicConstraint,
+    ConstraintLabels,
+    ConstraintScope,
+)
 from enzax.compartment import Compartment
 from enzax.kinetic_model import KineticModel, UndeclaredMoietyWarning
-from enzax.parameters import pack_parameters
+from enzax.parameters import get_parameter_position, pack_parameters
 from enzax.rapid_equilibrium import (
     RapidEquilibriumNetwork,
     RapidEquilibriumReaction,
@@ -136,6 +144,165 @@ def test_volumes_must_be_positive():
         )
 
 
+@dataclass(frozen=True)
+class OsmoticLabels(ConstraintLabels):
+    osmolarity: str
+
+    def by_parameter(self):
+        return {"log_custom": (self.osmolarity,)}
+
+
+class OsmoticIx(eqx.Module):
+    ix_species: tuple[int, ...]
+    ix_osmolarity: int
+
+
+class OsmoticInput(eqx.Module):
+    osmolarity: jnp.ndarray
+    ix_species: tuple[int, ...]
+
+
+class Osmotic(AlgebraicConstraint):
+    """The concentrations of `species_ids` sum to an osmolarity."""
+
+    species_ids: list[str]
+
+    def get_species(self):
+        return tuple(self.species_ids)
+
+    def get_labels(self, scope: ConstraintScope) -> OsmoticLabels:
+        return OsmoticLabels(osmolarity=f"cu|{scope.constraint_id}|osmolarity")
+
+    def get_input_indexes(self, scope, labelling) -> OsmoticIx:
+        return OsmoticIx(
+            ix_species=tuple(scope.species.index(s) for s in self.species_ids),
+            ix_osmolarity=get_parameter_position(
+                labelling,
+                "log_custom",
+                self.get_labels(scope).osmolarity,
+            ),
+        )
+
+    def get_input(self, parameters, ix: OsmoticIx) -> OsmoticInput:
+        return OsmoticInput(
+            osmolarity=jnp.exp(parameters["log_custom"][ix.ix_osmolarity]),
+            ix_species=ix.ix_species,
+        )
+
+    def __call__(self, conc, variables, constraint_input: OsmoticInput):
+        total = jnp.sum(conc[jnp.array(constraint_input.ix_species)])
+        return jnp.array([total - constraint_input.osmolarity])
+
+
+def get_variable_model(compartments, variables=("volume|c",), **kwargs):
+    return KineticModel(
+        reactions={
+            "t": transport(compartment="c"),
+            "out": Drain(stoichiometry={"a_e": -1.0}),
+        },
+        balanced_species=["a_c"],
+        algebraic_constraints={
+            "osmotic": Osmotic(species_ids=["a_c"], variables=list(variables)),
+        },
+        compartments=compartments,
+        **kwargs,
+    )
+
+
+C_VARIABLE = {
+    "c": Compartment(species=["a_c"], variable_volume=True),
+    "e": Compartment(species=["a_e"], volume=3.0),
+}
+
+
+def test_a_variable_compartment_has_static_volume_one():
+    model = get_variable_model(C_VARIABLE)
+    assert model.algebraic_variables == ["volume|c"]
+    assert np.array_equal(model.species_volumes, [1.0, 3.0])
+    assert np.array_equal(model.reaction_volumes, [1.0, 3.0])
+
+
+@pytest.mark.parametrize(
+    "compartment",
+    [
+        Compartment(species=["a_c"]),
+        Compartment(species=["a_c"], volume=1.0, variable_volume=True),
+    ],
+)
+def test_a_compartment_needs_a_volume_or_a_variable_volume(compartment):
+    with pytest.raises(ValueError, match="not both"):
+        get_variable_model({**C_VARIABLE, "c": compartment})
+
+
+def test_a_variable_volume_needs_a_constraint_that_owns_it():
+    with pytest.raises(ValueError, match=r"No algebraic constraint owns"):
+        get_variable_model(C_VARIABLE, variables=["x"])
+
+
+def test_a_compartment_id_cannot_contain_the_separator():
+    with pytest.raises(ValueError, match=r"contains '\|'"):
+        get_model(
+            {
+                "c|1": Compartment(species=["a_c"], volume=1.0),
+                "e": Compartment(species=["a_e"], volume=3.0),
+            },
+            transporter=transport(compartment="c|1"),
+        )
+
+
+@pytest.mark.parametrize("compartments", [C_AND_E, None])
+def test_only_variable_compartments_have_volume_variables(compartments):
+    transporter = None if compartments else transport()
+    with pytest.raises(ValueError, match="named like compartment volumes"):
+        KineticModel(
+            reactions={
+                "t": transporter or transport(compartment="c"),
+                "out": Drain(stoichiometry={"a_e": -1.0}),
+            },
+            balanced_species=["a_c"],
+            algebraic_constraints={
+                "osmotic": Osmotic(species_ids=["a_c"], variables=["volume|c"]),
+            },
+            compartments=compartments,
+        )
+
+
+def test_a_fast_moiety_cannot_span_a_variable_compartment():
+    with pytest.raises(ValueError, match="can't span"):
+        KineticModel(
+            reactions={
+                "in": Drain(stoichiometry={"a_c": 1.0}),
+                "out": Drain(stoichiometry={"a_e": -1.0}),
+            },
+            rapid_equilibrium_network=RapidEquilibriumNetwork(
+                reactions={
+                    "f": RapidEquilibriumReaction(
+                        stoichiometry={"a_c": -1.0, "a_e": 1.0},
+                    ),
+                },
+            ),
+            balanced_species=["a_c", "a_e"],
+            compound_to_species={"a": ["a_c", "a_e"]},
+            algebraic_constraints={
+                "osmotic": Osmotic(species_ids=["a_c"], variables=["volume|c"]),
+            },
+            compartments=C_VARIABLE,
+        )
+
+
+def test_get_ode_state_multiplies_by_the_given_volumes():
+    model = get_variable_model(C_VARIABLE)
+    state = model.get_ode_state(jnp.array([0.5]), {"c": 2.0})
+    assert np.allclose(state, [1.0])
+
+
+@pytest.mark.parametrize("volumes", [None, {"c": 2.0, "e": 3.0}])
+def test_get_ode_state_needs_exactly_the_variable_volumes(volumes):
+    model = get_variable_model(C_VARIABLE)
+    with pytest.raises(ValueError, match=r"with a variable volume, \[.c.\]"):
+        model.get_ode_state(jnp.array([0.5]), volumes)
+
+
 V_C, V_E = 1.0, 3.0
 V_IN, K_T, K_BACK, K_OUT = 1.5, 2.0, 0.25, 0.5
 
@@ -195,20 +362,19 @@ def get_parameters(model, **extra):
 
 def test_rates_are_per_their_compartment_volume():
     state = jnp.array([0.7, 0.4])
-    dcdt = OPEN.dcdt(state, get_parameters(OPEN))
+    a_c, a_e = 0.7 / V_C, 0.4 / V_E
     assert np.allclose(
-        dcdt,
-        [V_IN - K_T * 0.7, V_C / V_E * K_T * 0.7 - K_OUT * 0.4],
+        OPEN.dndt(state, get_parameters(OPEN)),
+        [V_C * (V_IN - K_T * a_c), V_C * K_T * a_c - V_E * K_OUT * a_e],
     )
 
 
-def test_dndt_is_the_volume_times_dcdt():
+def test_dcdt_is_a_deprecated_alias_of_dndt():
     state = jnp.array([0.7, 0.4])
     parameters = get_parameters(OPEN)
-    assert np.allclose(
-        OPEN.dndt(state, parameters),
-        np.array([V_C, V_E]) * OPEN.dcdt(state, parameters),
-    )
+    with pytest.warns(DeprecationWarning, match="use `dndt`"):
+        dcdt = OPEN.dcdt(state, parameters)
+    assert np.array_equal(dcdt, OPEN.dndt(state, parameters))
 
 
 def test_the_open_model_reaches_its_closed_form_steady_state():
@@ -219,7 +385,7 @@ def test_the_open_model_reaches_its_closed_form_steady_state():
     )
     assert np.allclose(
         steady,
-        [V_IN / K_T, V_C * V_IN / (V_E * K_OUT)],
+        [V_C * V_IN / K_T, V_C * V_IN / K_OUT],
         rtol=1e-8,
     )
 
@@ -240,7 +406,7 @@ def test_a_moiety_total_is_an_amount():
     total = 2.0
     parameters = get_parameters(CLOSED, moiety_totals={"a_e": total})
     conc = CLOSED.get_balanced_conc(jnp.array([0.5]), parameters)
-    assert np.allclose(conc, [0.5, (total - V_C * 0.5) / V_E])
+    assert np.allclose(conc, [0.5 / V_C, (total - 0.5) / V_E])
     assert np.allclose(CLOSED.get_ode_state(conc), [0.5])
 
 
@@ -249,7 +415,7 @@ def test_the_closed_model_shares_its_amount_at_equilibrium():
     parameters = get_parameters(CLOSED, moiety_totals={"a_e": total})
     steady = get_steady_state_hybrid(CLOSED, jnp.array([1.0]), parameters)
     a_c = total / (V_C + V_E * V_C * K_T / (V_E * K_BACK))
-    assert np.allclose(steady, [a_c], rtol=1e-8)
+    assert np.allclose(steady, [V_C * a_c], rtol=1e-8)
 
 
 # a_c and a_e are one compound, so the rapid equilibrium makes their
@@ -273,12 +439,16 @@ def test_a_rapid_equilibrium_across_compartments_shares_the_amount():
     parameters = get_parameters(ACROSS)
     assert ACROSS.ode_state_species == ["a_c"]
     conc = ACROSS.get_balanced_conc(jnp.array([2.0]), parameters)
-    shared = 2.0 * V_C / (V_C + V_E)
+    shared = 2.0 / (V_C + V_E)
     assert np.allclose(conc, [shared, shared], rtol=1e-9)
-    assert np.allclose(ACROSS.get_ode_state(conc), [2.0], rtol=1e-9)
     assert np.allclose(
-        ACROSS.dcdt(jnp.array([2.0]), parameters),
-        [(V_C * V_IN - V_E * K_OUT * shared) / V_C],
+        ACROSS.get_ode_state(conc),
+        [2.0],
+        rtol=1e-9,
+    )
+    assert np.allclose(
+        ACROSS.dndt(jnp.array([2.0]), parameters),
+        [V_C * V_IN - V_E * K_OUT * shared],
         rtol=1e-9,
     )
 
@@ -291,3 +461,137 @@ def test_across_compartments_the_dae_matches_the_nested_solve():
         steady = solve(ACROSS, jnp.array([1.0]), parameters)
         conc = ACROSS.get_balanced_conc(steady, parameters)
         assert np.allclose(conc, [a_e, a_e], rtol=1e-7)
+
+
+A_E, N_X, OSMOLARITY, K_EX = 2.0, 1.5, 3.0, 2.0
+
+
+def get_osmotic_cell(rapid_equilibria=None, dimer=False):
+    in_cell = ["a_c", "x", *(["m", "d"] if dimer else [])]
+    return KineticModel(
+        reactions={
+            "t": SymbolicReaction(
+                stoichiometry={"a_e": -1.0, "a_c": 1.0},
+                expression="k * (a_e - a_c)",
+                species=["a_e", "a_c"],
+                parameters={"k": "log_kcat"},
+                compartment="c",
+            ),
+        },
+        rapid_equilibrium_network=rapid_equilibria,
+        balanced_species=in_cell,
+        moiety_label_species=["x", *(["m"] if dimer else [])],
+        algebraic_constraints={
+            "osmotic": Osmotic(species_ids=in_cell, variables=["volume|c"]),
+        },
+        compartments={
+            "c": Compartment(species=in_cell, variable_volume=True),
+            "e": Compartment(species=["a_e"], volume=3.0),
+        },
+    )
+
+
+OSMOTIC_CELL = get_osmotic_cell()
+
+
+def get_osmotic_parameters(model, dgf_d=0.0):
+    totals = {"x": N_X, "m": 1.0}
+    return get_parameters(
+        model,
+        log_kcat={"t": np.log(K_EX)},
+        log_custom={"cu|osmotic|osmolarity": np.log(OSMOLARITY)},
+        log_conc_unbalanced={"a_e": np.log(A_E)},
+        moiety_totals={s: totals[s] for s in model.moiety_label_species},
+        dgf={"a_c": 0.0, "a_e": 0.0, "x": 0.0, "m": 0.0, "d": dgf_d},
+    )
+
+
+def test_the_volume_is_set_by_the_constraint():
+    parameters = get_osmotic_parameters(OSMOTIC_CELL)
+    n_a = 1.0
+    volume = (n_a + N_X) / OSMOLARITY
+    state = jnp.array([n_a])
+    assert np.allclose(
+        OSMOTIC_CELL.get_algebraic_variables(state, parameters),
+        [volume],
+    )
+    conc = OSMOTIC_CELL.get_balanced_conc(state, parameters)
+    assert np.allclose(conc, [n_a / volume, N_X / volume])
+    assert np.allclose(OSMOTIC_CELL.get_ode_state(conc, {"c": volume}), state)
+
+
+def test_rates_are_per_the_variable_volume():
+    parameters = get_osmotic_parameters(OSMOTIC_CELL)
+    n_a = 1.0
+    volume = (n_a + N_X) / OSMOLARITY
+    assert np.allclose(
+        OSMOTIC_CELL.dndt(jnp.array([n_a]), parameters),
+        [K_EX * (volume * A_E - n_a)],
+    )
+
+
+@pytest.mark.parametrize("solve", ["hybrid", "dae"])
+def test_the_osmotic_cell_reaches_its_closed_form_steady_state(solve):
+    if solve == "dae":
+        pytest.importorskip("diffrax_bdf")
+    get_steady_state = {
+        "hybrid": get_steady_state_hybrid,
+        "dae": get_steady_state_dae,
+    }[solve]
+    parameters = get_osmotic_parameters(OSMOTIC_CELL)
+    steady = get_steady_state(OSMOTIC_CELL, jnp.array([1.0]), parameters)
+    volume = N_X / (OSMOLARITY - A_E)
+    assert np.allclose(steady, [volume * A_E], rtol=1e-7)
+
+
+# Dimerisation isn't scale-invariant, so the volume shifts its equilibrium.
+DIMER_CELL = get_osmotic_cell(
+    rapid_equilibria=RapidEquilibriumNetwork(
+        reactions={
+            "dim": RapidEquilibriumReaction(
+                stoichiometry={"m": -2.0, "d": 1.0},
+            ),
+        },
+    ),
+    dimer=True,
+)
+
+
+def get_dimer_parameters():
+    return get_osmotic_parameters(DIMER_CELL, dgf_d=-2.0)
+
+
+def test_a_rapid_equilibrium_in_a_variable_compartment_follows_the_volume():
+    parameters = get_dimer_parameters()
+    ratios = []
+    for n_a in [0.5, 2.0]:
+        state = jnp.array([n_a])
+        (volume,) = DIMER_CELL.get_algebraic_variables(state, parameters)
+        conc = dict(
+            zip(
+                DIMER_CELL.balanced_species,
+                DIMER_CELL.get_balanced_conc(state, parameters),
+            ),
+        )
+        assert np.isclose(volume * conc["a_c"], n_a)
+        assert np.isclose(volume * conc["x"], N_X)
+        assert np.isclose(volume * (conc["m"] + 2 * conc["d"]), 1.0)
+        assert np.isclose(sum(conc.values()), OSMOLARITY)
+        ratios.append((conc["d"] / conc["m"] ** 2, conc["d"] / conc["m"]))
+    (k_1, dm_1), (k_2, dm_2) = ratios
+    assert np.isclose(k_1, k_2)
+    assert not np.isclose(dm_1, dm_2)
+
+
+def test_in_a_variable_compartment_the_dae_matches_the_nested_solve():
+    pytest.importorskip("diffrax_bdf")
+    parameters = get_dimer_parameters()
+    by_nested = get_steady_state_hybrid(
+        DIMER_CELL,
+        jnp.array([1.0]),
+        parameters,
+    )
+    by_dae = get_steady_state_dae(DIMER_CELL, jnp.array([1.0]), parameters)
+    assert np.allclose(by_dae, by_nested, rtol=1e-7)
+    conc = DIMER_CELL.get_balanced_conc(by_nested, parameters)
+    assert np.isclose(conc[DIMER_CELL.balanced_species.index("a_c")], A_E)

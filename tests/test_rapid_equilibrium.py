@@ -616,7 +616,7 @@ def test_get_ode_state_inverts_get_balanced_conc():
     assert np.allclose(ENERGY.get_ode_state(conc), state)
 
 
-def test_dcdt_is_the_fast_moieties_rate_of_change():
+def test_dndt_is_the_fast_moieties_rate_of_change():
     parameters = get_energy_parameters()
     state = jnp.array([1.2, 0.9])
     conc = ENERGY.get_balanced_conc(state, parameters)
@@ -624,13 +624,13 @@ def test_dcdt_is_the_fast_moieties_rate_of_change():
     S = dict(zip(ENERGY.species, ENERGY.S.tolist()))
     atp_moiety = (np.array(S["atp"]) + np.array(S["mgatp"])) @ v
     adp_moiety = (np.array(S["adp"]) + np.array(S["mgadp"])) @ v
-    assert np.allclose(ENERGY.dcdt(state, parameters), [atp_moiety, adp_moiety])
+    assert np.allclose(ENERGY.dndt(state, parameters), [atp_moiety, adp_moiety])
 
 
 def test_a_model_with_rapid_equilibria_reaches_a_steady_state():
     parameters = get_energy_parameters()
     steady = get_steady_state_hybrid(ENERGY, jnp.array([1.0, 1.0]), parameters)
-    assert np.allclose(ENERGY.dcdt(steady, parameters), 0.0, atol=1e-9)
+    assert np.allclose(ENERGY.dndt(steady, parameters), 0.0, atol=1e-9)
     conc = ENERGY.get_balanced_conc(steady, parameters)
     assert np.all(conc > 0)
     c = dict(zip(ENERGY.balanced_species, conc.tolist()))
@@ -658,7 +658,7 @@ def test_steady_state_gradients_match_finite_differences():
     assert np.isclose(jax.grad(free_mg_at_steady_state)(x), fd, rtol=1e-5)
 
 
-def test_the_dae_vector_field_is_dcdt_at_a_consistent_state():
+def test_the_dae_vector_field_is_dndt_at_a_consistent_state():
     parameters = get_energy_parameters()
     state = jnp.array([1.2, 0.9])
     rates, residuals = ENERGY.dae_vector_field(
@@ -666,7 +666,7 @@ def test_the_dae_vector_field_is_dcdt_at_a_consistent_state():
         ENERGY.get_dae_state(state, parameters),
         parameters,
     )
-    assert np.array_equal(rates, ENERGY.dcdt(state, parameters))
+    assert np.array_equal(rates, ENERGY.dndt(state, parameters))
     assert np.allclose(residuals["log_conc"], 0.0, atol=1e-12)
     assert residuals["variables"].shape == (0,)
 

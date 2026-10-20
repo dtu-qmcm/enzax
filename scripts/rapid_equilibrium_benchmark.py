@@ -114,7 +114,7 @@ def check(model, state, parameters):
     finite = bool(jnp.all(jnp.isfinite(state)))
     if not finite:
         return False, np.nan
-    residual = float(jnp.max(jnp.abs(model.dcdt(state, parameters))))
+    residual = float(jnp.max(jnp.abs(model.dndt(state, parameters))))
     return residual < 1e-6, residual
 
 

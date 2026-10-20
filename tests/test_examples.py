@@ -23,12 +23,12 @@ from enzax.steady_state import get_steady_state
         ),
     ],
 )
-def test_dcdt(model, steady_state, parameters):
-    """Test for near-zero dcdt at a known steady state."""
+def test_dndt(model, steady_state, parameters):
+    """Test for near-zero dndt at a known steady state."""
 
-    dcdt = model.dcdt(steady_state, parameters)
+    dndt = model.dndt(steady_state, parameters)
     zero = jnp.full((len(steady_state),), 0.0)
-    assert jnp.isclose(dcdt, zero).all()
+    assert jnp.isclose(dndt, zero).all()
 
 
 def test_conserved_moiety_is_conserved():
