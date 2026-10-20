@@ -4,6 +4,7 @@ import numpy as np
 from jax import numpy as jnp
 from scipy.optimize import brentq
 
+from enzax.compartment import Compartment
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters
 from enzax.rapid_equilibrium import (
@@ -108,6 +109,7 @@ SLOW_REACTIONS = {
         ),
         species=["pyr", "lac", "pyr_e", "lac_e"],
         default_parameter_kind="log_custom",
+        compartment="c",
     ),
     "LAC_ex": SymbolicReaction(
         stoichiometry={"lac": -1.0, "lac_e": 1.0},
@@ -117,6 +119,7 @@ SLOW_REACTIONS = {
         ),
         species=["pyr", "lac", "pyr_e", "lac_e"],
         default_parameter_kind="log_custom",
+        compartment="c",
     ),
     "AMPase": SymbolicReaction(
         stoichiometry={"amp": -1.0, "ado": 1.0, "pi": 1.0},
@@ -277,6 +280,7 @@ SLOW_REACTIONS = {
         ),
         species=["na", "na_e"],
         default_parameter_kind="log_custom",
+        compartment="c",
     ),
     "pump": SymbolicReaction(
         stoichiometry={
@@ -297,6 +301,7 @@ SLOW_REACTIONS = {
         ),
         species=["atp", "mgatp", "na", "k_e"],
         default_parameter_kind="log_custom",
+        compartment="c",
     ),
 }
 
@@ -471,6 +476,32 @@ NEAR_EQUILIBRIUM = [
 ]  # fmt: skip
 
 
+MASS_ACTION_REACTIONS = {
+    reaction_id: MassAction(stoichiometry=stoichiometry)
+    for reaction_id, stoichiometry in FAST_REACTIONS.items()
+}
+
+MG_BINDING_REACTIONS = {
+    reaction_id: RapidEquilibriumReaction(stoichiometry=stoichiometry)
+    for reaction_id, stoichiometry in MG_BINDING.items()
+}
+
+NEAR_EQUILIBRIUM_REACTIONS = {
+    reaction_id: RapidEquilibriumReaction(
+        stoichiometry=FAST_REACTIONS[reaction_id],
+    )
+    for reaction_id in NEAR_EQUILIBRIUM
+}
+
+COMPARTMENTS = {
+    "c": Compartment(
+        species=[*BALANCED_SPECIES, "pi", "co2", "ade", "k"],
+        volume=1.0,
+    ),
+    "e": Compartment(species=["pyr_e", "lac_e", "na_e", "k_e"], volume=1.0),
+}
+
+
 def get_free_mg(totals: dict[str, float], mg_total: float) -> float:
     def excess(mg):
         bound = sum(
@@ -489,32 +520,6 @@ def get_equilibrium_constants() -> dict[str, float]:
     constants["PGK"] *= free["atp"] / free["adp"]
     constants["ApK"] *= free["atp"] * free["amp"] / free["adp"] ** 2
     return constants
-
-
-def get_model(rapid_equilibrium: bool = False) -> KineticModel:
-    equilibrating = MG_BINDING | (
-        {r: FAST_REACTIONS[r] for r in NEAR_EQUILIBRIUM}
-        if rapid_equilibrium
-        else {}
-    )
-    fast = {
-        reaction_id: MassAction(stoichiometry=stoichiometry)
-        for reaction_id, stoichiometry in FAST_REACTIONS.items()
-        if reaction_id not in equilibrating
-    }
-    return KineticModel(
-        reactions=SLOW_REACTIONS | fast,
-        rapid_equilibrium_network=RapidEquilibriumNetwork(
-            reactions={
-                reaction_id: RapidEquilibriumReaction(
-                    stoichiometry=stoichiometry,
-                )
-                for reaction_id, stoichiometry in equilibrating.items()
-            },
-        ),
-        balanced_species=BALANCED_SPECIES,
-        moiety_label_species=list(MOIETY_TOTALS),
-    )
 
 
 def get_dgf(model: KineticModel) -> dict[str, float]:
@@ -560,7 +565,7 @@ def get_steady_state(model: KineticModel) -> jnp.ndarray:
     )
 
 
-def get_parameters(
+def get_parameter_spec(
     model: KineticModel,
     forward_to_net_ratio: float = 100.0,
     calibration_model: KineticModel | None = None,
@@ -625,13 +630,43 @@ def get_parameters(
         for reaction_id, value in spec["log_k_plus"].items()
         if reaction_id in target_model.reaction_ids
     }
-    return pack_parameters(target_model.parameter_labelling, spec)
+    return spec
 
 
-model = get_model()
+def get_parameters(
+    model: KineticModel,
+    forward_to_net_ratio: float = 100.0,
+    calibration_model: KineticModel | None = None,
+) -> dict:
+    spec = get_parameter_spec(model, forward_to_net_ratio, calibration_model)
+    return pack_parameters(model.parameter_labelling, spec)
+
+
+model = KineticModel(
+    reactions=SLOW_REACTIONS | MASS_ACTION_REACTIONS,
+    rapid_equilibrium_network=RapidEquilibriumNetwork(
+        reactions=MG_BINDING_REACTIONS,
+    ),
+    balanced_species=BALANCED_SPECIES,
+    moiety_label_species=list(MOIETY_TOTALS),
+    compartments=COMPARTMENTS,
+)
 parameters = get_parameters(model)
 steady_state = get_steady_state(model)
-rapid_equilibrium_model = get_model(rapid_equilibrium=True)
+rapid_equilibrium_model = KineticModel(
+    reactions=SLOW_REACTIONS
+    | {
+        reaction_id: reaction
+        for reaction_id, reaction in MASS_ACTION_REACTIONS.items()
+        if reaction_id not in NEAR_EQUILIBRIUM
+    },
+    rapid_equilibrium_network=RapidEquilibriumNetwork(
+        reactions=MG_BINDING_REACTIONS | NEAR_EQUILIBRIUM_REACTIONS,
+    ),
+    balanced_species=BALANCED_SPECIES,
+    moiety_label_species=list(MOIETY_TOTALS),
+    compartments=COMPARTMENTS,
+)
 rapid_equilibrium_parameters = get_parameters(
     rapid_equilibrium_model,
     calibration_model=model,
