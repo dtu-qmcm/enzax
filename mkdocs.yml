@@ -46,6 +46,7 @@ nav:
     - 'api/algebraic_constraint.md'
     - 'api/binding.md'
     - 'api/compartment.md'
+    - 'api/experiments.md'
     - 'api/kinetic_model.md'
     - 'api/parameters.md'
     - 'api/parameter_split.md'
