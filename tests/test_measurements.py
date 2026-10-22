@@ -8,32 +8,24 @@ import equinox as eqx
 import jax
 import pytest
 from jax import numpy as jnp
-from jax.scipy.stats import dirichlet
+from jax.scipy.stats import dirichlet, norm
 
-from enzax.experiments import (
-    gather_parameters_by_experiment,
-    get_experiment_layout,
-    merge_experiment_parameters,
-)
 from enzax.measurements import (
     LognormalMeasurement,
     Measurement,
     NormalMeasurement,
-    check_measurements,
-    get_log_likelihoods,
+    pick_algebraic_variables,
+    pick_concs,
+    pick_enzymes,
+    pick_fluxes,
 )
 from enzax.statistical_modelling import enzax_log_likelihood
 from tests.test_algebraic_constraint import TOY
 from tests.test_parameters import CONC, SEPARATE, get_parameters
 
 MODEL = SEPARATE
-BASE = get_parameters(MODEL)
-ONE = get_experiment_layout(MODEL.parameter_labelling, ["e"], {})
-TWO = get_experiment_layout(
-    MODEL.parameter_labelling,
-    ["e1", "e2"],
-    {"log_enzyme": None},
-)
+PARAMETERS = get_parameters(MODEL)
+FLUX = MODEL.flux(CONC, PARAMETERS)
 CONC_OBS = jnp.array([0.4, 0.25, 0.12])
 CONC_ERR = jnp.array([0.1, 0.2, 0.3])
 ENZ_OBS = jnp.array([0.35, 0.28])
@@ -51,134 +43,112 @@ class ProportionMeasurement(Measurement):
         return jnp.atleast_1d(dirichlet.logpdf(x=self.proportions, alpha=alpha))
 
 
-def get_predictions(layout, per_experiment, conc):
-    parameters = gather_parameters_by_experiment(
-        layout,
-        merge_experiment_parameters(layout, per_experiment),
-    )
-    flux = jax.vmap(MODEL.flux)(conc, parameters)
-    return conc, flux, parameters, None
-
-
-def get_three_kinds(experiment):
-    return [
+def get_measurements():
+    return (
         LognormalMeasurement(
-            experiment,
-            "conc",
+            "e",
             MODEL.species,
             values=CONC_OBS,
             errors=CONC_ERR,
         ),
         LognormalMeasurement(
-            experiment,
-            "enzyme",
+            "e",
             MODEL.parameter_labelling["log_enzyme"],
             values=ENZ_OBS,
             errors=ENZ_ERR,
         ),
         NormalMeasurement(
-            experiment,
-            "flux",
+            "e",
             MODEL.reaction_ids,
             values=FLUX_OBS,
             errors=FLUX_ERR,
         ),
-    ]
+    )
+
+
+def get_log_likelihoods(measurements, conc, flux, parameters):
+    conc_msts, enzyme_msts, flux_msts = measurements
+    return (
+        conc_msts.log_likelihood(pick_concs(MODEL, conc, conc_msts.ids)),
+        enzyme_msts.log_likelihood(
+            pick_enzymes(MODEL, parameters, enzyme_msts.ids),
+        ),
+        flux_msts.log_likelihood(pick_fluxes(MODEL, flux, flux_msts.ids)),
+    )
 
 
 def test_the_built_in_measurements_match_the_positional_likelihood():
-    predictions = get_predictions(ONE, [BASE], CONC[None])
-    measurements = get_three_kinds("e")
-    check_measurements(MODEL, ONE, measurements)
     log_likelihoods = get_log_likelihoods(
-        MODEL,
-        ONE,
-        measurements,
-        *predictions,
+        get_measurements(),
+        CONC,
+        FLUX,
+        PARAMETERS,
     )
     expected = enzax_log_likelihood(
         (CONC, CONC_OBS, CONC_ERR),
-        (jnp.exp(BASE["log_enzyme"]), ENZ_OBS, ENZ_ERR),
-        (MODEL.flux(CONC, BASE), FLUX_OBS, FLUX_ERR),
+        (jnp.exp(PARAMETERS["log_enzyme"]), ENZ_OBS, ENZ_ERR),
+        (FLUX, FLUX_OBS, FLUX_ERR),
     )
     total = sum(jnp.sum(log_likelihood) for log_likelihood in log_likelihoods)
     assert jnp.isclose(total, expected)
 
 
 def test_there_is_one_log_density_per_observation():
-    predictions = get_predictions(ONE, [BASE], CONC[None])
     log_likelihoods = get_log_likelihoods(
-        MODEL,
-        ONE,
-        get_three_kinds("e"),
-        *predictions,
+        get_measurements(),
+        CONC,
+        FLUX,
+        PARAMETERS,
     )
     assert [jnp.shape(ll) for ll in log_likelihoods] == [(3,), (2,), (2,)]
 
 
-def test_a_measurement_reads_its_own_experiment():
-    per_experiment = [
-        BASE,
-        BASE | {"log_enzyme": jnp.log(jnp.array([0.6, 0.1]))},
-    ]
-    conc = jnp.stack([CONC, 2 * CONC])
-    predictions = get_predictions(TWO, per_experiment, conc)
-    log_likelihoods = get_log_likelihoods(
-        MODEL,
-        TWO,
-        get_three_kinds("e2"),
-        *predictions,
-    )
-    alone = get_log_likelihoods(
-        MODEL,
-        ONE,
-        get_three_kinds("e"),
-        *get_predictions(ONE, [per_experiment[1]], conc[1:]),
-    )
-    for ll, expected in zip(log_likelihoods, alone):
-        assert jnp.allclose(ll, expected)
+@pytest.mark.parametrize(
+    ("pick", "values", "ids", "expected"),
+    [
+        (pick_concs, CONC, ["c", "a"], CONC[jnp.array([2, 0])]),
+        (pick_fluxes, FLUX, ["r2", "r1"], FLUX[jnp.array([1, 0])]),
+        (
+            pick_enzymes,
+            PARAMETERS,
+            ["r2"],
+            jnp.exp(PARAMETERS["log_enzyme"][jnp.array([1])]),
+        ),
+    ],
+)
+def test_picking_chooses_and_orders_values_by_id(pick, values, ids, expected):
+    assert jnp.array_equal(pick(MODEL, values, ids), expected)
 
 
-def test_ids_choose_and_order_the_predicted_values():
-    predictions = get_predictions(ONE, [BASE], CONC[None])
-    measurement = LognormalMeasurement(
-        "e",
-        "conc",
-        ["c", "a"],
-        values=CONC_OBS[jnp.array([2, 0])],
-        errors=CONC_ERR[jnp.array([2, 0])],
-    )
-    (log_likelihood,) = get_log_likelihoods(
-        MODEL,
-        ONE,
-        [measurement],
-        *predictions,
-    )
-    full = get_log_likelihoods(
-        MODEL,
-        ONE,
-        get_three_kinds("e")[:1],
-        *predictions,
-    )[0]
-    assert jnp.allclose(log_likelihood, full[jnp.array([2, 0])])
+def test_algebraic_variables_can_be_picked():
+    picked = pick_algebraic_variables(TOY, jnp.array([2.0]), ["x"])
+    assert jnp.array_equal(picked, jnp.array([2.0]))
+
+
+@pytest.mark.parametrize(
+    ("pick", "values", "message"),
+    [
+        (pick_concs, CONC, "no species"),
+        (pick_fluxes, FLUX, "no reactions"),
+        (pick_enzymes, PARAMETERS, "no enzymes"),
+        (pick_algebraic_variables, jnp.array([]), "no algebraic variables"),
+    ],
+)
+def test_picking_rejects_unknown_ids(pick, values, message):
+    with pytest.raises(ValueError, match=rf"{message} \['nope'\]"):
+        pick(MODEL, values, ["nope"])
 
 
 def test_a_user_defined_measurement_works():
-    predictions = get_predictions(ONE, [BASE], CONC[None])
     proportions = jnp.array([0.6, 0.3, 0.1])
     measurement = ProportionMeasurement(
         "e",
-        "conc",
         ["a", "b", "c"],
         proportions=proportions,
         concentration=50.0,
     )
-    check_measurements(MODEL, ONE, [measurement])
-    (log_likelihood,) = get_log_likelihoods(
-        MODEL,
-        ONE,
-        [measurement],
-        *predictions,
+    log_likelihood = measurement.log_likelihood(
+        pick_concs(MODEL, CONC, measurement.ids),
     )
     expected = dirichlet.logpdf(
         x=proportions,
@@ -187,97 +157,33 @@ def test_a_user_defined_measurement_works():
     assert jnp.allclose(log_likelihood, expected)
 
 
-def test_an_algebraic_variable_can_be_measured():
-    measurement = NormalMeasurement(
-        "e",
-        "algebraic_variable",
-        ["x"],
-        values=jnp.array([1.0]),
-        errors=jnp.array([0.5]),
+def test_a_measurement_scores_an_algebraic_variable():
+    measurement = NormalMeasurement("e", ["x"], values=[1.0], errors=[0.5])
+    log_likelihood = measurement.log_likelihood(
+        pick_algebraic_variables(TOY, jnp.array([2.0]), measurement.ids),
     )
-    layout = get_experiment_layout(TOY.parameter_labelling, ["e"], {})
-    check_measurements(TOY, layout, [measurement])
-    (log_likelihood,) = get_log_likelihoods(
-        TOY,
-        layout,
-        [measurement],
-        conc=jnp.ones((1, 1)),
-        flux=jnp.ones((1, 1)),
-        parameters={},
-        algebraic_variables=jnp.array([[2.0]]),
-    )
-    assert jnp.allclose(
-        log_likelihood,
-        jax.scipy.stats.norm.logpdf(x=1.0, loc=2.0, scale=0.5),
-    )
-
-
-@pytest.mark.parametrize(
-    ("measurement", "message"),
-    [
-        (
-            NormalMeasurement("x", "flux", ["r1"], values=[0.0], errors=[1.0]),
-            "no experiment 'x'",
-        ),
-        (
-            NormalMeasurement(
-                "e",
-                "fluxes",
-                ["r1"],
-                values=[0.0],
-                errors=[1.0],
-            ),
-            "Unknown quantity 'fluxes'",
-        ),
-        (
-            NormalMeasurement("e", "flux", ["r3"], values=[0.0], errors=[1.0]),
-            r"no flux \['r3'\]",
-        ),
-        (
-            NormalMeasurement("e", "conc", ["d"], values=[0.0], errors=[1.0]),
-            r"no conc \['d'\]",
-        ),
-        (
-            NormalMeasurement(
-                "e",
-                "enzyme",
-                ["r3"],
-                values=[0.0],
-                errors=[1.0],
-            ),
-            r"no enzyme \['r3'\]",
-        ),
-        (
-            NormalMeasurement("e", "conc", [], values=[], errors=[]),
-            "has no ids",
-        ),
-    ],
-)
-def test_bad_measurements_are_rejected(measurement, message):
-    with pytest.raises(ValueError, match=message):
-        check_measurements(MODEL, ONE, [measurement])
+    assert jnp.allclose(log_likelihood, norm.logpdf(x=1.0, loc=2.0, scale=0.5))
 
 
 def test_new_data_of_the_same_shape_does_not_retrace():
-    predictions = get_predictions(ONE, [BASE], CONC[None])
     traces = []
 
     @eqx.filter_jit
     def total(measurements):
         traces.append(None)
         log_likelihoods = get_log_likelihoods(
-            MODEL,
-            ONE,
             measurements,
-            *predictions,
+            CONC,
+            FLUX,
+            PARAMETERS,
         )
         return sum(jnp.sum(ll) for ll in log_likelihoods)
 
-    total(get_three_kinds("e"))
-    changed = [
+    total(get_measurements())
+    changed = tuple(
         eqx.tree_at(lambda m: m.values, m, m.values * 1.1)
-        for m in get_three_kinds("e")
-    ]
+        for m in get_measurements()
+    )
     total(changed)
     assert len(traces) == 1
 
@@ -288,7 +194,6 @@ def test_new_data_of_the_same_shape_does_not_retrace():
         (
             lambda: LognormalMeasurement(
                 "e",
-                "conc",
                 ["a"],
                 values=[0.0],
                 errors=[0.1],
@@ -298,7 +203,6 @@ def test_new_data_of_the_same_shape_does_not_retrace():
         (
             lambda: LognormalMeasurement(
                 "e",
-                "conc",
                 ["a"],
                 values=[0.1],
                 errors=[-0.1],
@@ -308,7 +212,6 @@ def test_new_data_of_the_same_shape_does_not_retrace():
         (
             lambda: NormalMeasurement(
                 "e",
-                "flux",
                 ["r1"],
                 values=[-1.0],
                 errors=[0.0],
@@ -323,4 +226,4 @@ def test_values_and_errors_must_be_positive_where_needed(build, message):
 
 
 def test_a_normal_measurement_can_have_negative_values():
-    NormalMeasurement("e", "flux", ["r1"], values=[-1.0], errors=[0.1])
+    NormalMeasurement("e", ["r1"], values=[-1.0], errors=[0.1])

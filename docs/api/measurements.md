@@ -5,6 +5,7 @@
         - Measurement
         - LognormalMeasurement
         - NormalMeasurement
-        - QUANTITIES
-        - check_measurements
-        - get_log_likelihoods
+        - pick_concs
+        - pick_fluxes
+        - pick_enzymes
+        - pick_algebraic_variables
