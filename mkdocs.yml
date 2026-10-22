@@ -48,6 +48,7 @@ nav:
     - 'api/compartment.md'
     - 'api/experiments.md'
     - 'api/kinetic_model.md'
+    - 'api/measurements.md'
     - 'api/parameters.md'
     - 'api/parameter_split.md'
     - 'api/rapid_equilibrium.md'
