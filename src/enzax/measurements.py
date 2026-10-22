@@ -1,18 +1,17 @@
 """Measurements and their log likelihoods.
 
-A measurement holds some measured values together with the log likelihood that
+A measurement holds some measured values, plus a log likelihood method that
 scores them against the model's predictions. It names one experiment, one
 quantity and the ids of the measured values, for example the concentrations of
-two species in one experiment. The distribution of the values, and their
-shape, are up to the measurement, so a new kind of measurement is a subclass of
-Measurement with its own log_likelihood. LognormalMeasurement and
-NormalMeasurement cover the usual cases.
+two species in one experiment.
 
-The quantities are conc (species ids, balanced or unbalanced), flux (reaction
-ids), enzyme (log_enzyme labels in the model's labelling) and
-algebraic_variable (algebraic variable names). get_log_likelihoods picks each
-measurement's predicted values out of every experiment's predictions, so
-measurements never index anything themselves.
+The built in classes LognormalMeasurement and NormalMeasurement cover the usual
+cases.
+
+The convenience function get_log_likelihoods picks each measurement's predicted
+values out of every experiment's predictions. This is more convenient than
+having each kind of measurement do its own indexing.
+
 """
 
 from abc import ABC, abstractmethod
