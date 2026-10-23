@@ -19,7 +19,6 @@ from enzax.measurements import (
     pick_enzymes,
     pick_fluxes,
 )
-from enzax.statistical_modelling import enzax_log_likelihood
 from tests.test_algebraic_constraint import TOY
 from tests.test_parameters import CONC, SEPARATE, get_parameters
 
@@ -77,17 +76,25 @@ def get_log_likelihoods(measurements, conc, flux, parameters):
     )
 
 
-def test_the_built_in_measurements_match_the_positional_likelihood():
+def test_the_built_in_measurements_match_lognormal_and_normal_densities():
     log_likelihoods = get_log_likelihoods(
         get_measurements(),
         CONC,
         FLUX,
         PARAMETERS,
     )
-    expected = enzax_log_likelihood(
-        (CONC, CONC_OBS, CONC_ERR),
-        (jnp.exp(PARAMETERS["log_enzyme"]), ENZ_OBS, ENZ_ERR),
-        (FLUX, FLUX_OBS, FLUX_ERR),
+    expected = (
+        norm.logpdf(
+            x=jnp.log(CONC_OBS),
+            loc=jnp.log(CONC),
+            scale=CONC_ERR,
+        ).sum()
+        + norm.logpdf(
+            x=jnp.log(ENZ_OBS),
+            loc=PARAMETERS["log_enzyme"],
+            scale=ENZ_ERR,
+        ).sum()
+        + norm.logpdf(x=FLUX_OBS, loc=FLUX, scale=FLUX_ERR).sum()
     )
     total = sum(jnp.sum(log_likelihood) for log_likelihood in log_likelihoods)
     assert jnp.isclose(total, expected)

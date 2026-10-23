@@ -15,7 +15,9 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.examples import conserved_moiety, glycolysis, linear, methionine
-from enzax.statistical_modelling import enzax_log_density, prior_from_truth
+from enzax.experiments import get_experiment_layout
+from enzax.measurements import LognormalMeasurement, NormalMeasurement
+from enzax.statistical_modelling import log_density, prior_from_truth
 from enzax.steady_state import (
     NEWTON_LINEAR_SOLVER,
     get_steady_state,
@@ -271,7 +273,7 @@ def test_hybrid_gradient_is_finite_from_a_cold_start():
 def test_a_failed_solve_gives_a_nan_log_density_rather_than_raising():
     """A sampler needs NaN, not an exception, when no steady state is found.
 
-    `enzax_log_density` evaluates the likelihood at the guess and discards it
+    `log_density` evaluates the likelihood at the guess and discards it
     when the solve failed, because `flux` raises on a NaN concentration. The
     turnover numbers below are far enough from the example's that the solve
     hits its step cap.
@@ -279,22 +281,54 @@ def test_a_failed_solve_gives_a_nan_log_density_rather_than_raising():
     model = methionine.model
     parameters = dict(methionine.parameters)
     prior = prior_from_truth(methionine.parameters, sd=0.1)
-    measurements = tuple(
-        (jnp.full(shape, 1e-3), jnp.full(shape, 0.1))
-        for shape in [
-            (len(model.species),),
-            (len(model.parameter_labelling["log_enzyme"]),),
-            (len(model.reaction_ids),),
-        ]
-    )
-    guess = cold_guess(methionine)
-    assert jnp.isfinite(
-        enzax_log_density(parameters, model, measurements, prior, guess=guess),
-    )
+    layout = get_experiment_layout(model.parameter_labelling, ["e"], {})
+    measurements = {
+        "conc_measurements": [
+            LognormalMeasurement(
+                "e",
+                model.species,
+                values=jnp.full(len(model.species), 1e-3),
+                errors=jnp.full(len(model.species), 0.1),
+            ),
+        ],
+        "enzyme_measurements": [
+            LognormalMeasurement(
+                "e",
+                model.parameter_labelling["log_enzyme"],
+                values=jnp.full(
+                    len(model.parameter_labelling["log_enzyme"]),
+                    1e-3,
+                ),
+                errors=jnp.full(
+                    len(model.parameter_labelling["log_enzyme"]),
+                    0.1,
+                ),
+            ),
+        ],
+        "flux_measurements": [
+            NormalMeasurement(
+                "e",
+                model.reaction_ids,
+                values=jnp.full(len(model.reaction_ids), 1e-3),
+                errors=jnp.full(len(model.reaction_ids), 0.1),
+            ),
+        ],
+    }
+    guess = cold_guess(methionine)[None]
+
+    def density(parameters):
+        return log_density(
+            parameters,
+            model,
+            layout,
+            prior,
+            guess=guess,
+            **measurements,
+        )
+
+    assert jnp.isfinite(density(parameters))
     parameters["log_kcat"] = methionine.parameters["log_kcat"] + 30.0
-    assert jnp.isnan(
-        enzax_log_density(parameters, model, measurements, prior, guess=guess),
-    )
+    assert jnp.isnan(density(parameters))
 
 
 def test_newton_reports_failure_rather_than_a_bad_root_when_it_diverges():

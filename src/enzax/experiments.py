@@ -31,8 +31,10 @@ way to make one.
 from collections.abc import Sequence
 
 import equinox as eqx
+import jax
 import numpy as np
 from jax import numpy as jnp
+from jaxtyping import PyTree
 
 from enzax.array_types import ParamDict, ParamLabelling, ParamLabels
 from enzax.parameter_split import (
@@ -73,6 +75,27 @@ def check_experiment_ids(experiments: tuple[str, ...]) -> None:
     if duplicates:
         msg = f"Duplicate experiment ids: {duplicates}."
         raise ValueError(msg)
+
+
+def get_experiment_index(layout: ExperimentLayout, experiment: str) -> int:
+    """Get an experiment's position in the layout, raising if it has none."""
+    if experiment not in layout.experiments:
+        msg = (
+            f"There is no experiment {experiment!r}. The layout's experiments "
+            f"are {list(layout.experiments)}."
+        )
+        raise ValueError(msg)
+    return layout.experiments.index(experiment)
+
+
+def pick_experiment(
+    layout: ExperimentLayout,
+    tree: PyTree,
+    experiment: str,
+) -> PyTree:
+    """Pick one experiment's row from a tree with a leading experiment axis."""
+    index = get_experiment_index(layout, experiment)
+    return jax.tree.map(lambda leaf: leaf[index], tree)
 
 
 def expand_labels(

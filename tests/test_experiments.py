@@ -11,7 +11,9 @@ from jax import numpy as jnp
 from enzax.experiments import (
     get_experiment_layout,
     gather_parameters_by_experiment,
+    get_experiment_index,
     merge_experiment_parameters,
+    pick_experiment,
 )
 from enzax.parameter_split import (
     combine_parameters,
@@ -153,3 +155,21 @@ def test_gathered_parameters_vmap_through_the_model():
     for i, parameters in enumerate(PER_EXPERIMENT):
         assert jnp.allclose(fluxes[i], SEPARATE.flux(CONC, parameters))
     assert not jnp.allclose(fluxes[0], fluxes[1])
+
+
+def test_an_experiment_index_is_its_position_in_the_layout():
+    layout = get_experiment_layout(LABELLING, EXPERIMENTS, SPECIFIC)
+    assert get_experiment_index(layout, "e2") == 1
+    with pytest.raises(ValueError, match="no experiment 'e3'"):
+        get_experiment_index(layout, "e3")
+
+
+def test_picking_an_experiment_takes_its_row_of_every_leaf():
+    layout = get_experiment_layout(LABELLING, EXPERIMENTS, SPECIFIC)
+    tree = {
+        "a": jnp.array([[1.0, 2.0], [3.0, 4.0]]),
+        "b": jnp.array([5.0, 6.0]),
+    }
+    picked = pick_experiment(layout, tree, "e2")
+    assert jnp.array_equal(picked["a"], jnp.array([3.0, 4.0]))
+    assert picked["b"] == 6.0

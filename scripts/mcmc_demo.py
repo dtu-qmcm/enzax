@@ -19,6 +19,11 @@ from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 from enzax.examples import methionine as example
+from enzax.experiments import (
+    gather_parameters_by_experiment,
+    get_experiment_layout,
+)
+from enzax.measurements import LognormalMeasurement, NormalMeasurement
 from enzax.parameter_split import (
     combine_parameters,
     count_free_parameters,
@@ -27,7 +32,7 @@ from enzax.parameter_split import (
 )
 from enzax.shard_map_patch import patch_for_shard_map
 from enzax.statistical_modelling import (
-    enzax_log_density_grapevine,
+    log_density_grapevine,
     prior_from_truth,
 )
 from enzax.steady_state import get_steady_state_hybrid
@@ -60,14 +65,27 @@ def simulate(key, truth, error):
     )
 
 
-def get_guess_fn(model, split, free_parameters):
+def get_guess_fn(model, layout, split, free_parameters):
     _, unflatten = ravel_pytree(free_parameters)
+    n_experiment = len(layout.experiments)
 
     def target_function(conc_ind, position):
-        parameters = combine_parameters(split, unflatten(position))
-        return model.dndt(conc_ind, parameters)
+        parameters = gather_parameters_by_experiment(
+            layout,
+            combine_parameters(split, unflatten(position)),
+        )
+        conc_ind = conc_ind.reshape(n_experiment, -1)
+        return jax.vmap(model.dndt)(conc_ind, parameters).ravel()
 
-    return functools.partial(guess_implicit, target_function=target_function)
+    def guess_fn(guess_inputs, position):
+        shape = guess_inputs.solution.shape
+        flat_inputs = guess_inputs._replace(
+            solution=guess_inputs.solution.ravel(),
+        )
+        guess = guess_implicit(flat_inputs, position, target_function)
+        return guess.reshape(shape)
+
+    return guess_fn
 
 
 def report(split, free_true, states):
@@ -111,17 +129,41 @@ def main():
     )
     key_sim, key_mcmc = jax.random.split(jax.random.key(SEED), 2)
     values = simulate(key_sim, (true_conc, true_log_enzyme, true_flux), errors)
-    measurements = tuple(zip(values, errors))
+    layout = get_experiment_layout(model.parameter_labelling, ["e"], {})
     log_density = functools.partial(
-        enzax_log_density_grapevine,
+        log_density_grapevine,
         model=model,
+        layout=layout,
         split=split,
-        measurements=measurements,
         prior=prior,
+        conc_measurements=[
+            LognormalMeasurement(
+                "e",
+                model.species,
+                values=values[0],
+                errors=errors[0],
+            ),
+        ],
+        enzyme_measurements=[
+            LognormalMeasurement(
+                "e",
+                model.parameter_labelling["log_enzyme"],
+                values=values[1],
+                errors=errors[1],
+            ),
+        ],
+        flux_measurements=[
+            NormalMeasurement(
+                "e",
+                model.reaction_ids,
+                values=values[2],
+                errors=errors[2],
+            ),
+        ],
     )
     sampler = grapenuts(
-        default_guess,
-        guess_fn=get_guess_fn(model, split, free_true),
+        default_guess[None],
+        guess_fn=get_guess_fn(model, layout, split, free_true),
     )
     with blackjax.progress_bar("enzax"):
         states, info = run_sampler(

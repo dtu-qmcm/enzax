@@ -7,9 +7,11 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.examples import methionine
+from enzax.experiments import get_experiment_layout
+from enzax.measurements import LognormalMeasurement, NormalMeasurement
 from enzax.statistical_modelling import (
-    enzax_log_density,
-    enzax_log_density_grapevine,
+    log_density,
+    log_density_grapevine,
     prior_from_truth,
 )
 from enzax.steady_state import get_steady_state
@@ -112,16 +114,38 @@ def deserialize_jax_dict(file_path):
 # hybrid solver's Newton path is rejected and the integration starts from this
 # exact point, so the numbers are the pure ODE solver's, bit for bit.
 DEFAULT_STATE_GUESS = jnp.full((5,), 0.01)
+LAYOUT = get_experiment_layout(methionine.model.parameter_labelling, ["e"], {})
 
 
 def get_methionine_measurements_and_prior():
     """Get the methionine model's measurements and prior."""
-    error_conc = jnp.full_like(obs_conc, 0.03)
-    error_flux = jnp.full_like(obs_flux, 0.05)
-    error_enzyme = jnp.full_like(obs_enzyme, 0.03)
-    measurement_values = obs_conc, obs_enzyme, obs_flux
-    measurement_errors = error_conc, error_enzyme, error_flux
-    measurements = tuple(zip(measurement_values, measurement_errors))
+    model = methionine.model
+    measurements = {
+        "conc_measurements": [
+            LognormalMeasurement(
+                "e",
+                model.species,
+                values=obs_conc,
+                errors=jnp.full_like(obs_conc, 0.03),
+            ),
+        ],
+        "enzyme_measurements": [
+            LognormalMeasurement(
+                "e",
+                model.parameter_labelling["log_enzyme"],
+                values=obs_enzyme,
+                errors=jnp.full_like(obs_enzyme, 0.03),
+            ),
+        ],
+        "flux_measurements": [
+            NormalMeasurement(
+                "e",
+                model.reaction_ids,
+                values=obs_flux,
+                errors=jnp.full_like(obs_flux, 0.05),
+            ),
+        ],
+    }
     prior = prior_from_truth(methionine.parameters, sd=0.1)  # pyright: ignore[reportArgumentType]
     return measurements, prior
 
@@ -133,12 +157,13 @@ def get_methionine_gradient():
     measurements, prior = get_methionine_measurements_and_prior()
     posterior_log_density = jax.jit(
         functools.partial(
-            enzax_log_density,
+            log_density,
             model=true_model,
+            layout=LAYOUT,
             split=None,
-            measurements=measurements,
             prior=prior,
-            guess=DEFAULT_STATE_GUESS,
+            guess=DEFAULT_STATE_GUESS[None],
+            **measurements,
             # Tighter than `get_steady_state`'s defaults, which are set for the
             # speed of a sampling run. At those defaults this gradient varies
             # between platforms by far more than the tolerance asserted below.
@@ -164,12 +189,13 @@ def get_methionine_log_density_and_grad(guess):
     """Get the methionine log posterior density and its gradient."""
     measurements, prior = get_methionine_measurements_and_prior()
     posterior_log_density = functools.partial(
-        enzax_log_density_grapevine,
+        log_density_grapevine,
         model=methionine.model,
+        layout=LAYOUT,
         split=None,
-        measurements=measurements,
         prior=prior,
-        guess=guess,
+        guess=guess[None],
+        **measurements,
     )
     gradient, _ = jax.jacrev(posterior_log_density, has_aux=True)(
         methionine.parameters,

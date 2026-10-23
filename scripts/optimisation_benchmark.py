@@ -53,6 +53,13 @@ from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 from enzax.examples import glycolysis
+from enzax.measurements import (
+    LognormalMeasurement,
+    NormalMeasurement,
+    pick_concs,
+    pick_enzymes,
+    pick_fluxes,
+)
 from enzax.parameter_split import (
     combine_parameters,
     count_free_parameters,
@@ -60,7 +67,6 @@ from enzax.parameter_split import (
     split_parameters_by_fixing,
 )
 from enzax.statistical_modelling import (
-    enzax_log_likelihood,
     enzax_prior_logdensity,
     pack_locs_and_scales,
 )
@@ -196,8 +202,8 @@ class Problem(NamedTuple):
 
     :param prior: the free parameters' prior, as locations and scales.
 
-    :param measurements: `(observation, error)` pairs for concentrations,
-        enzymes and fluxes.
+    :param measurements: measurements of concentrations, enzymes and fluxes,
+        in that order.
 
     :param position: the free parameters at the prior mean, ravelled, which is
         where sampling starts.
@@ -273,7 +279,26 @@ def build_problem(example, seed: int) -> tuple[Problem, jax.Array]:
         model=model,
         split=split,
         prior=prior,
-        measurements=tuple(zip(values, errors)),
+        measurements=(
+            LognormalMeasurement(
+                "e",
+                model.species,
+                values=values[0],
+                errors=errors[0],
+            ),
+            LognormalMeasurement(
+                "e",
+                model.parameter_labelling["log_enzyme"],
+                values=values[1],
+                errors=errors[1],
+            ),
+            NormalMeasurement(
+                "e",
+                model.reaction_ids,
+                values=values[2],
+                errors=errors[2],
+            ),
+        ),
         position=position,
         unflatten=unflatten,
         default_guess=default_guess,
@@ -323,7 +348,7 @@ def simulate(key, truth, error):
 def make_density(problem: Problem, configuration: Configuration) -> Callable:
     """Get `(position, guess) -> (log density, steady state)`.
 
-    This is `enzax.statistical_modelling.enzax_log_density_grapevine` with the
+    This is `enzax.statistical_modelling.log_density_grapevine` with the
     solver, the adjoint and the Newton seeding as arguments, which enzax does
     not offer, and with the position ravelled, which is the form the sampler
     manipulates. Swapping those three out is the point of this script.
@@ -356,15 +381,18 @@ def make_density(problem: Problem, configuration: Configuration) -> Callable:
             model.get_log_conc_unbalanced(parameters),
         )
         flux_hat = model.flux(balanced, parameters)
-        enzyme_hat = jnp.exp(parameters["log_enzyme"])
         conc_msts, enzyme_msts, flux_msts = problem.measurements
-        log_density = enzax_prior_logdensity(
-            free_parameters,
-            problem.prior,
-        ) + enzax_log_likelihood(
-            (conc_hat, *conc_msts),
-            (enzyme_hat, *enzyme_msts),
-            (flux_hat, *flux_msts),
+        log_density = (
+            enzax_prior_logdensity(free_parameters, problem.prior)
+            + conc_msts.log_likelihood(
+                pick_concs(model, conc_hat, conc_msts.ids),
+            ).sum()
+            + enzyme_msts.log_likelihood(
+                pick_enzymes(model, parameters, enzyme_msts.ids),
+            ).sum()
+            + flux_msts.log_likelihood(
+                pick_fluxes(model, flux_hat, flux_msts.ids),
+            ).sum()
         )
         return log_density, steady
 
