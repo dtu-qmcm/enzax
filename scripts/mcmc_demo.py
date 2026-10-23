@@ -22,27 +22,31 @@ from enzax.examples import methionine as example
 from enzax.experiments import (
     gather_parameters_by_experiment,
     get_experiment_layout,
+    merge_experiment_parameters,
 )
 from enzax.measurements import LognormalMeasurement, NormalMeasurement
 from enzax.parameter_split import (
     combine_parameters,
     count_free_parameters,
+    get_free_labels,
     get_free_parameters,
     split_parameters_by_freeing,
 )
 from enzax.shard_map_patch import patch_for_shard_map
 from enzax.statistical_modelling import (
+    get_measurables_single_experiment,
     log_density_grapevine,
     prior_from_truth,
 )
-from enzax.steady_state import get_steady_state_hybrid
 
 jax.config.update("jax_enable_x64", True)
 
 SEED = 1234
 N_CHAIN = 4
-N_WARMUP = 2
-N_SAMPLE = 2
+N_WARMUP = 300
+N_SAMPLE = 300
+N_EXPERIMENT = 3
+ENZYME_SPREAD = 0.5
 MAX_TREEDEPTH = 10
 INIT_SD = 0.01
 INITIAL_STEP_SIZE = 0.001
@@ -59,9 +63,16 @@ def simulate(key, truth, error):
     true_conc, true_log_enzyme, true_flux = truth
     conc_error, enzyme_error, flux_error = error
     return (
-        jnp.exp(jnp.log(true_conc) + jax.random.normal(key_conc) * conc_error),
-        jnp.exp(true_log_enzyme + jax.random.normal(key_enzyme) * enzyme_error),
-        true_flux + jax.random.normal(key_flux) * flux_error,
+        jnp.exp(
+            jnp.log(true_conc)
+            + jax.random.normal(key_conc, true_conc.shape) * conc_error,
+        ),
+        jnp.exp(
+            true_log_enzyme
+            + jax.random.normal(key_enzyme, true_log_enzyme.shape)
+            * enzyme_error,
+        ),
+        true_flux + jax.random.normal(key_flux, true_flux.shape) * flux_error,
     )
 
 
@@ -100,69 +111,102 @@ def report(split, free_true, states):
         high = jnp.quantile(pooled, 0.99, axis=0)
         covered = int(jnp.sum((true >= low) & (true <= high)))
         print(f"  {path[0].key}: {covered}/{jnp.size(true)} covered")
+        sds = jnp.std(pooled, axis=0)
+        for label, sd in zip(get_free_labels(split, path[0].key), sds):
+            print(f"    {label}: posterior sd {float(sd):.3f}")
 
 
 def main():
     patch_for_shard_map()
     model = example.model
-    true_parameters = example.parameters
-    default_guess = example.steady_state
-    split = split_parameters_by_freeing(
+    truth = example.parameters
+    key_enzyme, key_sim, key_mcmc = jax.random.split(jax.random.key(SEED), 3)
+    experiments = [f"e{i}" for i in range(N_EXPERIMENT)]
+    per_experiment = [
+        truth
+        | {
+            "log_enzyme": truth["log_enzyme"]
+            + ENZYME_SPREAD
+            * jax.random.normal(
+                jax.random.fold_in(key_enzyme, i),
+                truth["log_enzyme"].shape,
+            ),
+        }
+        for i in range(N_EXPERIMENT)
+    ]
+    layout = get_experiment_layout(
         model.parameter_labelling,
-        true_parameters,
+        experiments,
+        {"log_enzyme": None},
+    )
+    expanded_true = merge_experiment_parameters(layout, per_experiment)
+    split = split_parameters_by_freeing(
+        layout.labelling,
+        expanded_true,
         FREE_PARAMETERS,
     )
-    free_true = get_free_parameters(split, true_parameters)
+    free_true = get_free_parameters(split, expanded_true)
     prior = prior_from_truth(free_true, sd=PRIOR_SD)
-    steady = get_steady_state_hybrid(model, default_guess, true_parameters)
-    balanced = model.get_balanced_conc(steady, true_parameters)
-    true_conc = model.get_conc(
-        balanced,
-        model.get_log_conc_unbalanced(true_parameters),
-    )
-    true_flux = model.flux(balanced, true_parameters)
-    true_log_enzyme = true_parameters["log_enzyme"]
-    errors = (
-        jnp.full_like(true_conc, CONC_ERROR),
-        jnp.full_like(true_log_enzyme, ENZYME_ERROR),
-        jnp.full_like(true_flux, FLUX_ERROR),
-    )
-    key_sim, key_mcmc = jax.random.split(jax.random.key(SEED), 2)
-    values = simulate(key_sim, (true_conc, true_log_enzyme, true_flux), errors)
-    layout = get_experiment_layout(model.parameter_labelling, ["e"], {})
+    measurements = {
+        "conc_measurements": [],
+        "enzyme_measurements": [],
+        "flux_measurements": [],
+    }
+    steady_states = []
+    for i, (experiment, parameters) in enumerate(
+        zip(experiments, per_experiment),
+    ):
+        steady, _, true_conc, true_flux = get_measurables_single_experiment(
+            model,
+            parameters,
+            example.steady_state,
+        )
+        steady_states.append(steady)
+        true_log_enzyme = parameters["log_enzyme"]
+        errors = (
+            jnp.full_like(true_conc, CONC_ERROR),
+            jnp.full_like(true_log_enzyme, ENZYME_ERROR),
+            jnp.full_like(true_flux, FLUX_ERROR),
+        )
+        conc, enzyme, flux = simulate(
+            jax.random.fold_in(key_sim, i),
+            (true_conc, true_log_enzyme, true_flux),
+            errors,
+        )
+        measurements["conc_measurements"].append(
+            LognormalMeasurement(
+                experiment,
+                model.species,
+                values=conc,
+                errors=errors[0],
+            ),
+        )
+        measurements["enzyme_measurements"].append(
+            LognormalMeasurement(
+                experiment,
+                model.parameter_labelling["log_enzyme"],
+                values=enzyme,
+                errors=errors[1],
+            ),
+        )
+        measurements["flux_measurements"].append(
+            NormalMeasurement(
+                experiment,
+                model.reaction_ids,
+                values=flux,
+                errors=errors[2],
+            ),
+        )
     log_density = functools.partial(
         log_density_grapevine,
         model=model,
         layout=layout,
         split=split,
         prior=prior,
-        conc_measurements=[
-            LognormalMeasurement(
-                "e",
-                model.species,
-                values=values[0],
-                errors=errors[0],
-            ),
-        ],
-        enzyme_measurements=[
-            LognormalMeasurement(
-                "e",
-                model.parameter_labelling["log_enzyme"],
-                values=values[1],
-                errors=errors[1],
-            ),
-        ],
-        flux_measurements=[
-            NormalMeasurement(
-                "e",
-                model.reaction_ids,
-                values=values[2],
-                errors=errors[2],
-            ),
-        ],
+        **measurements,
     )
     sampler = grapenuts(
-        default_guess[None],
+        jnp.stack(steady_states),
         guess_fn=get_guess_fn(model, layout, split, free_true),
     )
     with blackjax.progress_bar("enzax"):
@@ -182,6 +226,7 @@ def main():
                 target_acceptance_rate=TARGET_ACCEPTANCE,
             ),
         )
+    print(f"Experiments: {N_EXPERIMENT}")
     print(f"Divergent transitions: {int(info.is_divergent.sum())}")
     report(split, free_true, states)
 
