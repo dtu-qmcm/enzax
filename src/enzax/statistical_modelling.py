@@ -12,6 +12,7 @@ from enzax.array_types import ConcArray, Flux, OdeStateArr, ParamDict
 from enzax.experiments import (
     ExperimentLayout,
     gather_parameters_by_experiment,
+    get_experiment_layout,
     pick_experiment,
 )
 from enzax.kinetic_model import KineticModel
@@ -167,6 +168,8 @@ def enzax_prior_logdensity(parameters: PyTree, prior: PyTree) -> Scalar:
     return jax.tree.reduce(operator.add, prior_logdensities)
 
 
+DEFAULT_EXPERIMENT = "exp1"
+
 _STATIC_SOLVE_ARGUMENTS = (
     "ivp_rtol",
     "ivp_atol",
@@ -235,8 +238,8 @@ def get_measurables_single_experiment(
 def _log_density_and_steady_states(
     free_parameters: PyTree,
     model: KineticModel,
-    layout: ExperimentLayout,
     prior: PyTree,
+    layout: ExperimentLayout | None = None,
     split: ParameterSplit | None = None,
     guess: Float[Array, "n_experiment n_state"] | None = None,
     conc_measurements: Sequence[Measurement] = (),
@@ -255,12 +258,11 @@ def _log_density_and_steady_states(
         is the short form that get_free_parameters returns; without one, it is
         a complete expanded parameter set.
 
-    :param layout: which parameter values each experiment has. For a single
-        experiment, use a layout with one experiment and nothing
-        experiment-specific.
-
     :param prior: the prior, with a (location, scale) pair for each leaf of
         free_parameters, as prior_from_truth or pack_locs_and_scales returns.
+
+    :param layout: which parameter values each experiment has. Defaults to a
+        single experiment, exp1, with nothing experiment-specific.
 
     :param split: which parameters are free, and the values of the rest. Leave
         it out to infer every parameter.
@@ -301,6 +303,12 @@ def _log_density_and_steady_states(
     steady state, so the Newton path usually succeeds and the integration
     usually takes no steps.
     """
+    if layout is None:
+        layout = get_experiment_layout(
+            model.parameter_labelling,
+            [DEFAULT_EXPERIMENT],
+            {},
+        )
     if guess is None:
         guess = jnp.full(
             (len(layout.experiments), len(model.ode_state_species_ix)),
@@ -368,8 +376,8 @@ log_density_grapevine = partial(
 def log_density(
     free_parameters: PyTree,
     model: KineticModel,
-    layout: ExperimentLayout,
     prior: PyTree,
+    layout: ExperimentLayout | None = None,
     split: ParameterSplit | None = None,
     guess: Float[Array, "n_experiment n_state"] | None = None,
     conc_measurements: Sequence[Measurement] = (),
@@ -390,8 +398,8 @@ def log_density(
     density, _ = _log_density_and_steady_states(
         free_parameters,
         model,
-        layout,
         prior,
+        layout,
         split,
         guess,
         conc_measurements,

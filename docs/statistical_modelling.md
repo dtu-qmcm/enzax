@@ -118,22 +118,22 @@ from jax import numpy as jnp
 from enzax.measurements import LognormalMeasurement, NormalMeasurement
 
 conc_measurement = LognormalMeasurement(
-    "wt",
-    ["met-L", "atp", "amet"],
+    experiment="exp1",
+    ids=["met-L", "atp", "amet"],
     values=jnp.array([4.0e-5, 1.2e-3, 2.9e-5]),
     errors=jnp.array([0.1, 0.1, 0.1]),
 )
 flux_measurement = NormalMeasurement(
-    "wt",
-    ["MAT1"],
+    experiment="exp1",
+    ids=["MAT1"],
     values=jnp.array([0.04]),
     errors=jnp.array([0.005]),
 )
 ```
 
-Since a measurement names its values, it can cover any subset of them in any order, and a value that was not measured is simply left out. The constructors check that values and errors are positive wherever the distribution needs them to be.
+Since a measurement names its values, it can cover any subset of them in any order, and a value that was not measured can simply be left out.
 
-Other kinds of measurement are subclasses of `Measurement` with their own `log_likelihood` method. The method receives the model's predicted values for the measurement's ids, in the same order, and returns one log density per independent observation. For example, a measurement of the proportions of some species, such as the isotopologues of one metabolite, could use a Dirichlet distribution:
+Other kinds of measurement are subclasses of `Measurement` with their own `log_likelihood` method. The method receives the model's predicted values for the measurement's ids, in the same order, and returns one log density per independent observation. For example, a compositional measurement of the proportions of some species, such as the isotopologues of one metabolite, could use a Dirichlet distribution:
 
 ```python
 import jax
@@ -142,7 +142,7 @@ from jax.scipy.stats import dirichlet
 from enzax.measurements import Measurement
 
 
-class ProportionMeasurement(Measurement):
+class DirichletMeasurement(Measurement):
     proportions: jax.Array
     concentration: float
 
@@ -151,23 +151,18 @@ class ProportionMeasurement(Measurement):
         return jnp.atleast_1d(dirichlet.logpdf(x=self.proportions, alpha=alpha))
 ```
 
-Its ids are species ids, so it counts as a concentration measurement in the next section.
-
 ## The log density
 
-`log_density` brings the pieces together. It combines the free parameters with the fixed ones, solves for the steady state, and adds the log prior to the log likelihood of every measurement. It needs an experiment layout, which the next section describes; for a single experiment the layout says only the experiment's id:
+`log_density` brings the pieces together. It combines the free parameters with the fixed ones, solves for the steady state, and adds the log prior to the log likelihood of every measurement. With several experiments it also needs an experiment layout, which the next section describes. Without one it assumes a single experiment called `exp1`, which is why the measurements above name that experiment:
 
 ```python
 import functools
 
-from enzax.experiments import get_experiment_layout
 from enzax.statistical_modelling import log_density, prior_from_truth
 
-layout = get_experiment_layout(model.parameter_labelling, ["wt"], {})
 posterior_log_density = functools.partial(
     log_density,
     model=model,
-    layout=layout,
     split=split,
     prior=prior_from_truth(free_parameters, sd=0.1),
     conc_measurements=[conc_measurement],
@@ -201,16 +196,18 @@ conc_measurement.log_likelihood(pick_concs(model, conc, conc_measurement.ids))
 Experiments often share a model but not all its parameter values: enzyme levels or boundary concentrations usually differ between experiments, while kinetic constants do not. An experiment layout says which values are experiment-specific, using the same `{parameter: labels}` selections as a split:
 
 ```python
+from enzax.experiments import get_experiment_layout
+
 layout = get_experiment_layout(
     model.parameter_labelling,
-    ["wt", "mat1_up"],
+    ["exp1", "exp2"],
     {"log_enzyme": None},
 )
 layout.labelling["log_enzyme"][:4]
 ```
 
 ```
-('MAT1|wt', 'MAT1|mat1_up', 'MAT3|wt', 'MAT3|mat1_up')
+('MAT1|exp1', 'MAT1|exp2', 'MAT3|exp1', 'MAT3|exp2')
 ```
 
 The layout's labelling expands the model's: each experiment-specific label appears once per experiment, as `{label}|{experiment}`, and every other label once. A parameter set with this labelling holds every experiment's values, and it is an ordinary parameter set, so splits and priors work on it as before. Parameters without labels, such as `temperature`, can only be shared.
@@ -220,12 +217,12 @@ The easiest way to make such a parameter set is from one parameter set per exper
 ```python
 from enzax.experiments import merge_experiment_parameters
 
-mat1_up = true_parameters | {
+more_mat1 = true_parameters | {
     "log_enzyme": true_parameters["log_enzyme"].at[0].add(1.0),
 }
 expanded_parameters = merge_experiment_parameters(
     layout,
-    [true_parameters, mat1_up],
+    [true_parameters, more_mat1],
 )
 split = split_parameters_by_freeing(
     layout.labelling,
@@ -250,8 +247,8 @@ posterior_log_density = functools.partial(
     conc_measurements=[
         conc_measurement,
         LognormalMeasurement(
-            "mat1_up",
-            ["met-L", "atp", "amet"],
+            experiment="exp2",
+            ids=["met-L", "atp", "amet"],
             values=jnp.array([3.1e-5, 1.0e-3, 4.4e-5]),
             errors=jnp.array([0.1, 0.1, 0.1]),
         ),

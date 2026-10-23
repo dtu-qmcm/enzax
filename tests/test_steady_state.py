@@ -320,8 +320,8 @@ def test_a_failed_solve_gives_a_nan_log_density_rather_than_raising():
         return log_density(
             parameters,
             model,
-            layout,
             prior,
+            layout=layout,
             guess=guess,
             **measurements,
         )

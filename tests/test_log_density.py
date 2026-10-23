@@ -95,8 +95,8 @@ def density(parameters):
     return log_density(
         parameters,
         MODEL,
-        LAYOUT,
         PRIOR,
+        layout=LAYOUT,
         guess=GUESS,
         **MEASUREMENTS,
     )
@@ -158,8 +158,8 @@ def test_each_measurement_is_scored_against_its_own_experiment():
     swapped_density = log_density(
         EXPANDED,
         MODEL,
-        LAYOUT,
         PRIOR,
+        layout=LAYOUT,
         guess=GUESS,
         **swapped,
     )
@@ -170,8 +170,8 @@ def test_the_grapevine_density_returns_a_steady_state_per_experiment():
     value, steady = log_density_grapevine(
         EXPANDED,
         MODEL,
-        LAYOUT,
         PRIOR,
+        layout=LAYOUT,
         guess=GUESS,
         **MEASUREMENTS,
     )
@@ -188,8 +188,8 @@ def test_one_failed_solve_gives_a_nan_density():
     value, steady = log_density_grapevine(
         expanded,
         MODEL,
-        LAYOUT,
         PRIOR,
+        layout=LAYOUT,
         guess=GUESS,
         **MEASUREMENTS,
     )
@@ -210,4 +210,40 @@ def test_an_unknown_experiment_is_rejected():
         ],
     }
     with pytest.raises(ValueError, match="no experiment 'e3'"):
-        log_density(EXPANDED, MODEL, LAYOUT, PRIOR, guess=GUESS, **measurements)
+        log_density(
+            EXPANDED,
+            MODEL,
+            PRIOR,
+            layout=LAYOUT,
+            guess=GUESS,
+            **measurements,
+        )
+
+
+def test_the_default_layout_is_one_experiment_called_exp1():
+    prior = prior_from_truth(TRUTH, sd=0.1)
+    measurement = MEASUREMENTS["conc_measurements"][0]
+    conc_measurements = [
+        LognormalMeasurement(
+            experiment="exp1",
+            ids=measurement.ids,
+            values=measurement.values,
+            errors=measurement.errors,
+        ),
+    ]
+    explicit = get_experiment_layout(MODEL.parameter_labelling, ["exp1"], {})
+    default_density = log_density(
+        TRUTH,
+        MODEL,
+        prior,
+        conc_measurements=conc_measurements,
+    )
+    explicit_density = log_density(
+        TRUTH,
+        MODEL,
+        prior,
+        layout=explicit,
+        conc_measurements=conc_measurements,
+    )
+    assert jnp.isfinite(default_density)
+    assert default_density == explicit_density
