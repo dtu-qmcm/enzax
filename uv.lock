@@ -734,7 +734,7 @@ wheels = [
 [[package]]
 name = "grapevine-mcmc"
 version = "0.3.0"
-source = { git = "https://github.com/dtu-qmcm/grapevine.git#d45b40f666bf9802f5243558dd69e031406ef1f7" }
+source = { git = "https://github.com/dtu-qmcm/grapevine.git#d6a3aaf44b29faf3b3c919be9974b7ab812b9232" }
 dependencies = [
     { name = "blackjax" },
     { name = "jax" },
