@@ -101,32 +101,163 @@ new_parameters = combine_parameters(split, new_free_parameters)
 new_parameters
 ```
 
-This is what `enzax_log_density` does internally, so a Bayesian model over a subset of the parameters is as follows. The `measurements` argument is described in the next section:
+`log_density` does this combining itself, so a statistical model over a subset of the parameters only needs the split. The next three sections describe the other ingredients: measurements, the log density that brings everything together, and how to fit several experiments at once.
+
+## Measurements
+
+A measurement holds some measured values from one experiment, together with a method that scores them against the model's predictions. Enzax provides two kinds of measurement:
+
+- `LognormalMeasurement`, for positive quantities such as concentrations and enzyme levels. The logarithms of the values are normally distributed, and `errors` are standard deviations on the log scale.
+- `NormalMeasurement`, for quantities that can be negative, such as fluxes. The values are normally distributed, and `errors` are standard deviations.
+
+Each measurement names its experiment and the ids of its values: species ids for concentrations, reaction ids for fluxes, and labels from `model.parameter_labelling["log_enzyme"]` for enzymes.
 
 ```python
-import functools
-from enzax.statistical_modelling import enzax_log_density, prior_from_truth
+from jax import numpy as jnp
 
-posterior_log_density = functools.partial(
-    enzax_log_density,
-    model=model,
-    split=split,
-    measurements=measurements,
-    prior=prior_from_truth(free_parameters, sd=0.1),
+from enzax.measurements import LognormalMeasurement, NormalMeasurement
+
+conc_measurement = LognormalMeasurement(
+    experiment="exp1",
+    ids=["met-L", "atp", "amet"],
+    values=jnp.array([4.0e-5, 1.2e-3, 2.9e-5]),
+    errors=jnp.array([0.1, 0.1, 0.1]),
+)
+flux_measurement = NormalMeasurement(
+    experiment="exp1",
+    ids=["MAT1"],
+    values=jnp.array([0.04]),
+    errors=jnp.array([0.005]),
 )
 ```
 
-Leave out `split` to infer every parameter, in which case the first argument is a complete parameter set rather than a gathered one.
+Since a measurement names its values, it can cover any subset of them in any order, and a value that was not measured can simply be left out.
 
-## Measurement order
+Other kinds of measurement are subclasses of `Measurement` with their own `log_likelihood` method. The method receives the model's predicted values for the measurement's ids, in the same order, and returns one log density per independent observation. For example, a compositional measurement of the proportions of some species, such as the isotopologues of one metabolite, could use a Dirichlet distribution:
 
-`enzax_log_density` compares three kinds of measurement against the model's predictions, and each has an order you have to match:
+```python
+import jax
+from jax.scipy.stats import dirichlet
 
-- concentrations are in the model's `species` order;
-- fluxes are in its `reactions` order;
-- enzyme concentrations are in `model.parameter_labelling["log_enzyme"]` order, i.e. the order the model's rate equations first label their enzymes in.
+from enzax.measurements import Measurement
 
-The last of these is not the same as the reaction order whenever a reaction has no enzyme, as with methionine's drain reaction, or whenever two reactions share one.
+
+class DirichletMeasurement(Measurement):
+    proportions: jax.Array
+    concentration: float
+
+    def log_likelihood(self, predicted):
+        alpha = self.concentration * predicted / predicted.sum()
+        return jnp.atleast_1d(dirichlet.logpdf(x=self.proportions, alpha=alpha))
+```
+
+## The log density
+
+`log_density` brings the pieces together. It combines the free parameters with the fixed ones, solves for the steady state, and adds the log prior to the log likelihood of every measurement. With several experiments it also needs an experiment layout, which the next section describes. Without one it assumes a single experiment called `exp1`, which is why the measurements above name that experiment:
+
+```python
+import functools
+
+from enzax.statistical_modelling import log_density, prior_from_truth
+
+posterior_log_density = functools.partial(
+    log_density,
+    model=model,
+    split=split,
+    prior=prior_from_truth(free_parameters, sd=0.1),
+    conc_measurements=[conc_measurement],
+    flux_measurements=[flux_measurement],
+)
+posterior_log_density(free_parameters)
+```
+
+Measurements come in three lists, by what they measure: `conc_measurements`, `enzyme_measurements` and `flux_measurements`. Any `Measurement` subclass can go in the list for the quantity its ids refer to. Leave out `split` to infer every parameter, in which case the first argument is a complete parameter set rather than a gathered one.
+
+The steady state solve starts from `guess`, an array with one row per experiment and one column per state variable, which defaults to 0.01 everywhere. If no steady state is found, the log density is NaN, which a sampler treats as a divergence and rejects.
+
+### Writing your own statistical model
+
+`log_density` covers concentrations, enzymes and fluxes with known measurement errors. For anything else, such as measured algebraic variables or inferred errors, you can build a statistical model from the same parts. `get_measurables_single_experiment` solves one experiment's steady state and returns it, whether it was found, and every species' concentration and every reaction's flux. `pick_concs`, `pick_fluxes`, `pick_enzymes` and `pick_algebraic_variables` then pick a measurement's predicted values out of these by id:
+
+```python
+from enzax.measurements import pick_concs
+from enzax.statistical_modelling import get_measurables_single_experiment
+
+steady, found, conc, flux = get_measurables_single_experiment(
+    model,
+    true_parameters,
+    jnp.full(len(model.ode_state_species_ix), 0.01),
+)
+conc_measurement.log_likelihood(pick_concs(model, conc, conc_measurement.ids))
+```
+
+## Multiple experiments
+
+Experiments often share a model but not all its parameter values: enzyme levels or boundary concentrations usually differ between experiments, while kinetic constants do not. An experiment layout says which values are experiment-specific, using the same `{parameter: labels}` selections as a split:
+
+```python
+from enzax.experiments import get_experiment_layout
+
+layout = get_experiment_layout(
+    model.parameter_labelling,
+    ["exp1", "exp2"],
+    {"log_enzyme": None},
+)
+layout.labelling["log_enzyme"][:4]
+```
+
+```
+('MAT1|exp1', 'MAT1|exp2', 'MAT3|exp1', 'MAT3|exp2')
+```
+
+The layout's labelling expands the model's: each experiment-specific label appears once per experiment, as `{label}|{experiment}`, and every other label once. A parameter set with this labelling holds every experiment's values, and it is an ordinary parameter set, so splits and priors work on it as before. Parameters without labels, such as `temperature`, can only be shared.
+
+The easiest way to make such a parameter set is from one parameter set per experiment, in the layout's order. `merge_experiment_parameters` raises if the experiments disagree about a shared value:
+
+```python
+from enzax.experiments import merge_experiment_parameters
+
+more_mat1 = true_parameters | {
+    "log_enzyme": true_parameters["log_enzyme"].at[0].add(1.0),
+}
+expanded_parameters = merge_experiment_parameters(
+    layout,
+    [true_parameters, more_mat1],
+)
+split = split_parameters_by_freeing(
+    layout.labelling,
+    expanded_parameters,
+    {"log_kcat": None},
+)
+free_parameters = get_free_parameters(split, expanded_parameters)
+```
+
+Note that the split uses `layout.labelling`, not the model's. Here every experiment's enzyme levels are fixed at their own values, and the turnover numbers are free and shared.
+
+Each measurement names the experiment it comes from, and `log_density` scores it against that experiment's predictions. The guess needs one row per experiment:
+
+```python
+posterior_log_density = functools.partial(
+    log_density,
+    model=model,
+    layout=layout,
+    split=split,
+    prior=prior_from_truth(free_parameters, sd=0.1),
+    guess=jnp.full((2, len(model.ode_state_species_ix)), 0.01),
+    conc_measurements=[
+        conc_measurement,
+        LognormalMeasurement(
+            experiment="exp2",
+            ids=["met-L", "atp", "amet"],
+            values=jnp.array([3.1e-5, 1.0e-3, 4.4e-5]),
+            errors=jnp.array([0.1, 0.1, 0.1]),
+        ),
+    ],
+)
+posterior_log_density(free_parameters)
+```
+
+`log_density` solves all the experiments' steady states together, with `jax.vmap`. When the experiments need similar amounts of solver work this is much cheaper than solving them one at a time. When one experiment needs much more work than the others, all of them wait for it, which in our tests cost up to about 1.5 times as much as solving them one at a time. For your own statistical models, `gather_parameters_by_experiment` turns an expanded parameter set into each experiment's parameters, stacked along a leading axis ready for `jax.vmap`.
 
 ## Posterior sampling
 
@@ -189,11 +320,7 @@ together. Warmup and sampling are separate scans, so the bar fills up twice. See
 
 The progress bar needs blackjax's `progress` optional extra, which you can install with `pip install 'blackjax[progress]'`.
 
-`scripts/mcmc_demo.py` in the enzax repository is a complete worked example:
-it fixes all but a few of the methionine model's parameters, simulates
-measurements from the true model, builds the posterior log density and samples
-from it. Run it with
-
+`scripts/mcmc_demo.py` in the enzax repository is a complete worked example: it simulates measurements from three methionine experiments that differ in their enzyme levels, then samples the shared turnover numbers with grapevine (see below). Run it with
 ```bash
 uv run --group mcmc python scripts/mcmc_demo.py
 ```
@@ -214,24 +341,23 @@ grapevine is not on PyPI, so install it from GitHub:
 uv add git+https://github.com/dtu-qmcm/grapevine.git
 ```
 
-The solution needs a way out of the log density, which is what
-`enzax_log_density_grapevine` is for: it takes the same arguments as
-`enzax_log_density` and returns `(log_density, steady_state)`. Do not bind its
-`guess` argument, since that is what the sampler supplies.
+The solution needs a way out of the log density, so `log_density_grapevine` takes the same arguments as `log_density` and returns `(log_density, steady_states)`. Do not bind its `guess` argument, since the sampler supplies it. The default guess has one row per experiment:
 
 ```python
 from blackjax_utils import run_sampler
 from grapevine import grapenuts
 
-from enzax.statistical_modelling import enzax_log_density_grapevine
+from enzax.statistical_modelling import log_density_grapevine
 
 posterior_log_density = functools.partial(
-    enzax_log_density_grapevine,
+    log_density_grapevine,
     model=model,
+    layout=layout,
     split=split,
-    measurements=measurements,
     prior=prior,
+    conc_measurements=conc_measurements,
 )
+default_guess = jnp.full((len(layout.experiments), len(model.ode_state_species_ix)), 0.01)
 states, info = run_sampler(
     key=jax.random.key(1234),
     log_posterior=posterior_log_density,
@@ -245,27 +371,33 @@ states, info = run_sampler(
 )
 ```
 
-`grapenuts` supplies the warmup and the sampling kernel; everything else is as
-it was above. It also takes a `guess_fn`, which decides how the previous
-solution becomes the next guess. The default, `guess_previous`, reuses it as it
-is. `guess_implicit` instead takes an Euler step from it, which needs the
-residual whose root the steady state is:
+`grapenuts` supplies the warmup and the sampling kernel; everything else is as it was above. It also takes a `guess_fn`, which decides how the previous solution becomes the next guess. The default, `guess_previous`, reuses it as it is. `guess_implicit` instead takes an Euler step from it, which needs the residual whose root the steady state is. `guess_implicit` works with a vector, so with several experiments the guess is flattened around it:
 
 ```python
 from grapevine import guess_implicit
 
+from enzax.experiments import gather_parameters_by_experiment
 from enzax.parameter_split import combine_parameters
+
+n_experiment = len(layout.experiments)
 
 
 def target_function(conc_ind, position):
-    parameters = combine_parameters(split, unflatten(position))
-    return model.dndt(conc_ind, parameters)
+    parameters = gather_parameters_by_experiment(
+        layout,
+        combine_parameters(split, unflatten(position)),
+    )
+    conc_ind = conc_ind.reshape(n_experiment, -1)
+    return jax.vmap(model.dndt)(conc_ind, parameters).ravel()
 
 
-sampler = grapenuts(
-    default_guess,
-    guess_fn=functools.partial(guess_implicit, target_function=target_function),
-)
+def guess_fn(guess_inputs, position):
+    shape = guess_inputs.solution.shape
+    flat_inputs = guess_inputs._replace(solution=guess_inputs.solution.ravel())
+    return guess_implicit(flat_inputs, position, target_function).reshape(shape)
+
+
+sampler = grapenuts(default_guess, guess_fn=guess_fn)
 ```
 
 The position a `guess_fn` receives is the sampler's, which under
@@ -281,7 +413,7 @@ guess it starts from. The integration stops once
 terminal state does depend on where it started, and a guess that already meets
 that bound is returned unchanged.
 
-`enzax_log_density` uses `get_steady_state_hybrid`, which narrows this rather
+`log_density` uses `get_steady_state_hybrid`, which narrows this rather
 than widening it: when the guess is close enough for its Newton step to be
 accepted, the answer is a root converged to machine precision and so does not
 depend on the guess at all. What is left is the gap between that root and the

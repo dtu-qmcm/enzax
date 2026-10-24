@@ -1,14 +1,27 @@
 import operator
+from collections.abc import Sequence
 from functools import partial
 
 import diffrax
 import jax
 from jax import numpy as jnp
 from jax.scipy.stats import multivariate_normal, norm
-from jaxtyping import PyTree, Scalar
+from jaxtyping import Array, Bool, Float, PyTree, Scalar
 
-from enzax.array_types import OdeStateArr, ParamDict
+from enzax.array_types import ConcArray, Flux, OdeStateArr, ParamDict
+from enzax.experiments import (
+    ExperimentLayout,
+    gather_parameters_by_experiment,
+    get_experiment_layout,
+    pick_experiment,
+)
 from enzax.kinetic_model import KineticModel
+from enzax.measurements import (
+    Measurement,
+    pick_concs,
+    pick_enzymes,
+    pick_fluxes,
+)
 from enzax.parameter_split import ParameterSplit, combine_parameters
 from enzax.steady_state import get_steady_state_hybrid
 
@@ -112,6 +125,11 @@ def match_prior_leaf(node):
     )
 
 
+def match_measurement(node) -> bool:
+    """Match a measurement, so jax.tree.map can treat it as a leaf."""
+    return isinstance(node, Measurement)
+
+
 def enzax_prior_logdensity(parameters: PyTree, prior: PyTree) -> Scalar:
     """Get the prior log density for the parameters given the prior.
 
@@ -150,20 +168,7 @@ def enzax_prior_logdensity(parameters: PyTree, prior: PyTree) -> Scalar:
     return jax.tree.reduce(operator.add, prior_logdensities)
 
 
-@jax.jit
-def enzax_log_likelihood(conc, enzyme, flux) -> Scalar:
-    conc_hat, conc_obs, conc_err = conc
-    enz_hat, enz_obs, enz_err = enzyme
-    flux_hat, flux_obs, flux_err = flux
-    llik_conc = norm.logpdf(
-        jnp.log(conc_obs),
-        jnp.log(conc_hat),
-        conc_err,
-    ).sum()
-    llik_enz = norm.logpdf(jnp.log(enz_obs), jnp.log(enz_hat), enz_err).sum()
-    llik_flux = norm.logpdf(flux_obs, loc=flux_hat, scale=flux_err).sum()
-    return llik_conc + llik_enz + llik_flux
-
+DEFAULT_EXPERIMENT = "exp1"
 
 _STATIC_SOLVE_ARGUMENTS = (
     "ivp_rtol",
@@ -175,69 +180,37 @@ _STATIC_SOLVE_ARGUMENTS = (
 )
 
 
-def _log_density_and_steady_state(
-    free_parameters: PyTree,
+def get_measurables_single_experiment(
     model: KineticModel,
-    measurements: PyTree,
-    prior: PyTree,
-    split: ParameterSplit | None = None,
-    guess: OdeStateArr | None = None,
+    parameters: ParamDict,
+    guess: OdeStateArr,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
-) -> tuple[Scalar, OdeStateArr]:
-    """Get the log posterior density of a kinetic model's parameters.
+) -> tuple[OdeStateArr, Bool[Array, ""], ConcArray, Flux]:
+    """Get one experiment's steady state and the quantities measured at it.
 
-    :param free_parameters: the parameters being inferred. With a `split`,
-        this is the short form that `get_free_parameters` returns; without
-        one, it is a complete parameter set.
+    parameters has the model's labelling, and guess is where the steady state
+    solve starts. The other arguments are passed on to
+    get_steady_state_hybrid.
 
-    :param split: which parameters are free, and the values of the rest. Leave
-        it out to infer every parameter.
+    Non-finite entries of guess are replaced with 0.01, the default guess.
+    Under grapevine, a failed solve hands the next draw a NaN guess, and
+    nothing can start from one: the solve would return NaN again, and the rate
+    laws raise on a NaN concentration rather than propagate it. Replacing it
+    lets the next draw recover instead of inheriting the failure.
 
-    :param measurements: a 3-tuple of `(observations, errors)` pairs, for
-        concentrations, enzymes and fluxes in that order. Concentrations are
-        in the model's `species` order, fluxes in its `reactions` order, and
-        enzymes in `model.parameter_labelling["log_enzyme"]` order, which is
-        the order the enzymes are first labelled in by the model's rate
-        equations.
-
-    :param ivp_rtol: relative tolerance of the steady state solve's initial
-        value problem, passed on to `get_steady_state_hybrid`. Static, since a
-        traced tolerance would reach diffrax as an array rather than a float.
-
-    :param ivp_atol: absolute tolerance of the initial value problem.
-
-    :param steady_state_rtol: relative tolerance of the terminating event.
-
-    :param steady_state_atol: absolute tolerance of the terminating event.
-
-    :param solver: a diffrax ODE solver for `get_steady_state_hybrid` to use.
-
-    :param stepsize_controller: a diffrax step size controller for the ODE
-        solver to use.
-
-    The solve is `get_steady_state_hybrid` rather than `get_steady_state`,
-    which matters most here: with grapevine each draw's guess is the previous
-    draw's steady state, so the Newton path usually succeeds and the
-    integration usually takes no steps.
+    :return: the steady state, whether it was found, every species'
+        concentration and every reaction's flux. get_steady_state_hybrid
+        returns NaN when it finds no steady state, and flux raises on a NaN
+        concentration, so in that case the concentrations and fluxes are
+        computed at the guess instead: they are finite but meaningless, and
+        found says to throw them away.
     """
-    if guess is None:
-        guess = jnp.full((len(model.ode_state_species_ix)), 0.01)
-    # A NaN guess is what a previous failed solve hands back under grapevine.
-    # Nothing can start from one -- the solve returns NaN again, and the rate
-    # laws raise on a NaN concentration rather than propagate it -- so it is
-    # replaced with the same default a caller who supplied no guess would get,
-    # which lets the next draw recover instead of inheriting the failure.
     guess = jnp.where(jnp.isfinite(guess), guess, 0.01)
-    if split is not None:
-        parameters = combine_parameters(split, free_parameters)
-    else:
-        parameters = free_parameters
-
     steady = get_steady_state_hybrid(
         model,
         guess,
@@ -249,47 +222,167 @@ def _log_density_and_steady_state(
         solver=solver,
         stepsize_controller=stepsize_controller,
     )
-    # `get_steady_state_hybrid` returns NaN when it found no steady state,
-    # and the rate laws raise on a NaN concentration rather than propagate it:
-    # `flux` checks that no reversibility is NaN. So the likelihood is
-    # evaluated at the guess instead and the result thrown away, leaving a NaN
-    # density, which a sampler reads as an infinite energy change and so as a
-    # divergence to reject. `steady` itself is still returned as it is, since
-    # that is what says the solve failed.
     found = jnp.isfinite(steady).all()
-    conc_ind = jnp.where(found, steady, guess)
-    conc_balanced = model.get_balanced_conc(conc_ind, parameters)
-    conc_hat = model.get_conc(
+    conc_balanced = model.get_balanced_conc(
+        jnp.where(found, steady, guess),
+        parameters,
+    )
+    conc = model.get_conc(
         conc_balanced,
         model.get_log_conc_unbalanced(parameters),
     )
-    enz_hat = jnp.exp(parameters["log_enzyme"])
-    flux_hat = model.flux(conc_balanced, parameters)
-    conc_msts, enz_msts, flux_msts = measurements
-    log_prior = enzax_prior_logdensity(free_parameters, prior)
-    log_likelihood = enzax_log_likelihood(
-        (conc_hat, *conc_msts),
-        (enz_hat, *enz_msts),
-        (flux_hat, *flux_msts),
+    flux = model.flux(conc_balanced, parameters)
+    return steady, found, conc, flux
+
+
+def _log_density_and_steady_states(
+    free_parameters: PyTree,
+    model: KineticModel,
+    prior: PyTree,
+    layout: ExperimentLayout | None = None,
+    split: ParameterSplit | None = None,
+    guess: Float[Array, "n_experiment n_state"] | None = None,
+    conc_measurements: Sequence[Measurement] = (),
+    enzyme_measurements: Sequence[Measurement] = (),
+    flux_measurements: Sequence[Measurement] = (),
+    ivp_rtol: float = 1e-9,
+    ivp_atol: float = 1e-9,
+    steady_state_rtol: float = 1e-12,
+    steady_state_atol: float = 1e-12,
+    solver: diffrax.AbstractSolver | None = None,
+    stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+) -> tuple[Scalar, Float[Array, "n_experiment n_state"]]:
+    """Get the log posterior density of the parameters, and the steady states.
+
+    :param free_parameters: the parameters being inferred. With a split, this
+        is the short form that get_free_parameters returns; without one, it is
+        a complete expanded parameter set.
+
+    :param prior: the prior, with a (location, scale) pair for each leaf of
+        free_parameters, as prior_from_truth or pack_locs_and_scales returns.
+
+    :param layout: which parameter values each experiment has. Defaults to a
+        single experiment, exp1, with nothing experiment-specific.
+
+    :param split: which parameters are free, and the values of the rest. Leave
+        it out to infer every parameter.
+
+    :param guess: where each experiment's steady state solve starts, with a
+        leading experiment axis in the layout's order. Defaults to 0.01
+        everywhere.
+
+    :param conc_measurements: measurements of species concentrations.
+
+    :param enzyme_measurements: measurements of enzyme concentrations.
+
+    :param flux_measurements: measurements of fluxes.
+
+    :param ivp_rtol: relative tolerance of the steady state solve's initial
+        value problem, passed on to get_steady_state_hybrid. Static, since a
+        traced tolerance would reach diffrax as an array rather than a float.
+
+    :param ivp_atol: absolute tolerance of the initial value problem.
+
+    :param steady_state_rtol: relative tolerance of the terminating event.
+
+    :param steady_state_atol: absolute tolerance of the terminating event.
+
+    :param solver: a diffrax ODE solver for get_steady_state_hybrid to use.
+
+    :param stepsize_controller: a diffrax step size controller for the ODE
+        solver to use.
+
+    :return: the log density, which is NaN if any experiment's steady state
+        was not found, and every experiment's steady state. A sampler reads a
+        NaN density as an infinite energy change, and so as a divergence to
+        reject. The steady states are returned as they are, NaN included, so
+        they show which solve failed.
+
+    The solve is get_steady_state_hybrid rather than get_steady_state, which
+    matters most here: with grapevine each draw's guess is the previous draw's
+    steady state, so the Newton path usually succeeds and the integration
+    usually takes no steps.
+    """
+    if layout is None:
+        layout = get_experiment_layout(
+            model.parameter_labelling,
+            [DEFAULT_EXPERIMENT],
+            {},
+        )
+    if guess is None:
+        guess = jnp.full(
+            (len(layout.experiments), len(model.ode_state_species_ix)),
+            0.01,
+        )
+    if split is not None:
+        params = combine_parameters(split, free_parameters)
+    else:
+        params = free_parameters
+    parameters_by_experiment = gather_parameters_by_experiment(layout, params)
+    steady, found, conc, flux = jax.vmap(
+        partial(
+            get_measurables_single_experiment,
+            model,
+            ivp_rtol=ivp_rtol,
+            ivp_atol=ivp_atol,
+            steady_state_rtol=steady_state_rtol,
+            steady_state_atol=steady_state_atol,
+            solver=solver,
+            stepsize_controller=stepsize_controller,
+        ),
+    )(parameters_by_experiment, guess)
+    conc_hat, enz_hat, flux_hat = (
+        jax.tree.map(
+            lambda m: pick(
+                model,
+                pick_experiment(layout, predicted, m.experiment),
+                m.ids,
+            ),
+            measurements,
+            is_leaf=match_measurement,
+        )
+        for measurements, pick, predicted in (
+            (conc_measurements, pick_concs, conc),
+            (enzyme_measurements, pick_enzymes, parameters_by_experiment),
+            (flux_measurements, pick_fluxes, flux),
+        )
     )
-    log_density = jnp.where(found, log_prior + log_likelihood, jnp.nan)
+    llik_conc, llik_enz, llik_flux = (
+        jax.tree.map(
+            lambda m, yhat: m.log_likelihood(yhat).sum(),
+            measurements,
+            yhats,
+            is_leaf=match_measurement,
+        )
+        for measurements, yhats in (
+            (conc_measurements, conc_hat),
+            (enzyme_measurements, enz_hat),
+            (flux_measurements, flux_hat),
+        )
+    )
+    llik = jax.tree.reduce(operator.add, (llik_conc, llik_enz, llik_flux), 0.0)
+    log_prior = enzax_prior_logdensity(free_parameters, prior)
+    log_density = jnp.where(found.all(), log_prior + llik, jnp.nan)
     return log_density, steady
 
 
-enzax_log_density_grapevine = partial(
+log_density_grapevine = partial(
     jax.jit,
     static_argnames=_STATIC_SOLVE_ARGUMENTS,
-)(_log_density_and_steady_state)
+)(_log_density_and_steady_states)
 
 
 @partial(jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS)
-def enzax_log_density(
+def log_density(
     free_parameters: PyTree,
     model: KineticModel,
-    measurements: PyTree,
     prior: PyTree,
+    layout: ExperimentLayout | None = None,
     split: ParameterSplit | None = None,
-    guess: OdeStateArr | None = None,
+    guess: Float[Array, "n_experiment n_state"] | None = None,
+    conc_measurements: Sequence[Measurement] = (),
+    enzyme_measurements: Sequence[Measurement] = (),
+    flux_measurements: Sequence[Measurement] = (),
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
@@ -299,16 +392,19 @@ def enzax_log_density(
 ) -> Scalar:
     """Get the log posterior density of a kinetic model's parameters.
 
-    Takes the same arguments as `enzax_log_density_grapevine`, which documents
-    them, but returns only the log density.
+    Takes the same arguments as log_density_grapevine, which documents them,
+    but returns only the log density.
     """
-    log_density, _ = _log_density_and_steady_state(
+    density, _ = _log_density_and_steady_states(
         free_parameters,
         model,
-        measurements,
         prior,
+        layout,
         split,
         guess,
+        conc_measurements,
+        enzyme_measurements,
+        flux_measurements,
         ivp_rtol,
         ivp_atol,
         steady_state_rtol,
@@ -316,4 +412,4 @@ def enzax_log_density(
         solver,
         stepsize_controller,
     )
-    return log_density
+    return density

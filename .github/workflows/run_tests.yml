@@ -36,6 +36,8 @@ jobs:
       uses: pre-commit/action@v3.0.1
 
     - name: Run tests
+      env:
+        JAX_NUM_CPU_DEVICES: 2
       run: uv run pytest tests
 
     - name: Upload coverage reports to Codecov

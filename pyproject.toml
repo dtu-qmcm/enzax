@@ -72,12 +72,12 @@ known-first-party = ["enzax"]
 [dependency-groups]
 mcmc = [
     "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
-    "diffrax-bdf @ git+https://github.com/dtu-qmcm/diffrax-bdf.git ; python_version >= '3.13'",
     "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git ; python_version >= '3.13'",
     "blackjax[progress]>=1.6.2",
     "matplotlib>=3.9",
 ]
 dev = [
+    "diffrax-bdf @ git+https://github.com/dtu-qmcm/diffrax-bdf.git ; python_version >= '3.13'",
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
