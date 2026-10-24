@@ -1,0 +1,39 @@
+# This workflow runs the tests against the newest versions of enzax's
+# dependencies rather than the ones in uv.lock, to catch breakages that users
+# installing enzax fresh would hit.
+
+name: Tests with the latest dependencies
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+        matrix:
+            os: [ubuntu-latest, windows-latest]
+            python-version: [3.13]
+
+    steps:
+
+    - name: checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "0.12.7"
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install the project with upgraded dependencies
+      run: uv sync --upgrade --all-extras --dev
+
+    - name: Run tests
+      env:
+        JAX_NUM_CPU_DEVICES: 2
+      run: uv run pytest tests
