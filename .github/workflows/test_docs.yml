@@ -30,7 +30,7 @@ jobs:
         python-version: "3.13"
 
     - name: Install the project
-      run: uv sync --all-extras --dev
+      run: uv sync --locked --all-extras --dev
 
     - name: build docs with mkdocs
       run: uv run mkdocs build
