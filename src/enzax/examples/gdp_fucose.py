@@ -15,6 +15,16 @@ one Michaelis constant for polyphosphate. The amount of polyphosphate loaded
 is not known: POLYP_INITIAL is a guess, to be inferred. The other parameters
 are that implementation's prior means.
 
+FKP_fk, the kinase activity of FKP, is competitively inhibited by
+GDP-fucose, which fits the data's fast start and later slowdown far better
+than any version without it. Its inhibition constant is a placeholder, to be
+inferred.
+
+The formation energies' means come from eQuilibrator; their covariance, in
+gdp_fucose_dgf_covariance.csv, is eQuilibrator's too, as our implementation
+fetched it, with polyphosphate's variance a placeholder. get_dgf_covariance
+returns it in labelling order, for a multivariate normal prior.
+
 UNKNOWN_HYDROLASE is not part of the published cascade. It is a nuisance
 reaction, added to our implementation so that the model can make AMP, which
 the data show building up; its parameters are guesses.
@@ -51,6 +61,7 @@ from enzax.time_course import (
 )
 
 DATA_FILE = Path(__file__).parent / "gdp_fucose_measurements.csv"
+DGF_COVARIANCE_FILE = Path(__file__).parent / "gdp_fucose_dgf_covariance.csv"
 BALANCED_SPECIES = [
     "pp",
     "p",
@@ -108,6 +119,7 @@ SATURATION_CONSTANTS = {
     "km|FKP_fk|fucose": 0.045,
     "km|FKP_fk|adp": 1e-2,
     "km|FKP_fk|fucose1p": 1e-2,
+    "ki|FKP_fk|gdp_fucose": 1.0,
     "km|FKP_gt|fucose1p": 0.03295,
     "km|FKP_gt|gtp": 0.012,
     "km|FKP_gt|pp": 0.135,
@@ -156,6 +168,7 @@ model = KineticModel(
                 "fucose1p": 1.0,
             },
             enzyme="fkp",
+            competitive_inhibitors=["gdp_fucose"],
         ),
         "FKP_gt": MichaelisMenten(
             stoichiometry={
@@ -300,6 +313,16 @@ def load_measurements(
             ),
         )
     return times, measurements
+
+
+def get_dgf_covariance() -> np.ndarray:
+    """Get the formation energies' prior covariance, in labelling order."""
+    with DGF_COVARIANCE_FILE.open() as f:
+        rows = list(csv.reader(f))
+    species = rows[0][1:]
+    covariance = np.array([[float(v) for v in row[1:]] for row in rows[1:]])
+    order = [species.index(s) for s in labelling["dgf"]]
+    return covariance[np.ix_(order, order)]
 
 
 parameters = get_parameters("FE13")

@@ -1,11 +1,13 @@
 """Fit the GDP-fucose cascade's kinetic parameters to time-course data.
 
 The five fitting experiments share their kinetic parameters and differ in
-their enzyme loadings and initial amounts. The turnover numbers, except
-pyrophosphatase's, the Michaelis constants of the nuisance reaction
-UNKNOWN_HYDROLASE, and the amount of polyphosphate, which is the same in every
-experiment, are inferred by maximum a posteriori optimisation; everything else
-stays at the values in `enzax.examples.gdp_fucose`. The fitted model then
+their enzyme loadings and initial amounts. Inferred by maximum a posteriori
+optimisation are the turnover numbers except pyrophosphatase's, the
+inhibition constant of FKP_fk by GDP-fucose, the Michaelis constants of the
+nuisance reaction UNKNOWN_HYDROLASE, the formation energies, with
+eQuilibrator's covariance as their prior, and the amount of polyphosphate,
+which is the same in every experiment. Everything else stays at the values in
+`enzax.examples.gdp_fucose`. The fitted model then
 predicts two validation experiments that it was not fitted to.
 """
 
@@ -47,10 +49,12 @@ FREE_PARAMETERS = {
     "log_kcat": [reaction for reaction in gdp_fucose.KCAT if reaction != "PPA"],
     "log_amount_initial": ["polyp"],
     "log_saturation_constant": [
+        "ki|FKP_fk|gdp_fucose",
         "km|UNKNOWN_HYDROLASE|atp",
         "km|UNKNOWN_HYDROLASE|amp",
         "km|UNKNOWN_HYDROLASE|adp",
     ],
+    "dgf": None,
 }
 EXPERIMENT_SPECIFIC = {
     "log_enzyme": None,
@@ -110,7 +114,9 @@ def main():
     layout, split, times, measurements, initial = get_problem(
         gdp_fucose.FITTING_EXPERIMENTS,
     )
-    prior = prior_from_truth(initial, sd=PRIOR_SD)
+    prior = prior_from_truth(initial, sd=PRIOR_SD) | {
+        "dgf": (initial["dgf"], jnp.asarray(gdp_fucose.get_dgf_covariance())),
+    }
 
     def negative_log_density(free, args):
         return -log_density_time_course(
@@ -143,12 +149,13 @@ def main():
         f"{-float(negative_log_density(initial, None)):.1f} at the prior "
         f"mean, {-float(negative_log_density(fitted, None)):.1f} at the MAP.",
     )
-    print("Free parameters, exponentiated:")
+    print("Free parameters, exponentiated if on the log scale:")
     for parameter in initial:
+        transform = (lambda x: x) if parameter == "dgf" else np.exp
         for label, before, after in zip(
             get_free_labels(split, parameter),
-            np.exp(initial[parameter]),
-            np.exp(fitted[parameter]),
+            transform(initial[parameter]),
+            transform(fitted[parameter]),
         ):
             print(
                 f"  {parameter} {label:18} prior mean {before:10.4g}, "
