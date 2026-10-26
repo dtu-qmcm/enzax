@@ -2,7 +2,13 @@ import pytest
 from jax import numpy as jnp
 
 from enzax.array_types import ParamLeaf
-from enzax.examples import conserved_moiety, glycolysis, linear, methionine
+from enzax.examples import (
+    conserved_moiety,
+    gdp_fucose,
+    glycolysis,
+    linear,
+    methionine,
+)
 from enzax.steady_state import get_steady_state
 
 
@@ -55,3 +61,31 @@ def test_conserved_moiety_is_conserved():
     conc_steady = get_conc(steady)
     conserved_sum_steady = conc_steady[ix_conserved].sum()
     assert jnp.isclose(conserved_sum_steady, pool[0]).all()
+
+
+def test_the_cascade_data_load_for_every_experiment():
+    experiments = (
+        gdp_fucose.FITTING_EXPERIMENTS + gdp_fucose.VALIDATION_EXPERIMENTS
+    )
+    times, measurements = gdp_fucose.load_measurements(experiments)
+    assert list(times) == experiments
+    for measurement in measurements:
+        assert len(measurement.ids) == len(measurement.values)
+        assert (measurement.values > 0).all()
+        labels = {i.split("|")[1] for i in measurement.ids}
+        assert labels <= set(times[measurement.experiment])
+
+
+def test_the_cascade_solves_and_conserves_its_moieties():
+    parameters = gdp_fucose.get_parameters("FE13")
+    times, _ = gdp_fucose.load_measurements(["FE13"])
+    found, conc, _, _ = gdp_fucose.get_measurables(
+        gdp_fucose.model,
+        parameters,
+        jnp.exp(parameters["log_amount_initial"]),
+        jnp.array(list(times["FE13"].values())),
+    )
+    assert found
+    species = gdp_fucose.model.species
+    adenine = conc[:, [species.index(s) for s in ("atp", "adp", "amp")]]
+    assert jnp.allclose(adenine.sum(axis=1), 6.0)
