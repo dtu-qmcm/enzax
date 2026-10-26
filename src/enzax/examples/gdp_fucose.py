@@ -3,7 +3,8 @@
 The cascade, the data and the experiment design come from Huber et al. (2023),
 Metabolic Engineering 81:10-25, https://doi.org/10.1016/j.ymben.2023.10.007.
 The model is the one in https://github.com/dtu-qmcm/gdp_fucose_enzax, which
-fixes problems with the model as published, and the parameters are that
+fixes problems with the model as published, without that implementation's
+competitive inhibition of FKP_fk by pyrophosphate, and the parameters are that
 implementation's prior means. The measurements in gdp_fucose_measurements.csv
 are that implementation's preparation of the data in
 https://github.com/klamt-lab/GDP-Fucose_OptMet2023_Paper (Apache-2.0): the
@@ -108,7 +109,6 @@ SATURATION_CONSTANTS = {
     "km|FKP_fk|fucose": 0.045,
     "km|FKP_fk|adp": 1e-2,
     "km|FKP_fk|fucose1p": 1e-2,
-    "ki|FKP_fk|pp": 1e-8,
     "km|FKP_gt|fucose1p": 0.03295,
     "km|FKP_gt|gtp": 0.012,
     "km|FKP_gt|pp": 0.135,
@@ -153,7 +153,6 @@ model = KineticModel(
             stoichiometry=stoichiometry,
             enzyme=ENZYMES[reaction],
             reversible=reaction != "PPA",
-            competitive_inhibitors=["pp"] if reaction == "FKP_fk" else None,
         )
         for reaction, stoichiometry in STOICHIOMETRY.items()
     },
