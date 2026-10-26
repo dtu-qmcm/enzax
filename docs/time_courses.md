@@ -20,7 +20,7 @@ labelling["log_amount_initial"]
 ```
 
 ```
-('pp', 'p', 'atp', 'adp', 'amp', 'fucose', 'fucose1p', 'gdp_fucose', 'gtp', 'gdp', 'gmp')
+('pp', 'p', 'atp', 'adp', 'amp', 'fucose', 'fucose1p', 'gdp_fucose', 'gtp', 'gdp', 'gmp', 'polyp')
 ```
 
 Three things to know about this parameter:
@@ -37,7 +37,8 @@ jnp.exp(parameters["log_amount_initial"])
 ```
 
 ```
-Array([ 0. ,  0. ,  6. ,  0. ,  0. , 21.5,  0. ,  0. ,  0. ,  0. , 21.5], dtype=float64)
+Array([ 0. ,  0. ,  6. ,  0. ,  0. , 21.5,  0. ,  0. ,  0. ,  0. , 21.5,
+       30. ], dtype=float64)
 ```
 
 ## Solving a time course

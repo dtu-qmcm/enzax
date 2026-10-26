@@ -3,18 +3,33 @@
 The cascade, the data and the experiment design come from Huber et al. (2023),
 Metabolic Engineering 81:10-25, https://doi.org/10.1016/j.ymben.2023.10.007.
 The model is the one in https://github.com/dtu-qmcm/gdp_fucose_enzax, which
-fixes problems with the model as published, without that implementation's
-competitive inhibition of FKP_fk by pyrophosphate, and the parameters are that
-implementation's prior means. The measurements in gdp_fucose_measurements.csv
-are that implementation's preparation of the data in
+fixes problems with the model as published, with three changes. It leaves out
+that implementation's competitive inhibition of FKP_fk by pyrophosphate.
+Polyphosphate, which PPK3 uses to regenerate ATP and GTP, is a balanced
+species, polyp, counted in phosphate residues and used up one residue per
+reaction, rather than an endless supply; its formation energy keeps PPK3's
+standard free energy change as it was. And PPK3's two reactions share one
+active site: each has the other's reactants as competitive inhibitors, with
+the other's Michaelis constants as their inhibition constants, and both share
+one Michaelis constant for polyphosphate. The amount of polyphosphate loaded
+is not known: POLYP_INITIAL is a guess, to be inferred. The other parameters
+are that implementation's prior means.
+
+UNKNOWN_HYDROLASE is not part of the published cascade. It is a nuisance
+reaction, added to our implementation so that the model can make AMP, which
+the data show building up; its parameters are guesses.
+
+The measurements in gdp_fucose_measurements.csv are that implementation's
+preparation of the data in
 https://github.com/klamt-lab/GDP-Fucose_OptMet2023_Paper (Apache-2.0): the
 adenosine nucleotides are rescaled to add up to the initial ATP, and the rows
 at time 0 hold the known initial amounts rather than measurements.
+load_measurements rescales the guanine nucleotides in the same way.
 
 Times are in hours, and amounts in mM in a pot of volume 1, so amounts and
 concentrations are the same numbers. The formation energies are eQuilibrator's
 estimates, converted from a 1 M to a 1 mM standard state. The pot is closed, so
-four conserved moieties follow from the initial amounts. The solver needs
+five conserved moieties follow from the initial amounts. The solver needs
 looser tolerances than enzax's defaults to get through the fast reactions:
 get_measurables is the time-course solve with tolerances that work.
 """
@@ -36,24 +51,6 @@ from enzax.time_course import (
 )
 
 DATA_FILE = Path(__file__).parent / "gdp_fucose_measurements.csv"
-STOICHIOMETRY = {
-    "FKP_fk": {"atp": -1.0, "fucose": -1.0, "adp": 1.0, "fucose1p": 1.0},
-    "FKP_gt": {"gtp": -1.0, "fucose1p": -1.0, "pp": 1.0, "gdp_fucose": 1.0},
-    "GMPK": {"atp": -1.0, "gmp": -1.0, "adp": 1.0, "gdp": 1.0},
-    "PPA": {"pp": -1.0, "p": 2.0},
-    "PPK3_A": {"adp": -1.0, "atp": 1.0, "polypnm1": 1.0},
-    "PPK3_G": {"gdp": -1.0, "gtp": 1.0, "polypnm1": 1.0},
-    "UNKNOWN_HYDROLASE": {"atp": -1.0, "amp": -1.0, "adp": 2.0},
-}
-ENZYMES = {
-    "FKP_fk": "fkp",
-    "FKP_gt": "fkp",
-    "GMPK": "gmpk",
-    "PPA": "ppa",
-    "PPK3_A": "ppk3",
-    "PPK3_G": "ppk3",
-    "UNKNOWN_HYDROLASE": "unknown_hydrolase",
-}
 BALANCED_SPECIES = [
     "pp",
     "p",
@@ -66,8 +63,10 @@ BALANCED_SPECIES = [
     "gtp",
     "gdp",
     "gmp",
+    "polyp",
 ]
 MEASURED_SPECIES = ["amp", "adp", "atp", "gmp", "gdp", "gtp", "gdp_fucose"]
+GUANINE_SPECIES = ["gmp", "gdp", "gtp", "gdp_fucose"]
 FITTING_EXPERIMENTS = [
     "FE13",
     "FE17_1FKP",
@@ -120,10 +119,9 @@ SATURATION_CONSTANTS = {
     "km|PPA|pp": 0.003,
     "km|PPK3_A|adp": 2.5,
     "km|PPK3_A|atp": 2.0,
-    "km|PPK3_A|polypnm1": 3.0,
     "km|PPK3_G|gdp": 1.2,
     "km|PPK3_G|gtp": 0.1,
-    "km|PPK3_G|polypnm1": 3.0,
+    "km|PPK3|polyp": 3.0,
     "km|UNKNOWN_HYDROLASE|atp": 0.5,
     "km|UNKNOWN_HYDROLASE|amp": 0.5,
     "km|UNKNOWN_HYDROLASE|adp": 0.5,
@@ -143,21 +141,65 @@ DGF = {
         "gtp": -2771.673718,
         "gdp": -1894.119776,
         "gmp": -1019.27507,
-        "polypnm1": 875.5,
     }.items()
 }
+DGF["polyp"] = 0.008314 * TEMPERATURE * np.log(1000) - 875.5
+POLYP_INITIAL = 30.0
 
 model = KineticModel(
     reactions={
-        reaction: MichaelisMenten(
-            stoichiometry=stoichiometry,
-            enzyme=ENZYMES[reaction],
-            reversible=reaction != "PPA",
-        )
-        for reaction, stoichiometry in STOICHIOMETRY.items()
+        "FKP_fk": MichaelisMenten(
+            stoichiometry={
+                "atp": -1.0,
+                "fucose": -1.0,
+                "adp": 1.0,
+                "fucose1p": 1.0,
+            },
+            enzyme="fkp",
+        ),
+        "FKP_gt": MichaelisMenten(
+            stoichiometry={
+                "gtp": -1.0,
+                "fucose1p": -1.0,
+                "pp": 1.0,
+                "gdp_fucose": 1.0,
+            },
+            enzyme="fkp",
+        ),
+        "GMPK": MichaelisMenten(
+            stoichiometry={"atp": -1.0, "gmp": -1.0, "adp": 1.0, "gdp": 1.0},
+            enzyme="gmpk",
+        ),
+        "PPA": MichaelisMenten(
+            stoichiometry={"pp": -1.0, "p": 2.0},
+            enzyme="ppa",
+            reversible=False,
+        ),
+        "PPK3_A": MichaelisMenten(
+            stoichiometry={"adp": -1.0, "polyp": -1.0, "atp": 1.0},
+            enzyme="ppk3",
+            michaelis_constants={"polyp": "km|PPK3|polyp"},
+            competitive_inhibitors={
+                "gdp": "km|PPK3_G|gdp",
+                "gtp": "km|PPK3_G|gtp",
+            },
+        ),
+        "PPK3_G": MichaelisMenten(
+            stoichiometry={"gdp": -1.0, "polyp": -1.0, "gtp": 1.0},
+            enzyme="ppk3",
+            michaelis_constants={"polyp": "km|PPK3|polyp"},
+            competitive_inhibitors={
+                "adp": "km|PPK3_A|adp",
+                "atp": "km|PPK3_A|atp",
+            },
+        ),
+        "UNKNOWN_HYDROLASE": MichaelisMenten(
+            stoichiometry={"atp": -1.0, "amp": -1.0, "adp": 2.0},
+            enzyme="unknown_hydrolase",
+        ),
     },
     balanced_species=BALANCED_SPECIES,
-    moiety_label_species=["p", "amp", "fucose", "gmp"],
+    moiety_label_species=["p", "polyp", "amp", "fucose", "gmp"],
 )
 labelling = model.parameter_labelling | get_initial_state_labelling(model)
 get_measurables = functools.partial(
@@ -177,7 +219,7 @@ def get_parameters(experiment: str) -> ParamDict:
         "ppk3": ppk3,
         "unknown_hydrolase": UNKNOWN_HYDROLASE_LEVEL,
     }
-    initial = INITIAL_AMOUNTS[experiment]
+    initial = INITIAL_AMOUNTS[experiment] | {"polyp": POLYP_INITIAL}
     return pack_parameters(
         labelling,
         {
@@ -192,7 +234,6 @@ def get_parameters(experiment: str) -> ParamDict:
                 enzyme: np.log(level) for enzyme, level in enzyme_levels.items()
             },
             "dgf": {species: DGF[species] for species in labelling["dgf"]},
-            "log_conc_unbalanced": {"polypnm1": 0.0},
             "moiety_totals": {
                 species: 0.0 for species in labelling["moiety_totals"]
             },
@@ -218,6 +259,11 @@ def load_measurements(
     initial amounts, and so are values of zero, which a lognormal measurement
     cannot score.
 
+    The measured guanine nucleotides add up to more than the initial GMP, by
+    up to 90% at the end of a run, although the pot conserves them. Like the
+    adenosine nucleotides in the data file, they are rescaled at each time
+    point to add up to the initial GMP.
+
     :param error: the standard deviation of every measurement on the log
         scale.
     """
@@ -235,10 +281,15 @@ def load_measurements(
                 continue
             label = f"{round(time * 60)}min"
             grid[label] = time
+            guanine = sum(float(row[species]) for species in GUANINE_SPECIES)
+            scale = {
+                species: INITIAL_AMOUNTS[experiment]["gmp"] / guanine
+                for species in GUANINE_SPECIES
+            }
             for species in MEASURED_SPECIES:
                 if row[species] and float(row[species]) > 0:
                     ids.append(f"{species}|{label}")
-                    values.append(float(row[species]))
+                    values.append(float(row[species]) * scale.get(species, 1.0))
         times[experiment] = grid
         measurements.append(
             LognormalMeasurement(

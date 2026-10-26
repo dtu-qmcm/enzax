@@ -1,10 +1,12 @@
-"""Fit the GDP-fucose cascade's turnover numbers to time-course data.
+"""Fit the GDP-fucose cascade's kinetic parameters to time-course data.
 
 The five fitting experiments share their kinetic parameters and differ in
-their enzyme loadings and initial amounts. Only the turnover numbers are
-inferred, by maximum a posteriori optimisation; everything else stays at the
-prior means in `enzax.examples.gdp_fucose`. The fitted model then predicts two
-validation experiments that it was not fitted to.
+their enzyme loadings and initial amounts. The turnover numbers, except
+pyrophosphatase's, the Michaelis constants of the nuisance reaction
+UNKNOWN_HYDROLASE, and the amount of polyphosphate, which is the same in every
+experiment, are inferred by maximum a posteriori optimisation; everything else
+stays at the values in `enzax.examples.gdp_fucose`. The fitted model then
+predicts two validation experiments that it was not fitted to.
 """
 
 # ruff: noqa: E402
@@ -22,11 +24,14 @@ from jax import numpy as jnp
 
 from enzax.examples import gdp_fucose
 from enzax.experiments import (
+    gather_parameters_by_experiment,
     get_experiment_layout,
     merge_experiment_parameters,
+    pick_experiment,
 )
 from enzax.parameter_split import (
     combine_parameters,
+    get_free_labels,
     get_free_parameters,
     split_parameters_by_freeing,
 )
@@ -38,8 +43,21 @@ from enzax.statistical_modelling import (
 jax.config.update("jax_enable_x64", True)
 
 PRIOR_SD = 1.0
-FREE_PARAMETERS = {"log_kcat": None}
-EXPERIMENT_SPECIFIC = {"log_enzyme": None, "log_amount_initial": None}
+FREE_PARAMETERS = {
+    "log_kcat": [reaction for reaction in gdp_fucose.KCAT if reaction != "PPA"],
+    "log_amount_initial": ["polyp"],
+    "log_saturation_constant": [
+        "km|UNKNOWN_HYDROLASE|atp",
+        "km|UNKNOWN_HYDROLASE|amp",
+        "km|UNKNOWN_HYDROLASE|adp",
+    ],
+}
+EXPERIMENT_SPECIFIC = {
+    "log_enzyme": None,
+    "log_amount_initial": [
+        species for species in gdp_fucose.BALANCED_SPECIES if species != "polyp"
+    ],
+}
 
 
 def get_problem(experiments):
@@ -58,21 +76,23 @@ def get_problem(experiments):
         FREE_PARAMETERS,
     )
     times, measurements = gdp_fucose.load_measurements(experiments)
-    return layout, split, times, measurements
+    nominal = get_free_parameters(split, expanded)
+    return layout, split, times, measurements, nominal
 
 
 def report(title, layout, split, times, measurements, free):
     """Print the predicted and measured GDP-fucose at each experiment's end."""
-    parameters = combine_parameters(split, free)
+    parameters = gather_parameters_by_experiment(
+        layout,
+        combine_parameters(split, free),
+    )
     print(title)
     for experiment, measurement in zip(layout.experiments, measurements):
         grid = times[experiment]
         last = list(grid)[-1]
         rows = dict(zip(measurement.ids, measurement.values.tolist()))
         observed = rows.get(f"gdp_fucose|{last}", float("nan"))
-        single = gdp_fucose.get_parameters(experiment) | {
-            "log_kcat": parameters["log_kcat"],
-        }
+        single = pick_experiment(layout, parameters, experiment)
         _, conc, _, _ = gdp_fucose.get_measurables(
             gdp_fucose.model,
             single,
@@ -87,15 +107,8 @@ def report(title, layout, split, times, measurements, free):
 
 
 def main():
-    layout, split, times, measurements = get_problem(
+    layout, split, times, measurements, initial = get_problem(
         gdp_fucose.FITTING_EXPERIMENTS,
-    )
-    initial = get_free_parameters(
-        split,
-        merge_experiment_parameters(
-            layout,
-            [gdp_fucose.get_parameters(e) for e in layout.experiments],
-        ),
     )
     prior = prior_from_truth(initial, sd=PRIOR_SD)
 
@@ -130,18 +143,38 @@ def main():
         f"{-float(negative_log_density(initial, None)):.1f} at the prior "
         f"mean, {-float(negative_log_density(fitted, None)):.1f} at the MAP.",
     )
-    print("Turnover numbers (per hour):")
-    for reaction, before, after in zip(
-        gdp_fucose.labelling["log_kcat"],
-        np.exp(initial["log_kcat"]),
-        np.exp(fitted["log_kcat"]),
-    ):
-        print(f"  {reaction:18} prior mean {before:10.4g}, MAP {after:10.4g}")
+    print("Free parameters, exponentiated:")
+    for parameter in initial:
+        for label, before, after in zip(
+            get_free_labels(split, parameter),
+            np.exp(initial[parameter]),
+            np.exp(fitted[parameter]),
+        ):
+            print(
+                f"  {parameter} {label:18} prior mean {before:10.4g}, "
+                f"MAP {after:10.4g}",
+            )
     report("Fitting experiments:", layout, split, times, measurements, fitted)
+    (
+        validation_layout,
+        validation_split,
+        validation_times,
+        validation_measurements,
+        validation_nominal,
+    ) = get_problem(gdp_fucose.VALIDATION_EXPERIMENTS)
+    shared = {
+        parameter: values
+        for parameter, values in fitted.items()
+        if get_free_labels(split, parameter)
+        == get_free_labels(validation_split, parameter)
+    }
     report(
         "Validation experiments:",
-        *get_problem(gdp_fucose.VALIDATION_EXPERIMENTS),
-        fitted,
+        validation_layout,
+        validation_split,
+        validation_times,
+        validation_measurements,
+        validation_nominal | shared,
     )
 
 
