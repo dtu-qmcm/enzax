@@ -57,3 +57,4 @@ nav:
     - 'api/sbml.md'
     - 'api/steady_state.md'
     - 'api/thermodynamics.md'
+    - 'api/time_course.md'

@@ -7,12 +7,20 @@ kb * b, so a + b is conserved and a relaxes to kb * (a0 + b0) / (kf + kb) at
 rate kf + kb.
 """
 
+import functools
+
 import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
+from jax.scipy.stats import norm
 
+from enzax.experiments import (
+    get_experiment_layout,
+    merge_experiment_parameters,
+)
 from enzax.kinetic_model import KineticModel
+from enzax.measurements import LognormalMeasurement, NormalMeasurement
 from enzax.parameter_split import (
     combine_parameters,
     get_free_parameters,
@@ -20,6 +28,11 @@ from enzax.parameter_split import (
 )
 from enzax.parameters import pack_parameters
 from enzax.reactions import Drain, SymbolicReaction
+from enzax.statistical_modelling import (
+    enzax_prior_logdensity,
+    log_density_time_course,
+    prior_from_truth,
+)
 from enzax.time_course import (
     get_initial_ode_state,
     get_initial_state_labelling,
@@ -262,3 +275,319 @@ def test_the_dae_time_course_matches_the_nested_one(
     assert found_nested and found_dae
     assert jnp.isclose(dae, nested, rtol=1e-4)
     assert jnp.isclose(grad_dae, grad_nested, rtol=1e-3)
+
+
+TIMES = {"exp1": {"0h": 0.0, "half": 0.5, "2h": 2.0}}
+CONC_OBS = jnp.array([1.6, 2.5])
+FLUX_OBS = jnp.array([1.9])
+
+
+def get_inflow_outflow_problem():
+    labelling = get_labelling(INFLOW_OUTFLOW)
+    parameters = get_inflow_outflow_parameters()
+    split = split_parameters_by_freeing(
+        labelling,
+        parameters,
+        {"log_kcat": None},
+    )
+    free = get_free_parameters(split, parameters)
+    measurements = {
+        "conc_measurements": [
+            LognormalMeasurement(
+                experiment="exp1",
+                ids=["a|half", "a|2h"],
+                values=CONC_OBS,
+                errors=jnp.array([0.1, 0.1]),
+            ),
+        ],
+        "flux_measurements": [
+            NormalMeasurement(
+                experiment="exp1",
+                ids=["outflow|2h"],
+                values=FLUX_OBS,
+                errors=jnp.array([0.2]),
+            ),
+        ],
+    }
+    return split, free, prior_from_truth(free, sd=0.1), measurements
+
+
+def inflow_outflow_log_likelihood(log_k, log_a0, ts_conc, t_flux):
+    conc = inflow_outflow_closed_form(log_k, log_a0, ts_conc)
+    flux = jnp.exp(log_k) * inflow_outflow_closed_form(log_k, log_a0, t_flux)
+    return (
+        norm.logpdf(x=jnp.log(CONC_OBS), loc=jnp.log(conc), scale=0.1).sum()
+        + norm.logpdf(x=FLUX_OBS, loc=flux, scale=0.2).sum()
+    )
+
+
+def test_the_time_course_density_matches_the_closed_form():
+    split, free, prior, measurements = get_inflow_outflow_problem()
+
+    def density(free):
+        return log_density_time_course(
+            free,
+            INFLOW_OUTFLOW,
+            prior,
+            TIMES,
+            split=split,
+            **measurements,
+        )
+
+    def expected(free):
+        return enzax_prior_logdensity(free, prior) + (
+            inflow_outflow_log_likelihood(
+                free["log_kcat"][0],
+                jnp.log(A0),
+                jnp.array([0.5, 2.0]),
+                jnp.array([2.0]),
+            )
+        )
+
+    value, gradient = jax.value_and_grad(density)(free)
+    expected_value, expected_gradient = jax.value_and_grad(expected)(free)
+    assert jnp.isclose(value, expected_value, rtol=1e-6)
+    assert jnp.allclose(
+        gradient["log_kcat"],
+        expected_gradient["log_kcat"],
+        rtol=1e-5,
+    )
+
+
+def test_each_experiment_has_its_own_initial_amounts_and_grid():
+    labelling = get_labelling(INFLOW_OUTFLOW)
+    layout = get_experiment_layout(
+        labelling,
+        ["low", "high"],
+        {"log_amount_initial": None},
+    )
+    low = get_inflow_outflow_parameters(log_a0=np.log(0.3))
+    high = get_inflow_outflow_parameters(log_a0=np.log(5.0))
+    expanded = merge_experiment_parameters(layout, [low, high])
+    split = split_parameters_by_freeing(
+        layout.labelling,
+        expanded,
+        {"log_kcat": None},
+    )
+    free = get_free_parameters(split, expanded)
+    prior = prior_from_truth(free, sd=0.1)
+    times = {
+        "low": {"0h": 0.0, "half": 0.5, "2h": 2.0},
+        "high": {"1h": 1.0, "3h": 3.0},
+    }
+    conc_measurements = [
+        LognormalMeasurement(
+            experiment="low",
+            ids=["a|half", "a|2h"],
+            values=CONC_OBS,
+            errors=jnp.array([0.1, 0.1]),
+        ),
+        LognormalMeasurement(
+            experiment="high",
+            ids=["a|3h"],
+            values=jnp.array([3.0]),
+            errors=jnp.array([0.1]),
+        ),
+    ]
+
+    def density(free):
+        return log_density_time_course(
+            free,
+            INFLOW_OUTFLOW,
+            prior,
+            times,
+            layout=layout,
+            split=split,
+            conc_measurements=conc_measurements,
+        )
+
+    def expected(free):
+        log_k = free["log_kcat"][0]
+        conc_low = inflow_outflow_closed_form(
+            log_k,
+            jnp.log(0.3),
+            jnp.array([0.5, 2.0]),
+        )
+        conc_high = inflow_outflow_closed_form(
+            log_k,
+            jnp.log(5.0),
+            jnp.array([3.0]),
+        )
+        return (
+            enzax_prior_logdensity(free, prior)
+            + norm.logpdf(
+                x=jnp.log(CONC_OBS),
+                loc=jnp.log(conc_low),
+                scale=0.1,
+            ).sum()
+            + norm.logpdf(
+                x=jnp.log(3.0),
+                loc=jnp.log(conc_high),
+                scale=0.1,
+            ).sum()
+        )
+
+    value, gradient = jax.value_and_grad(density)(free)
+    expected_value, expected_gradient = jax.value_and_grad(expected)(free)
+    assert jnp.isclose(value, expected_value, rtol=1e-6)
+    assert jnp.allclose(
+        gradient["log_kcat"],
+        expected_gradient["log_kcat"],
+        rtol=1e-5,
+    )
+
+
+def test_a_failed_time_course_gives_a_nan_density():
+    split, free, prior, measurements = get_inflow_outflow_problem()
+    value = log_density_time_course(
+        free,
+        INFLOW_OUTFLOW,
+        prior,
+        TIMES,
+        split=split,
+        get_measurables=functools.partial(
+            get_measurables_time_course_single_experiment,
+            max_steps=2,
+        ),
+        **measurements,
+    )
+    assert jnp.isnan(value)
+
+
+@pytest.mark.parametrize(
+    ("times", "message"),
+    [
+        ({}, r"Missing: \['exp1'\]"),
+        ({**TIMES, "exp2": {"0h": 0.0}}, r"Extra: \['exp2'\]"),
+        ({"exp1": {"0h": 0.0, "2h": 2.0, "1h": 1.0}}, "must increase"),
+        ({"exp1": {"0h": 0.0}}, "end after 0"),
+        ({"exp1": {"0|h": 0.0, "2h": 2.0}}, "must not contain"),
+    ],
+)
+def test_bad_time_grids_are_rejected(times, message):
+    split, free, prior, measurements = get_inflow_outflow_problem()
+    with pytest.raises(ValueError, match=message):
+        log_density_time_course(
+            free,
+            INFLOW_OUTFLOW,
+            prior,
+            times,
+            split=split,
+            **measurements,
+        )
+
+
+def test_a_layout_without_the_initial_state_is_rejected():
+    split, free, prior, measurements = get_inflow_outflow_problem()
+    layout = get_experiment_layout(
+        INFLOW_OUTFLOW.parameter_labelling,
+        ["exp1"],
+        {},
+    )
+    with pytest.raises(ValueError, match="needs the log_amount_initial"):
+        log_density_time_course(
+            free,
+            INFLOW_OUTFLOW,
+            prior,
+            TIMES,
+            layout=layout,
+            split=split,
+            **measurements,
+        )
+
+
+@pytest.mark.parametrize("free_totals", [False, True])
+def test_moiety_totals_must_be_fixed(free_totals):
+    parameters = get_exchange_parameters()
+    free_selection = {"log_kcat": None} | (
+        {"moiety_totals": None} if free_totals else {}
+    )
+    split = (
+        split_parameters_by_freeing(
+            get_labelling(EXCHANGE),
+            parameters,
+            free_selection,
+        )
+        if free_totals
+        else None
+    )
+    free = get_free_parameters(split, parameters) if free_totals else parameters
+    with pytest.raises(ValueError, match="moiety_totals"):
+        log_density_time_course(
+            free,
+            EXCHANGE,
+            prior_from_truth(free, sd=0.1),
+            TIMES,
+            split=split,
+        )
+
+
+def test_an_unknown_time_label_is_rejected():
+    split, free, prior, _ = get_inflow_outflow_problem()
+    with pytest.raises(ValueError, match=r"no time points \['3h'\]"):
+        log_density_time_course(
+            free,
+            INFLOW_OUTFLOW,
+            prior,
+            TIMES,
+            split=split,
+            conc_measurements=[
+                LognormalMeasurement(
+                    experiment="exp1",
+                    ids=["a|3h"],
+                    values=jnp.array([1.0]),
+                    errors=jnp.array([0.1]),
+                ),
+            ],
+        )
+
+
+@pytest.mark.slow
+def test_the_dae_density_matches_the_nested_one():
+    pytest.importorskip("diffrax_bdf")
+    labelling = TOY.parameter_labelling | get_initial_state_labelling(TOY)
+    parameters = get_toy_parameters() | {
+        "log_amount_initial": jnp.log(jnp.array([0.2])),
+    }
+    split = split_parameters_by_freeing(
+        labelling,
+        parameters,
+        {"log_drain": None},
+    )
+    free = get_free_parameters(split, parameters)
+    prior = prior_from_truth(free, sd=0.1)
+    conc_measurements = [
+        LognormalMeasurement(
+            experiment="exp1",
+            ids=["a|half", "a|2h"],
+            values=jnp.array([0.5, 0.9]),
+            errors=jnp.array([0.1, 0.1]),
+        ),
+    ]
+
+    def density(free, get_measurables):
+        return log_density_time_course(
+            free,
+            TOY,
+            prior,
+            TIMES,
+            split=split,
+            conc_measurements=conc_measurements,
+            get_measurables=get_measurables,
+        )
+
+    nested, grad_nested = jax.value_and_grad(density)(
+        free,
+        get_measurables_time_course_single_experiment,
+    )
+    dae, grad_dae = jax.value_and_grad(density)(
+        free,
+        get_measurables_time_course_single_experiment_dae,
+    )
+    assert jnp.isfinite(nested)
+    assert jnp.isclose(dae, nested, rtol=1e-4)
+    assert jnp.allclose(
+        grad_dae["log_drain"],
+        grad_nested["log_drain"],
+        rtol=1e-3,
+    )
