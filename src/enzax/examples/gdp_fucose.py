@@ -7,13 +7,23 @@ fixes problems with the model as published, with three changes. It leaves out
 that implementation's competitive inhibition of FKP_fk by pyrophosphate.
 Polyphosphate, which PPK3 uses to regenerate ATP and GTP, is a balanced
 species, polyp, counted in phosphate residues and used up one residue per
-reaction, rather than an endless supply; its formation energy keeps PPK3's
-standard free energy change as it was. And PPK3's two reactions share one
+reaction, rather than an endless supply. And PPK3's two reactions share one
 active site: each has the other's reactants as competitive inhibitors, with
 the other's Michaelis constants as their inhibition constants, and both share
 one Michaelis constant for polyphosphate. The amount of polyphosphate loaded
 is not known: POLYP_INITIAL is a guess, to be inferred. The other parameters
 are that implementation's prior means.
+
+PPK3's reactions are SymbolicReactions with the same form as MichaelisMenten
+apart from their driving force. Taking a residue off a polyphosphate chain
+leaves the number of chains unchanged, so the residues' concentration does not
+enter the mass action ratio: a residue in a chain has unit activity, as water
+does, and the driving force is 1 - [NTP] / ([NDP] K). The formation energy of
+polyp is then the free energy of one residue in a chain. Its prior mean puts
+the equilibrium ATP/ADP ratio at 3, the middle of the 2.3 to 4 measured for
+polyphosphate kinases (https://www.beilstein-journals.org/bjoc/articles/18/134
+and https://pubmed.ncbi.nlm.nih.gov/39257778/), with a standard deviation of
+about 1 kJ/mol on PPK3's standard free energy change.
 
 FKP_fk, the kinase activity of FKP, is competitively inhibited by
 GDP-fucose, which fits the data's fast start and later slowdown far better
@@ -22,7 +32,7 @@ inferred.
 
 The formation energies' means come from eQuilibrator; their covariance, in
 gdp_fucose_dgf_covariance.csv, is eQuilibrator's too, as our implementation
-fetched it, with polyphosphate's variance a placeholder. get_dgf_covariance
+fetched it, apart from polyphosphate's. get_dgf_covariance
 returns it in labelling order, for a multivariate normal prior.
 
 UNKNOWN_HYDROLASE is not part of the published cascade. It is a nuisance
@@ -54,7 +64,7 @@ from enzax.array_types import ParamDict
 from enzax.kinetic_model import KineticModel
 from enzax.measurements import LognormalMeasurement
 from enzax.parameters import pack_parameters
-from enzax.reactions import MichaelisMenten
+from enzax.reactions import MichaelisMenten, SymbolicReaction
 from enzax.time_course import (
     get_initial_state_labelling,
     get_measurables_time_course_single_experiment,
@@ -155,8 +165,14 @@ DGF = {
         "gmp": -1019.27507,
     }.items()
 }
-DGF["polyp"] = 0.008314 * TEMPERATURE * np.log(1000) - 875.5
-POLYP_INITIAL = 30.0
+DGF["polyp"] = DGF["atp"] - DGF["adp"] + 0.008314 * TEMPERATURE * np.log(3.0)
+POLYP_INITIAL = 50.0
+PPK3_RATE = (
+    "kcat * enzyme * (ndp / km_ndp) * (polyp / km_polyp)"
+    " * (1 - (1 - reversibility) * polyp)"
+    " / ((1 + ndp / km_ndp) * (1 + polyp / km_polyp) + (1 + ntp / km_ntp) - 1"
+    " + other_ndp / km_other_ndp + other_ntp / km_other_ntp)"
+)
 
 model = KineticModel(
     reactions={
@@ -188,22 +204,74 @@ model = KineticModel(
             enzyme="ppa",
             reversible=False,
         ),
-        "PPK3_A": MichaelisMenten(
+        "PPK3_A": SymbolicReaction(
             stoichiometry={"adp": -1.0, "polyp": -1.0, "atp": 1.0},
-            enzyme="ppk3",
-            michaelis_constants={"polyp": "km|PPK3|polyp"},
-            competitive_inhibitors={
-                "gdp": "km|PPK3_G|gdp",
-                "gtp": "km|PPK3_G|gtp",
+            expression=PPK3_RATE,
+            species={
+                "ndp": "adp",
+                "ntp": "atp",
+                "polyp": "polyp",
+                "other_ndp": "gdp",
+                "other_ntp": "gtp",
+            },
+            parameters={
+                "kcat": "log_kcat",
+                "enzyme": {"kind": "log_enzyme", "label": "ppk3"},
+                "km_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|adp",
+                },
+                "km_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|atp",
+                },
+                "km_polyp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3|polyp",
+                },
+                "km_other_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gdp",
+                },
+                "km_other_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gtp",
+                },
             },
         ),
-        "PPK3_G": MichaelisMenten(
+        "PPK3_G": SymbolicReaction(
             stoichiometry={"gdp": -1.0, "polyp": -1.0, "gtp": 1.0},
-            enzyme="ppk3",
-            michaelis_constants={"polyp": "km|PPK3|polyp"},
-            competitive_inhibitors={
-                "adp": "km|PPK3_A|adp",
-                "atp": "km|PPK3_A|atp",
+            expression=PPK3_RATE,
+            species={
+                "ndp": "gdp",
+                "ntp": "gtp",
+                "polyp": "polyp",
+                "other_ndp": "adp",
+                "other_ntp": "atp",
+            },
+            parameters={
+                "kcat": "log_kcat",
+                "enzyme": {"kind": "log_enzyme", "label": "ppk3"},
+                "km_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gdp",
+                },
+                "km_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gtp",
+                },
+                "km_polyp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3|polyp",
+                },
+                "km_other_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|adp",
+                },
+                "km_other_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|atp",
+                },
             },
         ),
         "UNKNOWN_HYDROLASE": MichaelisMenten(

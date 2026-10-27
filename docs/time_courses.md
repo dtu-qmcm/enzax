@@ -38,7 +38,7 @@ jnp.exp(parameters["log_amount_initial"])
 
 ```
 Array([ 0. ,  0. ,  6. ,  0. ,  0. , 21.5,  0. ,  0. ,  0. ,  0. , 21.5,
-       30. ], dtype=float64)
+       50. ], dtype=float64)
 ```
 
 ## Solving a time course
