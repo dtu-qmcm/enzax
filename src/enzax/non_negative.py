@@ -1,11 +1,10 @@
-"""Keeping concentrations non-negative while integrating a kinetic model.
+"""Code for keeping numbers representing physical concentrations non-negative.
 
-Two things work together. clamp_at_zero stops any ODE state at or below zero
-from decreasing further, and NonNegativeSolver rejects any step that leaves a
-balanced species' concentration more than a small tolerance below zero, so the
-step size controller retries it with a shorter step. The tolerance is not zero
-because species whose concentrations are found from conserved moiety totals
-pick up rounding error.
+clamp_at_zero stops any ODE state at or below zero from decreasing further, and
+NonNegativeSolver rejects any step that leaves a balanced species' concentration
+more than a small tolerance below zero, so the step size controller retries
+it with a shorter step. The tolerance is not zero because species whose
+concentrations are found from conserved moiety totals pick up rounding error.
 """
 
 from collections.abc import Callable
