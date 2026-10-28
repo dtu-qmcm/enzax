@@ -45,6 +45,16 @@ from tests.test_rapid_equilibrium import ENERGY, get_energy_parameters
 jax.config.update("jax_enable_x64", True)
 
 TS = jnp.array([0.0, 0.1, 0.5, 1.0, 2.0, 4.0])
+SOLVE_TIGHTLY = functools.partial(
+    get_measurables_time_course_single_experiment,
+    rtol=1e-8,
+    atol=1e-10,
+)
+SOLVE_DAE_TIGHTLY = functools.partial(
+    get_measurables_time_course_single_experiment_dae,
+    rtol=1e-8,
+    atol=1e-10,
+)
 V, K, A0 = 2.0, 0.7, 0.3
 KF, KB, B0 = 1.5, 0.5, 0.0
 
@@ -123,11 +133,7 @@ def exchange_closed_form(log_kf, ts):
 
 
 def solve(model, parameters, ts=TS, dae=False):
-    get_measurables = (
-        get_measurables_time_course_single_experiment_dae
-        if dae
-        else get_measurables_time_course_single_experiment
-    )
+    get_measurables = SOLVE_DAE_TIGHTLY if dae else SOLVE_TIGHTLY
     return get_measurables(
         model,
         parameters,
@@ -331,6 +337,7 @@ def test_the_time_course_density_matches_the_closed_form():
             prior,
             TIMES,
             split=split,
+            get_measurables=SOLVE_TIGHTLY,
             **measurements,
         )
 
@@ -399,6 +406,7 @@ def test_each_experiment_has_its_own_initial_amounts_and_grid():
             layout=layout,
             split=split,
             conc_measurements=conc_measurements,
+            get_measurables=SOLVE_TIGHTLY,
         )
 
     def expected(free):

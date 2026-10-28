@@ -1,12 +1,10 @@
 # Time courses
 
-Most of enzax is about steady states. Sometimes, though, a system is followed over time instead: an enzyme cascade in a closed pot, say, sampled every hour or so as it turns its substrates into product. Enzax can solve and fit these initial value problems as well, differentiably, with the same models, measurements and experiment layouts as steady states.
-
-This page uses the cell-free cascade in `enzax.examples.gdp_fucose`, which makes GDP-fucose from GMP, fucose and ATP. It was fitted to five experiments by Huber et al. (2023), each with its own enzyme loadings and starting amounts.
+As well as finding and differentiating a kinetic model's steady state, enzax can also solve and differentiate initial value problems. This page demonstrates how, using the cell-free cascade in `enzax.examples.gdp_fucose`, which makes GDP-fucose from GMP, fucose and ATP. It was fitted to five experiments by Huber et al. (2023), each with its own enzyme loadings and starting amounts.
 
 ## The initial state
 
-A time course starts from the amount of every balanced species. These amounts are a parameter, `log_amount_initial`, so known starting amounts can be fixed with a split and unknown ones inferred. A model's own labelling leaves this parameter out, since a steady-state model has no use for it; `get_initial_state_labelling` gives its labelling, to merge into the model's:
+To run a time course enzax needs the initial amount of every balanced species. It looks for these amounts in a special parameter called `log_amount_initial`. To add the labels for `log_amount_initial` to a model's parameter labelling, use the function `get_initial_state_labelling` as follows:
 
 ```python
 from jax import numpy as jnp
@@ -23,17 +21,28 @@ labelling["log_amount_initial"]
 ('pp', 'p', 'atp', 'adp', 'amp', 'fucose', 'fucose1p', 'gdp_fucose', 'gtp', 'gdp', 'gmp', 'polyp')
 ```
 
-Three things to know about this parameter:
+A species that starts at zero should have a fixed value of `-inf` in `log_amount_initial`, i.e. the logarithm of zero.
 
-- **It holds amounts, not concentrations.** In a compartment of fixed volume these differ only by the volume. In a compartment whose volume is itself solved for, only the amounts fix the state.
-- **A species that starts at zero has a fixed value of `-inf`**, the logarithm of zero. Most of the cascade's species start at zero. A free initial amount must be positive.
-- **The initial amounts fix the conserved moiety totals**, so a time course ignores the `moiety_totals` parameter. Species in a rapid equilibrium need not start at equilibrium; the solve equilibrates them.
+Time courses ignore the `moiety_totals` parameter as moiety totals are fixed by the initial amounts. Species in a rapid equilibrium need not start at equilibrium: the solve equilibrates them.
 
-`gdp_fucose.get_parameters` packs a parameter set with this labelling for one experiment:
+The initial amounts and enzyme loadings differ between the cascade's experiments, so `gdp_fucose.parameters` holds every experiment's values, with the labelling of `gdp_fucose.layout` (see [statistical modelling](statistical_modelling.md) for how experiments share parameters). `pick_experiment` gets one experiment's values, as required by the kinetic model:
 
 ```python
-parameters = gdp_fucose.get_parameters("FE13")
-jnp.exp(parameters["log_amount_initial"])
+from enzax.experiments import (
+    gather_parameters_by_experiment,
+    pick_experiment,
+)
+
+params_by_experiment = gather_parameters_by_experiment(
+    gdp_fucose.layout,
+    gdp_fucose.parameters,
+)
+fe13_parameters = pick_experiment(
+    gdp_fucose.layout,
+    params_by_experiment,
+    "FE13",
+)
+jnp.exp(fe13_parameters["log_amount_initial"])
 ```
 
 ```
@@ -51,29 +60,27 @@ from enzax.time_course import get_measurables_time_course_single_experiment
 found, conc, flux, algebraic_variables = (
     get_measurables_time_course_single_experiment(
         model,
-        parameters,
-        jnp.exp(parameters["log_amount_initial"]),
+        fe13_parameters,
+        jnp.exp(fe13_parameters["log_amount_initial"]),
         jnp.array([1.0, 5.0, 24.0]),
-        rtol=1e-6,
-        atol=1e-6,
     )
 )
 conc[:, model.species.index("gdp_fucose")]
 ```
 
-The solve integrates the model with diffrax's stiff solver `Kvaerno5`, solving any rapid equilibria and algebraic constraints at every step. Gradients go through the solver's steps. The cascade needs looser tolerances than the defaults to get through its fast reactions, which is why `gdp_fucose.get_measurables` is this function with `rtol` and `atol` set to `1e-6`. If a solve fails, `found` is `False` and the other outputs are computed at the initial state, so they are finite but meaningless.
+The solve integrates the model with diffrax's stiff solver `Kvaerno5`, solving any rapid equilibria and algebraic constraints at every step. Gradients go through the solver's steps. If a solve fails, `found` is `False` and the other outputs are computed at the initial state, so they are finite but meaningless.
 
-`get_measurables_time_course_single_experiment_dae` takes the same arguments and returns the same things, but integrates the model as a differential algebraic equation with the BDF solver from [diffrax-bdf](https://github.com/dtu-qmcm/diffrax-bdf), which needs installing. For models with rapid equilibria or algebraic constraints it takes fewer steps than solving them at every step.
+`get_measurables_time_course_single_experiment_dae` takes the same arguments and returns the same things, but integrates the model as a differential algebraic equation with the BDF solver from [diffrax-bdf](https://github.com/dtu-qmcm/diffrax-bdf), a Python package which needs installing separately. For models with rapid equilibria or algebraic constraints it takes fewer steps than solving them at every step.
 
 ## Measurements over time
 
-Each experiment has a grid of named time points, mapping a label to a time. Time points must increase in the order given:
+To represent time course measurements, first make a grid of named time points for each experiment, in the form of a map from labels to floating point times. Time points must increase in the order given:
 
 ```python
 times = {"FE13": {"5min": 0.083, "50min": 0.83, "145min": 2.42}}
 ```
 
-A measurement names a time point after a `|` in each id, so the existing measurement classes hold time courses as they are:
+A measurement object can name these time points after a `|` character in its `ids`:
 
 ```python
 from enzax.measurements import LognormalMeasurement
@@ -86,7 +93,7 @@ gdp_fucose_measurement = LognormalMeasurement(
 )
 ```
 
-One measurement can cover several species and several time points, and anything that was not measured is simply left out. `gdp_fucose.load_measurements` builds the grids and the measurements for the cascade's data, labelling each time point by its minute. For statistical models of your own, `pick_concs_by_time` and `pick_fluxes_by_time` pick a measurement's predicted values out of a time course by id.
+One measurement can cover several species and several time points. `gdp_fucose.load_measurements` builds the grids and the measurements for the cascade's data, labelling each time point by its minute. For statistical models of your own, `pick_concs_by_time` and `pick_fluxes_by_time` pick a measurement's predicted values out of a time course by id.
 
 ## Fitting time courses
 
@@ -114,7 +121,10 @@ layout = get_experiment_layout(
 )
 expanded_parameters = merge_experiment_parameters(
     layout,
-    [gdp_fucose.get_parameters(e) for e in experiments],
+    [
+        pick_experiment(gdp_fucose.layout, params_by_experiment, e)
+        for e in experiments
+    ],
 )
 split = split_parameters_by_freeing(
     layout.labelling,
@@ -131,7 +141,6 @@ log_density_time_course(
     layout=layout,
     split=split,
     conc_measurements=conc_measurements,
-    get_measurables=gdp_fucose.get_measurables,
 )
 ```
 
@@ -139,4 +148,4 @@ The layout must be made from a labelling that includes `log_amount_initial`, and
 
 `get_measurables` chooses the solve: the default, `get_measurables_time_course_single_experiment`, or `get_measurables_time_course_single_experiment_dae`, either of them wrapped with `functools.partial` to change its options. Create it once and reuse it, since each new one is compiled anew. As with `log_density`, the density is NaN if any experiment's solve fails, and experiments are solved together with `jax.vmap`.
 
-`scripts/mcmc_demo.py` shows how to sample from a log density like this one. `scripts/cascade_demo.py` fits the cascade's turnover numbers to the five experiments by maximum a posteriori optimisation and compares the fit with two validation experiments.
+`scripts/mcmc_demo.py` shows how to sample from a log density like this one. `scripts/cascade_demo.py` fits the cascade's free parameters to the five experiments by maximum a posteriori optimisation and compares the fit with two validation experiments.

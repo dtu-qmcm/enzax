@@ -49,26 +49,20 @@ load_measurements rescales the guanine nucleotides in the same way.
 Times are in hours, and amounts in mM in a pot of volume 1, so amounts and
 concentrations are the same numbers. The formation energies are eQuilibrator's
 estimates, converted from a 1 M to a 1 mM standard state. The pot is closed, so
-five conserved moieties follow from the initial amounts. The solver needs
-looser tolerances than enzax's defaults to get through the fast reactions:
-get_measurables is the time-course solve with tolerances that work.
+five conserved moieties follow from the initial amounts.
 """
 
 import csv
-import functools
 from pathlib import Path
 
 import numpy as np
 
-from enzax.array_types import ParamDict
+from enzax.experiments import get_experiment_layout
 from enzax.kinetic_model import KineticModel
 from enzax.measurements import LognormalMeasurement
-from enzax.parameters import pack_parameters
+from enzax.parameters import SEP, pack_parameters
 from enzax.reactions import MichaelisMenten, SymbolicReaction
-from enzax.time_course import (
-    get_initial_state_labelling,
-    get_measurables_time_course_single_experiment,
-)
+from enzax.time_course import get_initial_state_labelling
 
 DATA_FILE = Path(__file__).parent / "gdp_fucose_measurements.csv"
 DGF_COVARIANCE_FILE = Path(__file__).parent / "gdp_fucose_dgf_covariance.csv"
@@ -283,50 +277,47 @@ model = KineticModel(
     moiety_label_species=["p", "polyp", "amp", "fucose", "gmp"],
 )
 labelling = model.parameter_labelling | get_initial_state_labelling(model)
-get_measurables = functools.partial(
-    get_measurables_time_course_single_experiment,
-    rtol=1e-6,
-    atol=1e-6,
-)
 
 
-def get_parameters(experiment: str) -> ParamDict:
-    """Get one experiment's parameters, at the prior means."""
-    fkp, ppa, ppk3, gmpk = ENZYME_LEVELS[experiment]
-    enzyme_levels = {
-        "fkp": fkp,
-        "gmpk": gmpk,
-        "ppa": ppa,
-        "ppk3": ppk3,
-        "unknown_hydrolase": UNKNOWN_HYDROLASE_LEVEL,
-    }
-    initial = INITIAL_AMOUNTS[experiment] | {"polyp": POLYP_INITIAL}
-    return pack_parameters(
-        labelling,
-        {
-            "log_saturation_constant": {
-                label: np.log(SATURATION_CONSTANTS[label])
-                for label in labelling["log_saturation_constant"]
-            },
-            "log_kcat": {
-                reaction: np.log(kcat) for reaction, kcat in KCAT.items()
-            },
-            "log_enzyme": {
-                enzyme: np.log(level) for enzyme, level in enzyme_levels.items()
-            },
-            "dgf": {species: DGF[species] for species in labelling["dgf"]},
-            "moiety_totals": {
-                species: 0.0 for species in labelling["moiety_totals"]
-            },
-            "log_amount_initial": {
-                species: np.log(initial[species])
-                if species in initial
-                else -np.inf
-                for species in BALANCED_SPECIES
-            },
-            "temperature": TEMPERATURE,
+EXPERIMENTS = FITTING_EXPERIMENTS + VALIDATION_EXPERIMENTS
+EXPERIMENT_SPECIFIC = {
+    "log_enzyme": None,
+    "log_amount_initial": [s for s in BALANCED_SPECIES if s != "polyp"],
+}
+layout = get_experiment_layout(labelling, EXPERIMENTS, EXPERIMENT_SPECIFIC)
+parameters = pack_parameters(
+    layout.labelling,
+    {
+        "log_saturation_constant": {
+            label: np.log(SATURATION_CONSTANTS[label])
+            for label in labelling["log_saturation_constant"]
         },
-    )
+        "log_kcat": {reaction: np.log(kcat) for reaction, kcat in KCAT.items()},
+        "log_enzyme": {
+            f"{enzyme}{SEP}{experiment}": np.log(level)
+            for experiment in EXPERIMENTS
+            for enzyme, level in zip(
+                ["fkp", "ppa", "ppk3", "gmpk", "unknown_hydrolase"],
+                [*ENZYME_LEVELS[experiment], UNKNOWN_HYDROLASE_LEVEL],
+            )
+        },
+        "dgf": {species: DGF[species] for species in labelling["dgf"]},
+        "moiety_totals": {
+            species: 0.0 for species in labelling["moiety_totals"]
+        },
+        "log_amount_initial": {
+            f"{species}{SEP}{experiment}": (
+                np.log(INITIAL_AMOUNTS[experiment][species])
+                if species in INITIAL_AMOUNTS[experiment]
+                else -np.inf
+            )
+            for experiment in EXPERIMENTS
+            for species in EXPERIMENT_SPECIFIC["log_amount_initial"]
+        }
+        | {"polyp": np.log(POLYP_INITIAL)},
+        "temperature": TEMPERATURE,
+    },
+)
 
 
 def load_measurements(
@@ -391,6 +382,3 @@ def get_dgf_covariance() -> np.ndarray:
     covariance = np.array([[float(v) for v in row[1:]] for row in rows[1:]])
     order = [species.index(s) for s in labelling["dgf"]]
     return covariance[np.ix_(order, order)]
-
-
-parameters = get_parameters("FE13")

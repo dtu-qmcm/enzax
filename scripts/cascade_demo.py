@@ -41,6 +41,7 @@ from enzax.statistical_modelling import (
     log_density_time_course,
     prior_from_truth,
 )
+from enzax.time_course import get_measurables_time_course_single_experiment
 
 jax.config.update("jax_enable_x64", True)
 
@@ -56,23 +57,24 @@ FREE_PARAMETERS = {
     ],
     "dgf": None,
 }
-EXPERIMENT_SPECIFIC = {
-    "log_enzyme": None,
-    "log_amount_initial": [
-        species for species in gdp_fucose.BALANCED_SPECIES if species != "polyp"
-    ],
-}
 
 
 def get_problem(experiments):
+    by_experiment = gather_parameters_by_experiment(
+        gdp_fucose.layout,
+        gdp_fucose.parameters,
+    )
     layout = get_experiment_layout(
         gdp_fucose.labelling,
         experiments,
-        EXPERIMENT_SPECIFIC,
+        gdp_fucose.EXPERIMENT_SPECIFIC,
     )
     expanded = merge_experiment_parameters(
         layout,
-        [gdp_fucose.get_parameters(e) for e in experiments],
+        [
+            pick_experiment(gdp_fucose.layout, by_experiment, experiment)
+            for experiment in experiments
+        ],
     )
     split = split_parameters_by_freeing(
         layout.labelling,
@@ -97,7 +99,7 @@ def report(title, layout, split, times, measurements, free):
         rows = dict(zip(measurement.ids, measurement.values.tolist()))
         observed = rows.get(f"gdp_fucose|{last}", float("nan"))
         single = pick_experiment(layout, parameters, experiment)
-        _, conc, _, _ = gdp_fucose.get_measurables(
+        _, conc, _, _ = get_measurables_time_course_single_experiment(
             gdp_fucose.model,
             single,
             jnp.exp(single["log_amount_initial"]),
@@ -127,7 +129,6 @@ def main():
             layout=layout,
             split=split,
             conc_measurements=measurements,
-            get_measurables=gdp_fucose.get_measurables,
         )
 
     start = time.perf_counter()

@@ -10,8 +10,12 @@ from enzax.examples import (
     linear,
     methionine,
 )
+from enzax.experiments import gather_parameters_by_experiment, pick_experiment
 from enzax.steady_state import get_steady_state
-from enzax.time_course import get_initial_ode_state
+from enzax.time_course import (
+    get_initial_ode_state,
+    get_measurables_time_course_single_experiment,
+)
 
 
 @pytest.mark.parametrize(
@@ -78,10 +82,18 @@ def test_the_cascade_data_load_for_every_experiment():
         assert labels <= set(times[measurement.experiment])
 
 
+def get_cascade_parameters(experiment):
+    by_experiment = gather_parameters_by_experiment(
+        gdp_fucose.layout,
+        gdp_fucose.parameters,
+    )
+    return pick_experiment(gdp_fucose.layout, by_experiment, experiment)
+
+
 def test_the_cascade_solves_and_conserves_its_moieties():
-    parameters = gdp_fucose.get_parameters("FE13")
+    parameters = get_cascade_parameters("FE13")
     times, _ = gdp_fucose.load_measurements(["FE13"])
-    found, conc, _, _ = gdp_fucose.get_measurables(
+    found, conc, _, _ = get_measurables_time_course_single_experiment(
         gdp_fucose.model,
         parameters,
         jnp.exp(parameters["log_amount_initial"]),
@@ -95,13 +107,13 @@ def test_the_cascade_solves_and_conserves_its_moieties():
 
 def test_the_cascade_conserves_its_moieties_when_polyphosphate_runs_out():
     model = gdp_fucose.model
-    parameters = gdp_fucose.get_parameters("FE18_1FKP")
+    parameters = get_cascade_parameters("FE18_1FKP")
     amount_initial = (
         jnp.exp(parameters["log_amount_initial"])
         .at[model.balanced_species.index("polyp")]
         .set(15.0)
     )
-    found, conc, _, _ = gdp_fucose.get_measurables(
+    found, conc, _, _ = get_measurables_time_course_single_experiment(
         model,
         parameters,
         amount_initial,
