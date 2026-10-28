@@ -1,3 +1,4 @@
+import jax
 import pytest
 from jax import numpy as jnp
 
@@ -10,6 +11,7 @@ from enzax.examples import (
     methionine,
 )
 from enzax.steady_state import get_steady_state
+from enzax.time_course import get_initial_ode_state
 
 
 @pytest.mark.parametrize(
@@ -89,3 +91,27 @@ def test_the_cascade_solves_and_conserves_its_moieties():
     species = gdp_fucose.model.species
     adenine = conc[:, [species.index(s) for s in ("atp", "adp", "amp")]]
     assert jnp.allclose(adenine.sum(axis=1), 6.0)
+
+
+def test_the_cascade_conserves_its_moieties_when_polyphosphate_runs_out():
+    model = gdp_fucose.model
+    parameters = gdp_fucose.get_parameters("FE18_1FKP")
+    amount_initial = (
+        jnp.exp(parameters["log_amount_initial"])
+        .at[model.balanced_species.index("polyp")]
+        .set(15.0)
+    )
+    found, conc, _, _ = gdp_fucose.get_measurables(
+        model,
+        parameters,
+        amount_initial,
+        jnp.linspace(0.01, 24.0, 100),
+    )
+    balanced = [model.species.index(s) for s in model.balanced_species]
+    _, totals_initial = get_initial_ode_state(model, amount_initial)
+    totals = jax.vmap(lambda amounts: get_initial_ode_state(model, amounts)[1])(
+        conc[:, balanced],
+    )
+    assert found
+    assert conc.min() >= 0
+    assert jnp.allclose(totals, totals_initial, rtol=0.0, atol=1e-9)

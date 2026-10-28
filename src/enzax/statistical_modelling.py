@@ -216,7 +216,9 @@ def get_measurables_single_experiment(
         returns NaN when it finds no steady state, and flux raises on a NaN
         concentration, so in that case the concentrations and fluxes are
         computed at the guess instead: they are finite but meaningless, and
-        found says to throw them away.
+        found says to throw them away. Balanced species' concentrations are
+        clipped below at zero, since a solve can leave a species that has run
+        out a little below zero.
     """
     guess = jnp.where(jnp.isfinite(guess), guess, 0.01)
     steady = get_steady_state_hybrid(
@@ -231,9 +233,9 @@ def get_measurables_single_experiment(
         stepsize_controller=stepsize_controller,
     )
     found = jnp.isfinite(steady).all()
-    conc_balanced = model.get_balanced_conc(
-        jnp.where(found, steady, guess),
-        parameters,
+    conc_balanced = jnp.maximum(
+        model.get_balanced_conc(jnp.where(found, steady, guess), parameters),
+        0.0,
     )
     conc = model.get_conc(
         conc_balanced,

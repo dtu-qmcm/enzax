@@ -68,7 +68,7 @@ from enzax.reaction import (
     get_species_positions,
     get_substrates,
 )
-from enzax.thermodynamics import get_reversibility
+from enzax.thermodynamics import get_reverse_term
 
 
 def get_michaelis_constant_labels(
@@ -686,17 +686,21 @@ class MichaelisMenten(Reaction):
             rate_input.k,
             rate_input.binding_polynomial,
         )
-        rev: Scalar | float = 1.0
         if self.reversible:
-            rev = get_reversibility(
+            numerator = numerator - get_reverse_term(
                 reactant_conc=conc[rate_input.ix_reactant],
+                forward_order=jnp.where(
+                    rate_input.reactant_stoichiometry < 0,
+                    1.0,
+                    0.0,
+                ),
                 reactant_stoichiometry=rate_input.reactant_stoichiometry,
                 dgf=rate_input.dgf,
                 temperature=rate_input.temperature,
                 water_stoichiometry=rate_input.water_stoichiometry,
                 water_dgf=rate_input.water_dgf,
-            )
-        rate = rev * rate_input.kcat * rate_input.enzyme * numerator * fer
+            ) / jnp.prod(rate_input.substrate_kms)
+        rate = rate_input.kcat * rate_input.enzyme * numerator * fer
         if rate_input.allostery is not None:
             rate = rate * generalised_mwc_effect(
                 conc=conc,

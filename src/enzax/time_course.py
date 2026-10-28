@@ -29,6 +29,13 @@ from enzax.array_types import (
     ParamLabelling,
 )
 from enzax.kinetic_model import KineticModel
+from enzax.non_negative import (
+    DEFAULT_NEGATIVE_TOLERANCE,
+    NonNegativeSolver,
+    clamp_at_zero,
+    clamp_dae_rate,
+    get_dae_balanced_conc,
+)
 from enzax.steady_state import DEFAULT_MAX_STEPS
 
 INITIAL_STATE_PARAMETER = "log_amount_initial"
@@ -81,17 +88,20 @@ def get_measurables_at(
     Float[Array, "n_time n_reaction"],
     Float[Array, "n_time n_algebraic_variable"],
 ]:
-    """Get concentrations, fluxes and algebraic variables at some ODE states."""
+    """Get concentrations, fluxes and algebraic variables at some ODE states.
+
+    Balanced species' concentrations are clipped below at zero first, since a
+    solve can leave a species that has run out a little below zero.
+    """
 
     def at(
         ode_state: OdeStateArr,
     ) -> tuple[ConcArray, Flux, AlgebraicVariableArr]:
         algebraic = model._solve_algebraic(ode_state, parameters)
-        conc_balanced = model._get_algebraic_conc(
-            ode_state,
-            algebraic,
-            parameters,
-        )[1]
+        conc_balanced = jnp.maximum(
+            model._get_algebraic_conc(ode_state, algebraic, parameters)[1],
+            0.0,
+        )
         conc = model.get_conc(
             conc_balanced,
             model.get_log_conc_unbalanced(parameters),
@@ -137,6 +147,7 @@ def get_measurables_time_course_single_experiment(
     max_steps: int = DEFAULT_MAX_STEPS,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
 ) -> tuple[
     Bool[Array, ""],
     Float[Array, "n_time n_species"],
@@ -161,6 +172,9 @@ def get_measurables_time_course_single_experiment(
     :param stepsize_controller: a diffrax step size controller. Defaults to a
         PIDController with rtol and atol.
 
+    :param negative_tolerance: how far below zero a balanced species'
+        concentration may go before a step is rejected.
+
     :return: whether the solve succeeded, then every species' concentration,
         every reaction's flux and every algebraic variable at each of ts.
     """
@@ -179,8 +193,14 @@ def get_measurables_time_course_single_experiment(
             atol=atol,
         )
     sol = diffrax.diffeqsolve(
-        terms=diffrax.ODETerm(lambda t, y, args: model.dndt(y, args)),
-        solver=solver,
+        terms=diffrax.ODETerm(
+            lambda t, y, args: clamp_at_zero(y, model.dndt(y, args)),
+        ),
+        solver=NonNegativeSolver(
+            solver,
+            get_conc=model.get_balanced_conc,
+            tolerance=negative_tolerance,
+        ),
         t0=0.0,
         t1=ts[-1],
         dt0=1e-6,
@@ -204,6 +224,7 @@ def get_measurables_time_course_single_experiment_dae(
     atol: float = 1e-10,
     max_steps: int = DEFAULT_MAX_STEPS,
     suppress_algebraic_error: bool = True,
+    negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
 ) -> tuple[
     Bool[Array, ""],
     Float[Array, "n_time n_species"],
@@ -229,10 +250,14 @@ def get_measurables_time_course_single_experiment_dae(
     y0 = model.get_dae_state(ode_state_initial, parameters)
     sol = diffrax.diffeqsolve(
         terms=SemiExplicitDAETerm(
-            model.dae_vector_field,
+            lambda t, y, args: clamp_dae_rate(model, t, y, args),
             (False, jax.tree.map(lambda _: True, y0[1])),
         ),
-        solver=BDF(suppress_algebraic_error=suppress_algebraic_error),
+        solver=NonNegativeSolver(
+            BDF(suppress_algebraic_error=suppress_algebraic_error),
+            get_conc=lambda y, args: get_dae_balanced_conc(model, y, args),
+            tolerance=negative_tolerance,
+        ),
         t0=0.0,
         t1=ts[-1],
         dt0=1e-6,
