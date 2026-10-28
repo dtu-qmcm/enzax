@@ -135,7 +135,7 @@ def main():
         negative_log_density,
         optx.BFGS(rtol=1e-6, atol=1e-6),
         initial,
-        max_steps=500,
+        max_steps=1000,
         throw=False,
     )
     fitted = solution.value

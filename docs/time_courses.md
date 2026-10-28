@@ -37,8 +37,8 @@ jnp.exp(parameters["log_amount_initial"])
 ```
 
 ```
-Array([ 0. ,  0. ,  6. ,  0. ,  0. , 21.5,  0. ,  0. ,  0. ,  0. , 21.5,
-       50. ], dtype=float64)
+Array([  0. ,   0. ,   6. ,   0. ,   0. ,  21.5,   0. ,   0. ,   0. ,
+         0. ,  21.5, 100. ], dtype=float64)
 ```
 
 ## Solving a time course

@@ -166,7 +166,7 @@ DGF = {
     }.items()
 }
 DGF["polyp"] = DGF["atp"] - DGF["adp"] + 0.008314 * TEMPERATURE * np.log(3.0)
-POLYP_INITIAL = 50.0
+POLYP_INITIAL = 100.0
 PPK3_RATE = (
     "kcat * enzyme * (ndp / km_ndp) * (polyp / km_polyp)"
     " * (1 - (1 - reversibility) * polyp)"
