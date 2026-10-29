@@ -61,6 +61,10 @@ from enzax.experiments import get_experiment_layout
 from enzax.kinetic_model import KineticModel
 from enzax.measurements import LognormalMeasurement
 from enzax.parameters import SEP, pack_parameters
+from enzax.rapid_equilibrium import (
+    RapidEquilibriumNetwork,
+    RapidEquilibriumReaction,
+)
 from enzax.reactions import MichaelisMenten, SymbolicReaction
 from enzax.time_course import get_initial_state_labelling
 
@@ -112,7 +116,6 @@ INITIAL_AMOUNTS = {
 KCAT = {
     "FKP_fk": 1404.0,
     "FKP_gt": 36252.0,
-    "GMPK": 752400.0,
     "PPA": 558000.0,
     "PPK3_A": 18780.0,
     "PPK3_G": 15048.0,
@@ -128,10 +131,6 @@ SATURATION_CONSTANTS = {
     "km|FKP_gt|gtp": 0.012,
     "km|FKP_gt|pp": 0.135,
     "km|FKP_gt|gdp_fucose": 0.12,
-    "km|GMPK|atp": 0.5,
-    "km|GMPK|gmp": 0.156,
-    "km|GMPK|adp": 0.017,
-    "km|GMPK|gdp": 0.097,
     "km|PPA|pp": 0.003,
     "km|PPK3_A|adp": 2.5,
     "km|PPK3_A|atp": 2.0,
@@ -189,13 +188,10 @@ model = KineticModel(
             },
             enzyme="fkp",
         ),
-        "GMPK": MichaelisMenten(
-            stoichiometry={"atp": -1.0, "gmp": -1.0, "adp": 1.0, "gdp": 1.0},
-            enzyme="gmpk",
-        ),
         "PPA": MichaelisMenten(
             stoichiometry={"pp": -1.0, "p": 2.0},
             enzyme="ppa",
+            water_stoichiometry=-1.0,
             reversible=False,
         ),
         "PPK3_A": SymbolicReaction(
@@ -273,6 +269,19 @@ model = KineticModel(
             enzyme="unknown_hydrolase",
         ),
     },
+    rapid_equilibrium_network=RapidEquilibriumNetwork(
+        reactions={
+            "GMPK": RapidEquilibriumReaction(
+                stoichiometry={
+                    "atp": -1.0,
+                    "gmp": -1.0,
+                    "adp": 1.0,
+                    "gdp": 1.0,
+                },
+            ),
+        },
+        fast_moiety_label_species=["gmp", "atp"],
+    ),
     balanced_species=BALANCED_SPECIES,
     moiety_label_species=["p", "polyp", "amp", "fucose", "gmp"],
 )
@@ -300,6 +309,7 @@ parameters = pack_parameters(
                 ["fkp", "ppa", "ppk3", "gmpk", "unknown_hydrolase"],
                 [*ENZYME_LEVELS[experiment], UNKNOWN_HYDROLASE_LEVEL],
             )
+            if enzyme in labelling["log_enzyme"]
         },
         "dgf": {species: DGF[species] for species in labelling["dgf"]},
         "moiety_totals": {

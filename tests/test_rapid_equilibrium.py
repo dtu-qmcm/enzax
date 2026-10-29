@@ -15,7 +15,9 @@ from enzax.rapid_equilibrium import (
     UnusedFastMoietyLabelWarning,
     assemble_balanced_conc,
     get_extreme_conservation_relations,
+    has_exact_solution,
     solve_rapid_equilibria,
+    solve_rapid_equilibria_exactly,
 )
 from enzax.parameters import pack_parameters
 from enzax.reactions import Drain, MichaelisMenten
@@ -763,3 +765,120 @@ def test_fast_moieties_need_not_have_a_species_of_their_own():
     assert np.all(P >= 0)
     S_fb = model.S_fast[model.balanced_species_ix, :]
     assert np.allclose(P @ S_fb, 0.0)
+
+
+SINGLE_REACTIONS = {
+    "binding": ({"a": -1.0, "b": -1.0, "c": 1.0}, 0.0),
+    "bi_bi": ({"a": -1.0, "b": -1.0, "c": 1.0, "d": 1.0}, 0.0),
+    "hydrolysis": ({"a": -1.0, "b": 2.0}, -1.0),
+}
+
+
+def get_single_reaction_model(name):
+    stoichiometry, water = SINGLE_REACTIONS[name]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UndeclaredMoietyWarning)
+        return KineticModel(
+            reactions={},
+            rapid_equilibrium_network=RapidEquilibriumNetwork(
+                reactions={
+                    "r": RapidEquilibriumReaction(
+                        stoichiometry=stoichiometry,
+                        water_stoichiometry=water,
+                    ),
+                },
+            ),
+            balanced_species=list(stoichiometry),
+        )
+
+
+def get_single_reaction_dgf(name, model, log_keq):
+    """Formation energies giving the reaction log_keq, all but one zero."""
+    stoichiometry, water = SINGLE_REACTIONS[name]
+    last = list(stoichiometry)[-1]
+    value = -(RT * log_keq + water * model.water_dgf) / stoichiometry[last]
+    return get_dgf(model, {last: value})
+
+
+def solve_both(name, log_keq):
+    """Get a single reaction model and its exact and least squares solves."""
+    model = get_single_reaction_model(name)
+    dgf = get_single_reaction_dgf(name, model, log_keq)
+
+    def exact(y):
+        return solve_rapid_equilibria_exactly(
+            model.fast_moieties,
+            y,
+            jnp.zeros(0),
+            dgf,
+            298.15,
+            model.water_dgf,
+        )
+
+    def least_squares(y):
+        conc = solve_rapid_equilibria(
+            model.fast_moieties,
+            y,
+            jnp.zeros(0),
+            dgf,
+            298.15,
+            model.water_dgf,
+        )
+        return conc[model.fast_moieties.subnetwork_species_ix]
+
+    return model, exact, least_squares
+
+
+def test_single_reaction_subnetworks_have_exact_solutions():
+    assert has_exact_solution(KineticModel(**MG_ATP).fast_moieties)
+    assert not has_exact_solution(KineticModel(**COMPETING).fast_moieties)
+
+
+@pytest.mark.parametrize("name", list(SINGLE_REACTIONS))
+@pytest.mark.parametrize("log10_keq", [-6.0, 0.0, 6.0, 14.0])
+@pytest.mark.parametrize("seed", [0, 1])
+def test_the_exact_solve_satisfies_equilibrium_and_totals(
+    name,
+    log10_keq,
+    seed,
+):
+    log_keq = log10_keq * np.log(10)
+    model, exact, least_squares = solve_both(name, log_keq)
+    P = model.fast_moieties.volume_scaled_fast_moiety_matrix
+    conc = 10 ** np.random.default_rng(seed).uniform(-4, 2, P.shape[1])
+    totals = jnp.array(P @ conc)
+    solved = exact(totals)
+    nu = np.array(list(SINGLE_REACTIONS[name][0].values()))
+    assert np.allclose(P @ solved, totals, rtol=1e-10)
+    assert np.isclose(nu @ np.log(solved), log_keq, rtol=1e-10, atol=1e-10)
+    if np.all(np.isfinite(least_squares(totals))):
+        assert np.allclose(solved, least_squares(totals), rtol=1e-7)
+        jacobian_exact = jax.jacfwd(lambda y: jnp.log(exact(y)))(totals)
+        jacobian_least_squares = jax.jacfwd(
+            lambda y: jnp.log(least_squares(y)),
+        )(totals)
+        assert np.allclose(
+            jacobian_exact,
+            jacobian_least_squares,
+            rtol=1e-6,
+            atol=1e-6 * np.abs(jacobian_least_squares).max(),
+        )
+
+
+@pytest.mark.parametrize("name", list(SINGLE_REACTIONS))
+def test_a_species_close_to_running_out_is_precise(name):
+    log_keq = 30 * np.log(10)
+    model, exact, _ = solve_both(name, log_keq)
+    n_totals = model.fast_moieties.fast_moiety_matrix.shape[0]
+    conc = exact(jnp.linspace(1.0, 2.0, n_totals))
+    stoichiometry, _ = SINGLE_REACTIONS[name]
+    nu = np.array(list(stoichiometry.values()))
+    assert conc.min() < 1e-25
+    assert np.isclose(nu @ np.log(conc), log_keq, rtol=1e-12)
+
+
+def test_a_zero_total_gives_zeros_and_a_negative_one_nan():
+    _, exact, _ = solve_both("hydrolysis", 5.0)
+    assert np.array_equal(exact(jnp.array([0.0])), [0.0, 0.0])
+    assert np.all(jnp.isfinite(jax.jacfwd(exact)(jnp.array([0.0]))))
+    assert np.all(np.isnan(exact(jnp.array([-1.0]))))

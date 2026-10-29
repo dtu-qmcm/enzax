@@ -653,6 +653,177 @@ def solve_fast_subnetwork(
     return jnp.where(solved, jnp.exp(sol.value), jnp.nan)
 
 
+def has_exact_solution(fast_moieties: FastMoieties) -> bool:
+    """Say whether every fast subnetwork can be solved exactly.
+
+    A subnetwork can be if it has one rapid equilibrium reaction, and either
+    one balanced species or balanced species on both sides with stoichiometric
+    coefficients adding up to at most 2 on each side. Its equilibrium
+    condition is then at most a quadratic in the reaction's extent.
+    """
+    for subnetwork in fast_moieties.subnetworks:
+        if len(subnetwork.reaction_ix) != 1:
+            return False
+        S_balanced, *_ = get_subnetwork_blocks(fast_moieties, subnetwork)
+        nu = S_balanced[:, 0]
+        if len(nu) == 1:
+            continue
+        products, substrates = nu[nu > 0], -nu[nu < 0]
+        if not (len(products) and len(substrates)):
+            return False
+        if products.sum() > 2 or substrates.sum() > 2:
+            return False
+        if not np.all(np.isin(np.abs(nu), [1.0, 2.0])):
+            return False
+    return True
+
+
+def get_polynomial(
+    offset: Float[Array, " n"],
+    slope: np.ndarray,
+    exponent: np.ndarray,
+) -> list[Scalar]:
+    """Get the coefficients, lowest power first, of the product over species
+    of (offset + slope * t) ** exponent, for exponents of 1 or 2."""
+    coefficients = [jnp.array(1.0)]
+    for i in np.flatnonzero(exponent):
+        for _ in range(int(exponent[i])):
+            factor = [offset[i], jnp.array(slope[i])]
+            coefficients = [
+                sum(
+                    coefficients[j] * factor[k - j]
+                    for j in range(len(coefficients))
+                    if 0 <= k - j < 2
+                )
+                for k in range(len(coefficients) + 1)
+            ]
+    return coefficients
+
+
+def get_root_in_interval(
+    coefficients: list[Scalar],
+    width: Scalar,
+) -> Scalar:
+    """Get the root in [0, width] of a polynomial of degree at most 2, given
+    lowest power first, computing each root in a form free of cancellation."""
+    padded = [*coefficients, jnp.array(0.0), jnp.array(0.0)][:3]
+    c, b, a = padded
+    if len(coefficients) == 2:
+        return -c / b
+    discriminant = jnp.maximum(b**2 - 4 * a * c, 0.0)
+    q = -0.5 * (b + jnp.where(b >= 0, 1.0, -1.0) * jnp.sqrt(discriminant))
+    safe_a = jnp.where(a == 0, 1.0, a)
+    safe_q = jnp.where(q == 0, 1.0, q)
+    first = jnp.where(a == 0, -c / jnp.where(b == 0, 1.0, b), q / safe_a)
+    second = c / safe_q
+    slack = 1e-12 * jnp.maximum(width, 1e-300)
+    second_inside = (second >= -slack) & (second <= width + slack)
+    return jnp.clip(jnp.where(second_inside, second, first), 0.0, width)
+
+
+def solve_single_reaction_subnetwork(
+    S_balanced: StoichiometricMatrix,
+    S_unbalanced: StoichiometricMatrix,
+    P: FastMoietyMatrix,
+    volumes: np.ndarray,
+    totals: FastMoietyTotalsArr,
+    log_conc_unbalanced: UnbalancedConcArr,
+    log_keq: Float[Array, " 1"],
+) -> Float[Array, " n_subnetwork_species"]:
+    """Solve a fast subnetwork with one rapid equilibrium reaction exactly.
+
+    The species' concentrations are x0 + (nu / volumes) * extent, where x0
+    has the given fast moiety totals, nu is the reaction's stoichiometry and
+    volumes are the species' compartments' volumes, and the extent
+    is the root of a polynomial of degree at most 2 between the extents at
+    which a product and a substrate run out. The root is found measured from
+    whichever end of that interval is nearer, so that a species close to
+    running out keeps its relative precision. Returns zeros if the interval
+    has no width and NaN if it is empty.
+    """
+    nu = S_balanced[:, 0]
+    log_k = log_keq[0] - S_unbalanced[:, 0] @ log_conc_unbalanced
+    if len(nu) == 1:
+        return jnp.exp(log_k / nu)
+    x0 = np.linalg.pinv(P) @ totals
+    direction = nu / volumes
+    products, substrates = nu > 0, nu < 0
+    lower = jnp.max(
+        jnp.where(
+            products,
+            -x0 / jnp.where(products, direction, 1.0),
+            -jnp.inf,
+        ),
+    )
+    upper = jnp.min(
+        jnp.where(
+            substrates,
+            x0 / jnp.where(substrates, -direction, 1.0),
+            jnp.inf,
+        ),
+    )
+    width = upper - lower
+    feasible = width > 0
+    middle = jnp.where(feasible, x0 + direction * (lower + upper) / 2, 1.0)
+    above_middle = nu @ jnp.log(middle) - log_k >= 0
+    exponent_products = np.where(products, nu, 0.0)
+    exponent_substrates = np.where(substrates, -nu, 0.0)
+    scale_products, scale_substrates = jnp.exp(-log_k / 2), jnp.exp(log_k / 2)
+
+    def solve_from(offset, slope):
+        offset = jnp.maximum(offset, 0.0)
+        product_side = get_polynomial(offset, slope, exponent_products)
+        substrate_side = get_polynomial(offset, slope, exponent_substrates)
+        degree = max(len(product_side), len(substrate_side))
+        coefficients = [
+            scale_products * (product_side[k] if k < len(product_side) else 0.0)
+            - scale_substrates
+            * (substrate_side[k] if k < len(substrate_side) else 0.0)
+            for k in range(degree)
+        ]
+        safe_width = jnp.where(feasible, width, 1.0)
+        extent = get_root_in_interval(coefficients, safe_width)
+        return offset + slope * jnp.where(feasible, extent, 0.0)
+
+    from_lower = solve_from(x0 + direction * lower, direction)
+    from_upper = solve_from(x0 + direction * upper, -direction)
+    conc = jnp.where(above_middle, from_lower, from_upper)
+    return jnp.where(width >= 0, conc, jnp.nan)
+
+
+def solve_rapid_equilibria_exactly(
+    fast_moieties: FastMoieties,
+    fast_moiety_totals: FastMoietyTotalsArr,
+    log_conc_unbalanced: UnbalancedConcArr,
+    dgf: Float[Array, " n_species"],
+    temperature: Scalar,
+    water_dgf: float,
+) -> Float[Array, " n_subnetwork_species"]:
+    """Solve every fast subnetwork exactly, for models where
+    `has_exact_solution` holds, giving concentrations in the order of
+    `FastMoieties.subnetwork_species_ix`."""
+    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
+    conc = []
+    for subnetwork in fast_moieties.subnetworks:
+        S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
+            fast_moieties,
+            subnetwork,
+        )
+        members = np.array(subnetwork.balanced_species_ix, dtype=int)
+        conc.append(
+            solve_single_reaction_subnetwork(
+                S_balanced,
+                S_unbalanced,
+                P,
+                np.array(fast_moieties.balanced_species_volumes)[members],
+                fast_moiety_totals[rows],
+                log_conc_unbalanced,
+                log_keq[np.array(subnetwork.reaction_ix, dtype=int)],
+            ),
+        )
+    return jnp.concatenate(conc) if conc else jnp.zeros(0)
+
+
 @dataclass(frozen=True)
 class RapidEquilibriumNetworkScope:
     """What a rapid equilibrium network needs to know about the model it
