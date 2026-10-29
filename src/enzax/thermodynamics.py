@@ -61,6 +61,39 @@ def get_reversibility(
     return eqx.error_if(out, jnp.isnan(out), "Reversibility is nan!")
 
 
+def get_reverse_term(
+    reactant_conc: ReactantArr,
+    forward_order: ReactantArr,
+    dgf: ReactantArr,
+    temperature: Scalar,
+    reactant_stoichiometry: StaticReactantArr,
+    water_stoichiometry: float,
+    water_dgf: float,
+) -> Scalar:
+    """Get a reaction's forward term multiplied by Q/K.
+
+    The forward term is the product of each reactant's concentration raised
+    to its forward order, so a rate of the form forward * (1 - Q/K) is
+    forward - reverse. Each reactant's exponents are added before any
+    concentration is raised to them, so a substrate whose forward order
+    matches its stoichiometric coefficient drops out, and the result stays
+    finite when that substrate's concentration is zero. A reactant left with a
+    negative exponent has its concentration clipped below at 1e-12.
+    """
+    RT = temperature * GAS_CONSTANT
+    dgr_std = jnp.ravel(
+        reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf,
+    )[0]
+    exponent = jnp.ravel(forward_order + reactant_stoichiometry)
+    conc = jnp.ravel(reactant_conc)
+    base = jnp.where(
+        exponent > 0,
+        jnp.maximum(conc, 0.0),
+        jnp.maximum(conc, 1e-12),
+    )
+    return jnp.exp(dgr_std / RT) * jnp.prod(base**exponent)
+
+
 def get_keq(
     dgf: Array,
     temperature: Scalar,

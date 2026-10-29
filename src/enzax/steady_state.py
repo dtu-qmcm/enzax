@@ -20,6 +20,13 @@ from jaxtyping import PyTree
 
 from enzax.array_types import OdeStateArr
 from enzax.kinetic_model import KineticModel
+from enzax.non_negative import (
+    DEFAULT_NEGATIVE_TOLERANCE,
+    NonNegativeSolver,
+    clamp_at_zero,
+    clamp_dae_rate,
+    get_dae_balanced_conc,
+)
 
 # The step count a steady state solve is allowed before it is called a
 # failure. See `get_steady_state`.
@@ -35,7 +42,7 @@ NEWTON_LINEAR_SOLVER = lx.AutoLinearSolver(well_posed=False)
 
 @eqx.filter_jit()
 def get_steady_state(
-    rhs,
+    model: KineticModel,
     guess: OdeStateArr,
     parameters: PyTree,
     ivp_rtol: float = 1e-9,
@@ -46,19 +53,16 @@ def get_steady_state(
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
     adjoint: diffrax.AbstractAdjoint | None = None,
+    negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
 ) -> OdeStateArr:
     """Get the steady state of a kinetic model, using diffrax.
 
     Returns NaN if no steady state was found, so that a sampler treats the
     point as a divergence rather than crashing.
 
-    :param rhs: a function matching diffrax's required signature for an ODE
-    right hand side. It should take in three arguments: an array of real
-    numbers `t`, a PyTree of states `y` and a PyTree of auxiliary arguments `
-    args`. It should return a PyTree with the same shape as `y`.
+    :param model: the kinetic model to solve.
 
-    :param guess: a JAX array of floats. Must have the same length as `rhs`'s
-    `y` and return value.
+    :param guess: the ODE state to start from.
 
     :param ivp_rtol: relative tolerance of the initial value problem. Unused if
     `stepsize_controller` is given.
@@ -87,8 +91,13 @@ def get_steady_state(
     implicit function theorem. This is almost definitely what you want to use
     as it avoids differentiating the ODE solve leading to the steady state. The
     argument is here for benchmarking.
+
+    :param negative_tolerance: how far below zero a balanced species'
+    concentration may go before a step is rejected.
     """
-    term = diffrax.ODETerm(rhs)
+    term = diffrax.ODETerm(
+        lambda t, y, args: clamp_at_zero(y, model.dndt(y, args)),
+    )
     if solver is None:
         solver = diffrax.Kvaerno5()
     t0 = jnp.array(0.0)
@@ -113,7 +122,11 @@ def get_steady_state(
         adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
         terms=term,
-        solver=solver,
+        solver=NonNegativeSolver(
+            solver,
+            get_conc=model.get_balanced_conc,
+            tolerance=negative_tolerance,
+        ),
         t0=t0,
         t1=t1,
         dt0=dt0,
@@ -202,6 +215,7 @@ def get_steady_state_hybrid(
     newton_max_steps: int = 10,
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
+    negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
 ) -> OdeStateArr:
     """Get a steady state, trying Newton first and integrating from its answer.
 
@@ -230,6 +244,7 @@ def get_steady_state_hybrid(
         solver=solver,
         stepsize_controller=stepsize_controller,
         adjoint=adjoint,
+        negative_tolerance=negative_tolerance,
     )
 
 
@@ -245,6 +260,7 @@ def get_steady_state_dae(
     max_steps: int | None = DEFAULT_MAX_STEPS,
     suppress_algebraic_error: bool = True,
     adjoint: diffrax.AbstractAdjoint | None = None,
+    negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
 ) -> OdeStateArr:
     """Get the steady state of a model with rapid equilibria by integrating it
     as a differential algebraic equation.
@@ -270,10 +286,14 @@ def get_steady_state_dae(
         adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
         terms=SemiExplicitDAETerm(
-            model.dae_vector_field,
+            lambda t, y, args: clamp_dae_rate(model, t, y, args),
             (False, jax.tree.map(lambda _: True, y0[1])),
         ),
-        solver=BDF(suppress_algebraic_error=suppress_algebraic_error),
+        solver=NonNegativeSolver(
+            BDF(suppress_algebraic_error=suppress_algebraic_error),
+            get_conc=lambda y, args: get_dae_balanced_conc(model, y, args),
+            tolerance=negative_tolerance,
+        ),
         t0=jnp.array(0.0),
         t1=jnp.inf,
         dt0=jnp.array(0.000001),

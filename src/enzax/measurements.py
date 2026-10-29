@@ -26,7 +26,7 @@ from jaxtyping import Array
 from enzax.array_types import ParamDict
 from enzax.kinetic_model import KineticModel
 from enzax.parameter_split import IndexArr
-from enzax.parameters import INDEX_DTYPE
+from enzax.parameters import INDEX_DTYPE, SEP
 
 
 def check_positive(measurement: "Measurement", field: str) -> None:
@@ -155,3 +155,71 @@ def pick_algebraic_variables(
         "algebraic variables",
     )
     return algebraic_variables[positions]
+
+
+def get_positions_by_time(
+    ids: Sequence[str],
+    known: Sequence[str],
+    time_labels: Sequence[str],
+    what: str,
+) -> tuple[IndexArr, IndexArr]:
+    """Get the time and item positions of ids like {item}|{time label}."""
+    split = [i.rsplit(SEP, 1) for i in ids]
+    no_time = [i for i, parts in zip(ids, split) if len(parts) != 2]
+    if no_time:
+        msg = f"These ids have no time label: {no_time}."
+        raise ValueError(msg)
+    items, times = zip(*split)
+    unknown_times = sorted({t for t in times if t not in time_labels})
+    if unknown_times:
+        msg = (
+            f"There are no time points {unknown_times}. The time points are "
+            f"{list(time_labels)}."
+        )
+        raise ValueError(msg)
+    time_positions = np.array(
+        [list(time_labels).index(t) for t in times],
+        dtype=INDEX_DTYPE,
+    )
+    return time_positions, get_positions(items, known, what)
+
+
+def pick_concs_by_time(
+    model: KineticModel,
+    conc: Array,
+    time_labels: Sequence[str],
+    ids: Sequence[str],
+) -> Array:
+    """Pick some species' concentrations at some times.
+
+    conc holds every species' concentration at each time point, with shape
+    (n_time, n_species), and time_labels names the time points in order. Each
+    id is a species id and a time label, as {species}|{time label}.
+    """
+    time_positions, positions = get_positions_by_time(
+        ids,
+        model.species,
+        time_labels,
+        "species",
+    )
+    return conc[time_positions, positions]
+
+
+def pick_fluxes_by_time(
+    model: KineticModel,
+    flux: Array,
+    time_labels: Sequence[str],
+    ids: Sequence[str],
+) -> Array:
+    """Pick some reactions' fluxes at some times.
+
+    Like pick_concs_by_time, with flux shaped (n_time, n_reaction) and ids
+    like {reaction}|{time label}.
+    """
+    time_positions, positions = get_positions_by_time(
+        ids,
+        model.reaction_ids,
+        time_labels,
+        "reactions",
+    )
+    return flux[time_positions, positions]

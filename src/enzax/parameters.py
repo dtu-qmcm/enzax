@@ -84,6 +84,7 @@ STRUCTURAL_PARAMETERS = (
     "dgf",
     "log_conc_unbalanced",
     "moiety_totals",
+    "log_amount_initial",
     "temperature",
 )
 

@@ -26,7 +26,7 @@ EXAMPLE_K = {
 EXAMPLE_ENZYME = {"r1": jnp.log(0.3), "e1": jnp.log(0.2)}
 
 
-def get_flux(rate_equation, enzyme_label="r1"):
+def get_flux(rate_equation, enzyme_label="r1", example_conc=EXAMPLE_CONC):
     """Build a one-reaction model and evaluate its flux.
 
     The parameter values come from `EXAMPLE_K` and friends, but which of them
@@ -54,7 +54,7 @@ def get_flux(rate_equation, enzyme_label="r1"):
     if "log_tc" in labelling:
         spec["log_tc"] = {"r1": -0.2}
     parameters = pack_parameters(labelling, spec)
-    conc = EXAMPLE_CONC[
+    conc = example_conc[
         jnp.array([EXAMPLE_SPECIES.index(s) for s in model.balanced_species])
     ]
     return model.flux(conc, parameters)[0]
@@ -70,6 +70,14 @@ def test_reversible_michaelis_menten():
     expected_rate = 0.04342889
     rate = get_flux(MichaelisMenten(stoichiometry=R1, water_stoichiometry=0.0))
     assert jnp.isclose(rate, expected_rate)
+
+
+def test_reversible_michaelis_menten_runs_backwards_from_a_zero_substrate():
+    reaction = MichaelisMenten(stoichiometry=R1, water_stoichiometry=0.0)
+    at_zero = get_flux(reaction, example_conc=EXAMPLE_CONC.at[0].set(0.0))
+    near_zero = get_flux(reaction, example_conc=EXAMPLE_CONC.at[0].set(1e-9))
+    assert at_zero < 0
+    assert jnp.isclose(at_zero, near_zero, rtol=1e-6)
 
 
 def test_reversible_michaelis_menten_with_enzyme_name():

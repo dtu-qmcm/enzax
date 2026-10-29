@@ -1,5 +1,5 @@
 import operator
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 
 import diffrax
@@ -19,11 +19,19 @@ from enzax.kinetic_model import KineticModel
 from enzax.measurements import (
     Measurement,
     pick_concs,
+    pick_concs_by_time,
     pick_enzymes,
     pick_fluxes,
+    pick_fluxes_by_time,
 )
 from enzax.parameter_split import ParameterSplit, combine_parameters
+from enzax.parameters import SEP
 from enzax.steady_state import get_steady_state_hybrid
+from enzax.time_course import (
+    INITIAL_STATE_PARAMETER,
+    get_initial_state_labelling,
+    get_measurables_time_course_single_experiment,
+)
 
 
 def prior_from_truth(
@@ -208,7 +216,9 @@ def get_measurables_single_experiment(
         returns NaN when it finds no steady state, and flux raises on a NaN
         concentration, so in that case the concentrations and fluxes are
         computed at the guess instead: they are finite but meaningless, and
-        found says to throw them away.
+        found says to throw them away. Balanced species' concentrations are
+        clipped below at zero, since a solve can leave a species that has run
+        out a little below zero.
     """
     guess = jnp.where(jnp.isfinite(guess), guess, 0.01)
     steady = get_steady_state_hybrid(
@@ -223,9 +233,9 @@ def get_measurables_single_experiment(
         stepsize_controller=stepsize_controller,
     )
     found = jnp.isfinite(steady).all()
-    conc_balanced = model.get_balanced_conc(
-        jnp.where(found, steady, guess),
-        parameters,
+    conc_balanced = jnp.maximum(
+        model.get_balanced_conc(jnp.where(found, steady, guess), parameters),
+        0.0,
     )
     conc = model.get_conc(
         conc_balanced,
@@ -413,3 +423,234 @@ def log_density(
         stepsize_controller,
     )
     return density
+
+
+TimeGrids = tuple[tuple[tuple[str, ...], tuple[float, ...]], ...]
+
+
+def get_time_grids(
+    layout: ExperimentLayout,
+    times: Mapping[str, Mapping[str, float]],
+) -> TimeGrids:
+    """Check each experiment's time grid and freeze the grids in layout order.
+
+    Each experiment in the layout needs a grid, and no other experiments may
+    have one. A grid maps time labels to times, which must increase in the
+    order given, start at 0 or later and end after 0. Time labels must be
+    non-empty and must not contain the separator.
+    """
+    missing = [e for e in layout.experiments if e not in times]
+    extra = [e for e in times if e not in layout.experiments]
+    if missing or extra:
+        msg = (
+            "times needs a grid for each experiment in the layout, "
+            f"{list(layout.experiments)}, and no others. Missing: {missing}. "
+            f"Extra: {extra}."
+        )
+        raise ValueError(msg)
+    grids = []
+    for experiment in layout.experiments:
+        labels = tuple(times[experiment])
+        values = tuple(float(times[experiment][label]) for label in labels)
+        bad_labels = [label for label in labels if not label or SEP in label]
+        if bad_labels:
+            msg = (
+                f"Time labels must be non-empty and must not contain {SEP!r}, "
+                f"but {experiment!r} has {bad_labels}."
+            )
+            raise ValueError(msg)
+        increasing = all(a < b for a, b in zip(values, values[1:]))
+        if not values or values[0] < 0 or values[-1] <= 0 or not increasing:
+            msg = (
+                f"The times of {experiment!r} must increase, start at 0 or "
+                f"later and end after 0, but they are {list(values)}."
+            )
+            raise ValueError(msg)
+        grids.append((labels, values))
+    return tuple(grids)
+
+
+def check_time_course_parameters(
+    model: KineticModel,
+    layout: ExperimentLayout,
+    split: ParameterSplit | None,
+) -> None:
+    """Raise unless the parameters can describe a time course."""
+    if INITIAL_STATE_PARAMETER not in layout.labelling:
+        msg = (
+            f"A time course needs the {INITIAL_STATE_PARAMETER} parameter. "
+            "Merge get_initial_state_labelling(model) into the labelling the "
+            "layout is made from."
+        )
+        raise ValueError(msg)
+    if not model.moiety_label_species:
+        return
+    if split is None or split.free_positions.get("moiety_totals"):
+        msg = (
+            "A time course takes the conserved moiety totals from the initial "
+            "amounts and ignores the moiety_totals parameter, so it must be "
+            "fixed with a split."
+        )
+        raise ValueError(msg)
+
+
+@partial(jax.jit, static_argnames=("grids", "get_measurables"))
+def _log_density_time_course(
+    free_parameters: PyTree,
+    model: KineticModel,
+    prior: PyTree,
+    grids: TimeGrids,
+    layout: ExperimentLayout,
+    split: ParameterSplit | None,
+    conc_measurements: Sequence[Measurement],
+    enzyme_measurements: Sequence[Measurement],
+    flux_measurements: Sequence[Measurement],
+    get_measurables: Callable,
+) -> Scalar:
+    if split is not None:
+        params = combine_parameters(split, free_parameters)
+    else:
+        params = free_parameters
+    parameters_by_experiment = gather_parameters_by_experiment(layout, params)
+    amount_initial = jnp.exp(
+        parameters_by_experiment[INITIAL_STATE_PARAMETER],
+    )
+    n_time = max(len(values) for _, values in grids)
+    ts = jnp.array(
+        [values + values[-1:] * (n_time - len(values)) for _, values in grids],
+    )
+    found, conc, flux, _ = jax.vmap(
+        lambda parameters, amounts, ts: get_measurables(
+            model,
+            parameters,
+            amounts,
+            ts,
+        ),
+    )(parameters_by_experiment, amount_initial, ts)
+    time_labels = dict(
+        zip(layout.experiments, (labels for labels, _ in grids)),
+    )
+    conc_hat, enz_hat, flux_hat = (
+        jax.tree.map(pick, measurements, is_leaf=match_measurement)
+        for measurements, pick in (
+            (
+                conc_measurements,
+                lambda m: pick_concs_by_time(
+                    model,
+                    pick_experiment(layout, conc, m.experiment),
+                    time_labels[m.experiment],
+                    m.ids,
+                ),
+            ),
+            (
+                enzyme_measurements,
+                lambda m: pick_enzymes(
+                    model,
+                    pick_experiment(
+                        layout,
+                        parameters_by_experiment,
+                        m.experiment,
+                    ),
+                    m.ids,
+                ),
+            ),
+            (
+                flux_measurements,
+                lambda m: pick_fluxes_by_time(
+                    model,
+                    pick_experiment(layout, flux, m.experiment),
+                    time_labels[m.experiment],
+                    m.ids,
+                ),
+            ),
+        )
+    )
+    llik_conc, llik_enz, llik_flux = (
+        jax.tree.map(
+            lambda m, yhat: m.log_likelihood(yhat).sum(),
+            measurements,
+            yhats,
+            is_leaf=match_measurement,
+        )
+        for measurements, yhats in (
+            (conc_measurements, conc_hat),
+            (enzyme_measurements, enz_hat),
+            (flux_measurements, flux_hat),
+        )
+    )
+    llik = jax.tree.reduce(operator.add, (llik_conc, llik_enz, llik_flux), 0.0)
+    log_prior = enzax_prior_logdensity(free_parameters, prior)
+    return jnp.where(found.all(), log_prior + llik, jnp.nan)
+
+
+def log_density_time_course(
+    free_parameters: PyTree,
+    model: KineticModel,
+    prior: PyTree,
+    times: Mapping[str, Mapping[str, float]],
+    layout: ExperimentLayout | None = None,
+    split: ParameterSplit | None = None,
+    conc_measurements: Sequence[Measurement] = (),
+    enzyme_measurements: Sequence[Measurement] = (),
+    flux_measurements: Sequence[Measurement] = (),
+    get_measurables: Callable = get_measurables_time_course_single_experiment,
+) -> Scalar:
+    """Get the log posterior density of the parameters, given time courses.
+
+    Each experiment starts at time 0 from its initial amounts, the parameter
+    log_amount_initial, and is measured at the time points in its grid.
+
+    :param free_parameters: as for log_density_grapevine.
+
+    :param prior: as for log_density_grapevine.
+
+    :param times: each experiment's time grid, mapping time labels to times,
+        e.g. {"exp1": {"0min": 0.0, "5min": 0.083}}. The times must increase
+        in the order given. Measurement ids name a time point by its label,
+        as {species}|{time label} or {reaction}|{time label}.
+
+    :param layout: which parameter values each experiment has. Its labelling
+        must include log_amount_initial: make it from the model's labelling
+        merged with get_initial_state_labelling(model). Defaults to a single
+        experiment, exp1, with nothing experiment-specific.
+
+    :param split: which parameters are free, and the values of the rest. A
+        model with conserved moieties needs one that fixes moiety_totals,
+        which a time course ignores.
+
+    :param conc_measurements: measurements of species concentrations, with
+        time labels in their ids.
+
+    :param enzyme_measurements: measurements of enzyme concentrations, which
+        do not change over time, so their ids have no time labels.
+
+    :param flux_measurements: measurements of fluxes, with time labels in
+        their ids.
+
+    :param get_measurables: the function that solves one experiment's time
+        course: get_measurables_time_course_single_experiment, the default,
+        or get_measurables_time_course_single_experiment_dae, optionally
+        wrapped with functools.partial to change its solver options. Create
+        it once and reuse it, since a new one means a new compilation.
+
+    :return: the log density, which is NaN if any experiment's solve failed.
+    """
+    if layout is None:
+        layout = get_experiment_layout(
+            model.parameter_labelling | get_initial_state_labelling(model),
+            [DEFAULT_EXPERIMENT],
+            {},
+        )
+    check_time_course_parameters(model, layout, split)
+    return _log_density_time_course(
+        free_parameters,
+        model,
+        prior,
+        get_time_grids(layout, times),
+        layout,
+        split,
+        conc_measurements,
+        enzyme_measurements,
+        flux_measurements,
+        get_measurables,
+    )

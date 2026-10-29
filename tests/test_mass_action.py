@@ -62,6 +62,21 @@ def test_the_reversible_rate_subtracts_the_backward_rate():
     assert np.isclose(flux, expected, rtol=1e-10)
 
 
+def test_the_backward_rate_runs_from_a_zero_substrate():
+    conc = {"a": 0.0, "c": 0.5, "d": 0.2}
+    flux = get_flux(MassAction(stoichiometry=STOICHIOMETRY), conc)
+    assert np.isclose(flux, -2.0 * 0.2 / np.exp(LOG_KEQ), rtol=1e-10)
+
+
+def test_the_gradient_is_finite_at_a_zero_substrate():
+    model = get_model({"r1": MassAction(stoichiometry=STOICHIOMETRY)})
+    parameters = get_parameters(model)
+    grad = jax.grad(lambda conc: model.flux(conc, parameters)[0])(
+        jnp.array([0.0, 0.5, 0.2]),
+    )
+    assert jnp.isfinite(grad).all()
+
+
 def test_the_flux_is_zero_at_equilibrium():
     a, c = 0.3, 0.5
     conc = {"a": a, "c": c, "d": np.exp(LOG_KEQ) * a**2 * c}

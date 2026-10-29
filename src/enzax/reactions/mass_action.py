@@ -27,7 +27,7 @@ from enzax.reaction import (
     get_species_positions,
     get_substrates,
 )
-from enzax.thermodynamics import get_reversibility
+from enzax.thermodynamics import get_reverse_term
 
 
 @dataclass(frozen=True)
@@ -131,8 +131,9 @@ class MassAction(Reaction):
         )
         if not self.reversible:
             return forward
-        return forward * get_reversibility(
+        return forward - rate_input.k_plus * get_reverse_term(
             reactant_conc=conc[rate_input.ix_reactant],
+            forward_order=jnp.maximum(-rate_input.reactant_stoichiometry, 0.0),
             dgf=rate_input.dgf,
             temperature=rate_input.temperature,
             reactant_stoichiometry=rate_input.reactant_stoichiometry,
