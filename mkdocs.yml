@@ -27,6 +27,7 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.keys
   - pymdownx.snippets
   - pymdownx.superfences

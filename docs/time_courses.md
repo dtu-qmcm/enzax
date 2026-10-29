@@ -97,7 +97,7 @@ One measurement can cover several species and several time points. `gdp_fucose.l
 
 ## Fitting time courses
 
-`log_density_time_course` is the time-course counterpart of `log_density`. Besides the usual arguments it takes the time grids. Here the five fitting experiments share their kinetic parameters, while each has its own enzyme loadings and initial amounts, and only the turnover numbers are inferred:
+`log_density_time_course` is the time-course counterpart of `log_density`. Besides the usual arguments it takes the time grids. Here the five fitting experiments share their kinetic parameters, while each has its own enzyme loadings and initial amounts, and the free parameters and prior are those of `scripts/cascade_demo.py`:
 
 ```python
 from enzax.experiments import (
@@ -117,7 +117,7 @@ experiments = gdp_fucose.FITTING_EXPERIMENTS
 layout = get_experiment_layout(
     labelling,
     experiments,
-    {"log_enzyme": None, "log_amount_initial": None},
+    gdp_fucose.EXPERIMENT_SPECIFIC,
 )
 expanded_parameters = merge_experiment_parameters(
     layout,
@@ -129,14 +129,30 @@ expanded_parameters = merge_experiment_parameters(
 split = split_parameters_by_freeing(
     layout.labelling,
     expanded_parameters,
-    {"log_kcat": None},
+    {
+        "log_kcat": [r for r in gdp_fucose.KCAT if r != "PPA"],
+        "log_amount_initial": ["polyp"],
+        "log_saturation_constant": [
+            "ki|FKP_fk|gdp_fucose",
+            "km|UNKNOWN_HYDROLASE|atp",
+            "km|UNKNOWN_HYDROLASE|amp",
+            "km|UNKNOWN_HYDROLASE|adp",
+        ],
+        "dgf": None,
+    },
 )
 free_parameters = get_free_parameters(split, expanded_parameters)
 times, conc_measurements = gdp_fucose.load_measurements(experiments)
+prior = prior_from_truth(free_parameters, sd=1.0) | {
+    "dgf": (
+        free_parameters["dgf"],
+        jnp.asarray(gdp_fucose.get_dgf_covariance()),
+    ),
+}
 log_density_time_course(
     free_parameters,
     model,
-    prior_from_truth(free_parameters, sd=1.0),
+    prior,
     times,
     layout=layout,
     split=split,
@@ -147,5 +163,19 @@ log_density_time_course(
 The layout must be made from a labelling that includes `log_amount_initial`, and a model with conserved moieties needs a split that fixes `moiety_totals`; the density raises otherwise. Concentration and flux measurements name time points in their ids; enzyme measurements do not, since enzyme levels do not change over time.
 
 `get_measurables` chooses the solve: the default, `get_measurables_time_course_single_experiment`, or `get_measurables_time_course_single_experiment_dae`, either of them wrapped with `functools.partial` to change its options. Create it once and reuse it, since each new one is compiled anew. As with `log_density`, the density is NaN if any experiment's solve fails, and experiments are solved together with `jax.vmap`.
+
+The figures below compare experiment FE13's measurements with its time course at the prior mean and at the maximum a posteriori (MAP) estimate of this log density.
+
+??? example "Code for these figures"
+
+    ```python
+    --8<-- "scripts/cascade_demo.py:plots"
+    ```
+
+    `scripts/cascade_demo.py` calls `plot_fit` with the prior mean and the MAP after fitting, and saves the figures: `uv run --group mcmc python scripts/cascade_demo.py`.
+
+![FE13's measured GMP, ATP, GTP and GDP-fucose against the model's time courses at the prior mean](img/time_course_prior_mean.png)
+
+![FE13's measured GMP, ATP, GTP and GDP-fucose against the model's time courses at the MAP](img/time_course_map.png)
 
 `scripts/mcmc_demo.py` shows how to sample from a log density like this one. `scripts/cascade_demo.py` fits the cascade's free parameters to the five experiments by maximum a posteriori optimisation and compares the fit with two validation experiments.
