@@ -1,0 +1,384 @@
+"""A cell-free enzyme cascade that makes GDP-fucose, followed over time.
+
+The cascade, the data and the experiment design come from Huber et al. (2023),
+Metabolic Engineering 81:10-25, https://doi.org/10.1016/j.ymben.2023.10.007.
+The model is the one in https://github.com/dtu-qmcm/gdp_fucose_enzax, which
+fixes problems with the model as published, with three changes. It leaves out
+that implementation's competitive inhibition of FKP_fk by pyrophosphate.
+Polyphosphate, which PPK3 uses to regenerate ATP and GTP, is a balanced
+species, polyp, counted in phosphate residues and used up one residue per
+reaction, rather than an endless supply. And PPK3's two reactions share one
+active site: each has the other's reactants as competitive inhibitors, with
+the other's Michaelis constants as their inhibition constants, and both share
+one Michaelis constant for polyphosphate. The amount of polyphosphate loaded
+is not known: POLYP_INITIAL is a guess, to be inferred. The other parameters
+are that implementation's prior means.
+
+PPK3's reactions are SymbolicReactions with the same form as MichaelisMenten
+apart from their driving force. Taking a residue off a polyphosphate chain
+leaves the number of chains unchanged, so the residues' concentration does not
+enter the mass action ratio: a residue in a chain has unit activity, as water
+does, and the driving force is 1 - [NTP] / ([NDP] K). The formation energy of
+polyp is then the free energy of one residue in a chain. Its prior mean puts
+the equilibrium ATP/ADP ratio at 3, the middle of the 2.3 to 4 measured for
+polyphosphate kinases (https://www.beilstein-journals.org/bjoc/articles/18/134
+and https://pubmed.ncbi.nlm.nih.gov/39257778/), with a standard deviation of
+about 1 kJ/mol on PPK3's standard free energy change.
+
+FKP_fk, the kinase activity of FKP, is competitively inhibited by
+GDP-fucose, which fits the data's fast start and later slowdown far better
+than any version without it. Its inhibition constant is a placeholder, to be
+inferred.
+
+The formation energies' means come from eQuilibrator; their covariance, in
+gdp_fucose_dgf_covariance.csv, is eQuilibrator's too, as our implementation
+fetched it, apart from polyphosphate's. get_dgf_covariance
+returns it in labelling order, for a multivariate normal prior.
+
+UNKNOWN_HYDROLASE is not part of the published cascade. It is a nuisance
+reaction, added to our implementation so that the model can make AMP, which
+the data show building up; its parameters are guesses.
+
+The measurements in gdp_fucose_measurements.csv are that implementation's
+preparation of the data in
+https://github.com/klamt-lab/GDP-Fucose_OptMet2023_Paper (Apache-2.0): the
+adenosine nucleotides are rescaled to add up to the initial ATP, and the rows
+at time 0 hold the known initial amounts rather than measurements.
+load_measurements rescales the guanine nucleotides in the same way.
+
+Times are in hours, and amounts in mM in a pot of volume 1, so amounts and
+concentrations are the same numbers. The formation energies are eQuilibrator's
+estimates, converted from a 1 M to a 1 mM standard state. The pot is closed, so
+five conserved moieties follow from the initial amounts.
+"""
+
+import csv
+from pathlib import Path
+
+import numpy as np
+
+from enzax.experiments import get_experiment_layout
+from enzax.kinetic_model import KineticModel
+from enzax.measurements import LognormalMeasurement
+from enzax.parameters import SEP, pack_parameters
+from enzax.reactions import MichaelisMenten, SymbolicReaction
+from enzax.time_course import get_initial_state_labelling
+
+DATA_FILE = Path(__file__).parent / "gdp_fucose_measurements.csv"
+DGF_COVARIANCE_FILE = Path(__file__).parent / "gdp_fucose_dgf_covariance.csv"
+BALANCED_SPECIES = [
+    "pp",
+    "p",
+    "atp",
+    "adp",
+    "amp",
+    "fucose",
+    "fucose1p",
+    "gdp_fucose",
+    "gtp",
+    "gdp",
+    "gmp",
+    "polyp",
+]
+MEASURED_SPECIES = ["amp", "adp", "atp", "gmp", "gdp", "gtp", "gdp_fucose"]
+GUANINE_SPECIES = ["gmp", "gdp", "gtp", "gdp_fucose"]
+FITTING_EXPERIMENTS = [
+    "FE13",
+    "FE17_1FKP",
+    "FE17_07FKP",
+    "FE18_1FKP",
+    "FE18_07FKP",
+]
+VALIDATION_EXPERIMENTS = ["FE20_Validation1", "FE20_Validation2"]
+ENZYME_LEVELS = {
+    "FE13": (0.002933939, 0.003106716, 0.00115141, 0.03306205),
+    "FE17_1FKP": (0.00946432, 0.003106716, 0.00115141, 0.006358087),
+    "FE17_07FKP": (0.006625024, 0.003106716, 0.00115141, 0.006358087),
+    "FE18_1FKP": (0.00946432, 0.03106716, 0.002878526, 0.006358087),
+    "FE18_07FKP": (0.006625024, 0.03106716, 0.002878526, 0.006358087),
+    "FE20_Validation1": (0.01491, 0.020148, 0.009456, 0.002413),
+    "FE20_Validation2": (0.007145, 0.007279, 0.00104, 0.002413),
+}
+UNKNOWN_HYDROLASE_LEVEL = 0.0001
+INITIAL_AMOUNTS = {
+    "FE13": {"gmp": 21.5, "fucose": 21.5, "atp": 6.0},
+    "FE17_1FKP": {"gmp": 21.0, "fucose": 21.0, "atp": 5.6},
+    "FE17_07FKP": {"gmp": 21.0, "fucose": 21.0, "atp": 5.6},
+    "FE18_1FKP": {"gmp": 25.7, "fucose": 25.7, "atp": 6.0},
+    "FE18_07FKP": {"gmp": 25.7, "fucose": 25.7, "atp": 6.0},
+    "FE20_Validation1": {"gmp": 22.0, "fucose": 22.0, "atp": 5.0},
+    "FE20_Validation2": {"gmp": 22.0, "fucose": 22.0, "atp": 5.0},
+}
+KCAT = {
+    "FKP_fk": 1404.0,
+    "FKP_gt": 36252.0,
+    "GMPK": 752400.0,
+    "PPA": 558000.0,
+    "PPK3_A": 18780.0,
+    "PPK3_G": 15048.0,
+    "UNKNOWN_HYDROLASE": 10000.0,
+}
+SATURATION_CONSTANTS = {
+    "km|FKP_fk|atp": 1.08,
+    "km|FKP_fk|fucose": 0.045,
+    "km|FKP_fk|adp": 1e-2,
+    "km|FKP_fk|fucose1p": 1e-2,
+    "ki|FKP_fk|gdp_fucose": 1.0,
+    "km|FKP_gt|fucose1p": 0.03295,
+    "km|FKP_gt|gtp": 0.012,
+    "km|FKP_gt|pp": 0.135,
+    "km|FKP_gt|gdp_fucose": 0.12,
+    "km|GMPK|atp": 0.5,
+    "km|GMPK|gmp": 0.156,
+    "km|GMPK|adp": 0.017,
+    "km|GMPK|gdp": 0.097,
+    "km|PPA|pp": 0.003,
+    "km|PPK3_A|adp": 2.5,
+    "km|PPK3_A|atp": 2.0,
+    "km|PPK3_G|gdp": 1.2,
+    "km|PPK3_G|gtp": 0.1,
+    "km|PPK3|polyp": 3.0,
+    "km|UNKNOWN_HYDROLASE|atp": 0.5,
+    "km|UNKNOWN_HYDROLASE|amp": 0.5,
+    "km|UNKNOWN_HYDROLASE|adp": 0.5,
+}
+TEMPERATURE = 298.15
+DGF = {
+    species: dgf - 0.008314 * TEMPERATURE * np.log(1000)
+    for species, dgf in {
+        "pp": -1943.542247,
+        "p": -1055.471107,
+        "atp": -2263.627453,
+        "adp": -1388.741241,
+        "amp": -514.189488,
+        "fucose": -236.20833,
+        "fucose1p": -1114.762772,
+        "gdp_fucose": -1950.101734,
+        "gtp": -2771.673718,
+        "gdp": -1894.119776,
+        "gmp": -1019.27507,
+    }.items()
+}
+DGF["polyp"] = DGF["atp"] - DGF["adp"] + 0.008314 * TEMPERATURE * np.log(3.0)
+POLYP_INITIAL = 100.0
+PPK3_RATE = (
+    "kcat * enzyme * (ndp / km_ndp) * (polyp / km_polyp)"
+    " * (1 - (1 - reversibility) * polyp)"
+    " / ((1 + ndp / km_ndp) * (1 + polyp / km_polyp) + (1 + ntp / km_ntp) - 1"
+    " + other_ndp / km_other_ndp + other_ntp / km_other_ntp)"
+)
+
+model = KineticModel(
+    reactions={
+        "FKP_fk": MichaelisMenten(
+            stoichiometry={
+                "atp": -1.0,
+                "fucose": -1.0,
+                "adp": 1.0,
+                "fucose1p": 1.0,
+            },
+            enzyme="fkp",
+            competitive_inhibitors=["gdp_fucose"],
+        ),
+        "FKP_gt": MichaelisMenten(
+            stoichiometry={
+                "gtp": -1.0,
+                "fucose1p": -1.0,
+                "pp": 1.0,
+                "gdp_fucose": 1.0,
+            },
+            enzyme="fkp",
+        ),
+        "GMPK": MichaelisMenten(
+            stoichiometry={"atp": -1.0, "gmp": -1.0, "adp": 1.0, "gdp": 1.0},
+            enzyme="gmpk",
+        ),
+        "PPA": MichaelisMenten(
+            stoichiometry={"pp": -1.0, "p": 2.0},
+            enzyme="ppa",
+            reversible=False,
+        ),
+        "PPK3_A": SymbolicReaction(
+            stoichiometry={"adp": -1.0, "polyp": -1.0, "atp": 1.0},
+            expression=PPK3_RATE,
+            species={
+                "ndp": "adp",
+                "ntp": "atp",
+                "polyp": "polyp",
+                "other_ndp": "gdp",
+                "other_ntp": "gtp",
+            },
+            parameters={
+                "kcat": "log_kcat",
+                "enzyme": {"kind": "log_enzyme", "label": "ppk3"},
+                "km_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|adp",
+                },
+                "km_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|atp",
+                },
+                "km_polyp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3|polyp",
+                },
+                "km_other_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gdp",
+                },
+                "km_other_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gtp",
+                },
+            },
+        ),
+        "PPK3_G": SymbolicReaction(
+            stoichiometry={"gdp": -1.0, "polyp": -1.0, "gtp": 1.0},
+            expression=PPK3_RATE,
+            species={
+                "ndp": "gdp",
+                "ntp": "gtp",
+                "polyp": "polyp",
+                "other_ndp": "adp",
+                "other_ntp": "atp",
+            },
+            parameters={
+                "kcat": "log_kcat",
+                "enzyme": {"kind": "log_enzyme", "label": "ppk3"},
+                "km_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gdp",
+                },
+                "km_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_G|gtp",
+                },
+                "km_polyp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3|polyp",
+                },
+                "km_other_ndp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|adp",
+                },
+                "km_other_ntp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|PPK3_A|atp",
+                },
+            },
+        ),
+        "UNKNOWN_HYDROLASE": MichaelisMenten(
+            stoichiometry={"atp": -1.0, "amp": -1.0, "adp": 2.0},
+            enzyme="unknown_hydrolase",
+        ),
+    },
+    balanced_species=BALANCED_SPECIES,
+    moiety_label_species=["p", "polyp", "amp", "fucose", "gmp"],
+)
+labelling = model.parameter_labelling | get_initial_state_labelling(model)
+
+
+EXPERIMENTS = FITTING_EXPERIMENTS + VALIDATION_EXPERIMENTS
+EXPERIMENT_SPECIFIC = {
+    "log_enzyme": None,
+    "log_amount_initial": [s for s in BALANCED_SPECIES if s != "polyp"],
+}
+layout = get_experiment_layout(labelling, EXPERIMENTS, EXPERIMENT_SPECIFIC)
+parameters = pack_parameters(
+    layout.labelling,
+    {
+        "log_saturation_constant": {
+            label: np.log(SATURATION_CONSTANTS[label])
+            for label in labelling["log_saturation_constant"]
+        },
+        "log_kcat": {reaction: np.log(kcat) for reaction, kcat in KCAT.items()},
+        "log_enzyme": {
+            f"{enzyme}{SEP}{experiment}": np.log(level)
+            for experiment in EXPERIMENTS
+            for enzyme, level in zip(
+                ["fkp", "ppa", "ppk3", "gmpk", "unknown_hydrolase"],
+                [*ENZYME_LEVELS[experiment], UNKNOWN_HYDROLASE_LEVEL],
+            )
+        },
+        "dgf": {species: DGF[species] for species in labelling["dgf"]},
+        "moiety_totals": {
+            species: 0.0 for species in labelling["moiety_totals"]
+        },
+        "log_amount_initial": {
+            f"{species}{SEP}{experiment}": (
+                np.log(INITIAL_AMOUNTS[experiment][species])
+                if species in INITIAL_AMOUNTS[experiment]
+                else -np.inf
+            )
+            for experiment in EXPERIMENTS
+            for species in EXPERIMENT_SPECIFIC["log_amount_initial"]
+        }
+        | {"polyp": np.log(POLYP_INITIAL)},
+        "temperature": TEMPERATURE,
+    },
+)
+
+
+def load_measurements(
+    experiments: list[str],
+    error: float = 0.1,
+) -> tuple[dict[str, dict[str, float]], list[LognormalMeasurement]]:
+    """Get the experiments' time grids and concentration measurements.
+
+    Each experiment's time points are labelled by the minute they were taken
+    at, as in "50min". The rows at time 0 are left out, since they hold the
+    initial amounts, and so are values of zero, which a lognormal measurement
+    cannot score.
+
+    The measured guanine nucleotides add up to more than the initial GMP, by
+    up to 90% at the end of a run, although the pot conserves them. Like the
+    adenosine nucleotides in the data file, they are rescaled at each time
+    point to add up to the initial GMP.
+
+    :param error: the standard deviation of every measurement on the log
+        scale.
+    """
+    with DATA_FILE.open() as f:
+        rows = list(csv.DictReader(f))
+    times = {}
+    measurements = []
+    for experiment in experiments:
+        grid = {}
+        ids = []
+        values = []
+        for row in rows:
+            time = float(row["time"])
+            if row["experiment"] != experiment or time == 0.0:
+                continue
+            label = f"{round(time * 60)}min"
+            grid[label] = time
+            guanine = sum(float(row[species]) for species in GUANINE_SPECIES)
+            scale = {
+                species: INITIAL_AMOUNTS[experiment]["gmp"] / guanine
+                for species in GUANINE_SPECIES
+            }
+            for species in MEASURED_SPECIES:
+                if row[species] and float(row[species]) > 0:
+                    ids.append(f"{species}|{label}")
+                    values.append(float(row[species]) * scale.get(species, 1.0))
+        times[experiment] = grid
+        measurements.append(
+            LognormalMeasurement(
+                experiment=experiment,
+                ids=ids,
+                values=np.array(values),
+                errors=np.full(len(values), error),
+            ),
+        )
+    return times, measurements
+
+
+def get_dgf_covariance() -> np.ndarray:
+    """Get the formation energies' prior covariance, in labelling order."""
+    with DGF_COVARIANCE_FILE.open() as f:
+        rows = list(csv.reader(f))
+    species = rows[0][1:]
+    covariance = np.array([[float(v) for v in row[1:]] for row in rows[1:]])
+    order = [species.index(s) for s in labelling["dgf"]]
+    return covariance[np.ix_(order, order)]

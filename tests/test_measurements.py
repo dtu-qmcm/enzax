@@ -16,8 +16,10 @@ from enzax.measurements import (
     NormalMeasurement,
     pick_algebraic_variables,
     pick_concs,
+    pick_concs_by_time,
     pick_enzymes,
     pick_fluxes,
+    pick_fluxes_by_time,
 )
 from tests.test_algebraic_constraint import TOY
 from tests.test_parameters import CONC, SEPARATE, get_parameters
@@ -234,3 +236,41 @@ def test_values_and_errors_must_be_positive_where_needed(build, message):
 
 def test_a_normal_measurement_can_have_negative_values():
     NormalMeasurement("e", ["r1"], values=[-1.0], errors=[0.1])
+
+
+TIME_LABELS = ["0h", "1h", "2h"]
+CONC_BY_TIME = jnp.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+FLUX_BY_TIME = jnp.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
+
+
+def test_picking_by_time_chooses_species_and_times_by_id():
+    picked = pick_concs_by_time(
+        MODEL,
+        CONC_BY_TIME,
+        TIME_LABELS,
+        ["c|1h", "a|2h", "a|0h"],
+    )
+    assert jnp.array_equal(picked, jnp.array([6.0, 7.0, 1.0]))
+
+
+def test_picking_fluxes_by_time_chooses_reactions_and_times_by_id():
+    picked = pick_fluxes_by_time(
+        MODEL,
+        FLUX_BY_TIME,
+        TIME_LABELS,
+        ["r2|0h", "r1|2h"],
+    )
+    assert jnp.array_equal(picked, jnp.array([0.2, 0.5]))
+
+
+@pytest.mark.parametrize(
+    ("ids", "message"),
+    [
+        (["a|3h"], r"no time points \['3h'\]"),
+        (["d|1h"], r"no species \['d'\]"),
+        (["a"], r"no time label: \['a'\]"),
+    ],
+)
+def test_picking_by_time_rejects_unknown_ids(ids, message):
+    with pytest.raises(ValueError, match=message):
+        pick_concs_by_time(MODEL, CONC_BY_TIME, TIME_LABELS, ids)

@@ -27,6 +27,7 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - pymdownx.details
   - pymdownx.keys
   - pymdownx.snippets
   - pymdownx.superfences
@@ -39,6 +40,7 @@ nav:
   - Getting started: 'getting_started.md'
   - How to make your own rate equation: 'custom_rate_equations.md'
   - Statistical modelling: 'statistical_modelling.md'
+  - Time courses: 'time_courses.md'
   - Performance: 'performance.md'
   - Contributing: 'contributing.md'
   - Accessibility: 'accessibility.md'
@@ -57,3 +59,4 @@ nav:
     - 'api/sbml.md'
     - 'api/steady_state.md'
     - 'api/thermodynamics.md'
+    - 'api/time_course.md'

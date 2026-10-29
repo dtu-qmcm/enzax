@@ -1170,7 +1170,7 @@ class KineticModel(eqx.Module):
             parameters,
         )
         return self._get_rates(
-            jnp.clip(conc_balanced, min=1e-12),
+            jnp.clip(conc_balanced, min=0.0),
             algebraic["variables"],
             parameters,
         )
@@ -1260,15 +1260,14 @@ class KineticModel(eqx.Module):
             algebraic,
             parameters,
         )
-        conc_balanced = jnp.clip(conc_balanced, min=1e-12)
         rates = self._get_rates(
-            conc_balanced,
+            jnp.clip(conc_balanced, min=0.0),
             algebraic["variables"],
             parameters,
         )
         return rates, self._get_algebraic_residuals(
             totals,
-            conc_balanced,
+            jnp.clip(conc_balanced, min=1e-12),
             algebraic,
             parameters,
         )
