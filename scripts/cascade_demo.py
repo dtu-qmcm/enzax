@@ -23,9 +23,11 @@ import os
 
 os.environ.setdefault("EQX_ON_ERROR", "nan")
 
+import functools
 import time
 from pathlib import Path
 
+import diffrax
 import jax
 import numpy as np
 import optimistix as optx
@@ -54,6 +56,10 @@ jax.config.update("jax_enable_x64", True)
 
 IMG_DIR = Path(__file__).parent.parent / "docs" / "img"
 PRIOR_SD = 1.0
+SOLVE = functools.partial(
+    get_measurables_time_course_single_experiment,
+    solver=diffrax.Kvaerno4(),
+)
 FREE_PARAMETERS = {
     "log_kcat": [reaction for reaction in gdp_fucose.KCAT if reaction != "PPA"],
     "log_amount_initial": ["polyp"],
@@ -133,7 +139,7 @@ def get_time_course(layout, split, free, experiment, ts):
         combine_parameters(split, free),
     )
     parameters = pick_experiment(layout, by_experiment, experiment)
-    _, conc, _, _ = get_measurables_time_course_single_experiment(
+    _, conc, _, _ = SOLVE(
         gdp_fucose.model,
         parameters,
         jnp.exp(parameters["log_amount_initial"]),
@@ -258,6 +264,7 @@ def main():
             layout=layout,
             split=split,
             conc_measurements=measurements,
+            get_measurables=SOLVE,
         )
 
     start = time.perf_counter()

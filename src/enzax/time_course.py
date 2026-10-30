@@ -39,6 +39,7 @@ from enzax.non_negative import (
 from enzax.steady_state import DEFAULT_MAX_STEPS
 
 INITIAL_STATE_PARAMETER = "log_amount_initial"
+DEFAULT_CHECKPOINTS = 1000
 
 
 def get_initial_state_labelling(model: KineticModel) -> ParamLabelling:
@@ -148,6 +149,7 @@ def get_measurables_time_course_single_experiment(
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
     negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
+    adjoint: diffrax.AbstractAdjoint | None = None,
 ) -> tuple[
     Bool[Array, ""],
     Float[Array, "n_time n_species"],
@@ -174,6 +176,10 @@ def get_measurables_time_course_single_experiment(
 
     :param negative_tolerance: how far below zero a balanced species'
         concentration may go before a step is rejected.
+
+    :param adjoint: how diffrax differentiates the solve. Defaults to
+        RecursiveCheckpointAdjoint storing up to DEFAULT_CHECKPOINTS steps,
+        so that reverse mode recomputes no steps unless the solve takes more.
 
     :return: whether the solve succeeded, then every species' concentration,
         every reaction's flux and every algebraic variable at each of ts.
@@ -207,7 +213,10 @@ def get_measurables_time_course_single_experiment(
         y0=ode_state_initial,
         saveat=diffrax.SaveAt(ts=ts),
         stepsize_controller=stepsize_controller,
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
+        adjoint=adjoint
+        or diffrax.RecursiveCheckpointAdjoint(
+            checkpoints=min(DEFAULT_CHECKPOINTS, max_steps),
+        ),
         args=parameters,
         max_steps=max_steps,
         throw=False,
@@ -225,6 +234,7 @@ def get_measurables_time_course_single_experiment_dae(
     max_steps: int = DEFAULT_MAX_STEPS,
     suppress_algebraic_error: bool = True,
     negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
+    adjoint: diffrax.AbstractAdjoint | None = None,
 ) -> tuple[
     Bool[Array, ""],
     Float[Array, "n_time n_species"],
@@ -264,7 +274,10 @@ def get_measurables_time_course_single_experiment_dae(
         y0=y0,
         saveat=diffrax.SaveAt(ts=ts),
         stepsize_controller=BDFController(rtol=rtol, atol=atol),
-        adjoint=diffrax.RecursiveCheckpointAdjoint(),
+        adjoint=adjoint
+        or diffrax.RecursiveCheckpointAdjoint(
+            checkpoints=min(DEFAULT_CHECKPOINTS, max_steps),
+        ),
         args=parameters,
         max_steps=max_steps,
         throw=False,
