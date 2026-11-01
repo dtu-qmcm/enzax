@@ -105,14 +105,10 @@ def test_the_cascade_solves_and_conserves_its_moieties():
     assert jnp.allclose(adenine.sum(axis=1), 6.0)
 
 
-def test_the_cascade_conserves_its_moieties_when_polyphosphate_runs_out():
+def test_the_cascade_conserves_its_moieties_over_a_day():
     model = gdp_fucose.model
     parameters = get_cascade_parameters("FE18_1FKP")
-    amount_initial = (
-        jnp.exp(parameters["log_amount_initial"])
-        .at[model.balanced_species.index("polyp")]
-        .set(15.0)
-    )
+    amount_initial = jnp.exp(parameters["log_amount_initial"])
     found, conc, _, _ = get_measurables_time_course_single_experiment(
         model,
         parameters,

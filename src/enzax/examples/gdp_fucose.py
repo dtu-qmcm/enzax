@@ -3,16 +3,19 @@
 The cascade, the data and the experiment design come from Huber et al. (2023),
 Metabolic Engineering 81:10-25, https://doi.org/10.1016/j.ymben.2023.10.007.
 The model is the one in https://github.com/dtu-qmcm/gdp_fucose_enzax, which
-fixes problems with the model as published, with three changes. It leaves out
-that implementation's competitive inhibition of FKP_fk by pyrophosphate.
-Polyphosphate, which PPK3 uses to regenerate ATP and GTP, is a balanced
-species, polyp, counted in phosphate residues and used up one residue per
-reaction, rather than an endless supply. And PPK3's two reactions share one
-active site: each has the other's reactants as competitive inhibitors, with
-the other's Michaelis constants as their inhibition constants, and both share
-one Michaelis constant for polyphosphate. The amount of polyphosphate loaded
-is not known: POLYP_INITIAL is a guess, to be inferred. The other parameters
-are that implementation's prior means.
+fixes problems with the model as published, with two changes. It leaves out
+that implementation's competitive inhibition of FKP_fk by pyrophosphate. And
+PPK3's two reactions share one active site: each has the other's reactants as
+competitive inhibitors, with the other's Michaelis constants as their
+inhibition constants, and both share one Michaelis constant for
+polyphosphate. The other parameters are that implementation's prior means.
+
+Polyphosphate, which PPK3 uses to regenerate ATP and GTP, is loaded in large
+excess (Mahour et al. 2021, ChemCatChem), and Huber et al. treat it as an
+unlimited supply. Here it is an unbalanced species, polyp, held at
+POLYP_CONCENTRATION mM of phosphate residues. Its concentration only enters
+PPK3's saturation terms, as the next paragraph explains, so its exact value
+matters little as long as it is well above PPK3's Michaelis constant.
 
 PPK3's reactions are SymbolicReactions with the same form as MichaelisMenten
 apart from their driving force. Taking a residue off a polyphosphate chain
@@ -30,21 +33,45 @@ GDP-fucose, which fits the data's fast start and later slowdown far better
 than any version without it. Its inhibition constant is a placeholder, to be
 inferred.
 
+GMPK, the guanylate kinase, is a RapidEquilibriumReaction: it is always at
+equilibrium rather than following a rate law. Fitted with a rate law, its mass
+action ratio stays within a few percent of its equilibrium constant from the
+first minutes of each run, and treating it as being at equilibrium removes the
+model's fastest timescale, which halves the number of solver steps.
+
+PPA, the pyrophosphatase, follows an irreversible rate law, as in Huber et
+al.'s model. With eQuilibrator's formation energies it cannot be strictly
+irreversible: late in each run it holds pyrophosphate far below its
+equilibrium level. Treating PPA as being at equilibrium instead fits the data
+clearly worse, so the irreversible rate law stays, as an approximation.
+
 The formation energies' means come from eQuilibrator; their covariance, in
 gdp_fucose_dgf_covariance.csv, is eQuilibrator's too, as our implementation
 fetched it, apart from polyphosphate's. get_dgf_covariance
-returns it in labelling order, for a multivariate normal prior.
+returns it in labelling order, for a multivariate normal prior, and
+get_conditional_dgf_covariance returns the covariance of some of the formation
+energies given that the others are fixed at their prior means.
 
 UNKNOWN_HYDROLASE is not part of the published cascade. It is a nuisance
-reaction, added to our implementation so that the model can make AMP, which
-the data show building up; its parameters are guesses.
+reaction, ATP + AMP <-> 2 ADP, added to our implementation so that the model
+can make AMP, which the data show building up. Its rate is linear in ATP and
+saturating in AMP, written as forward minus reverse so that it makes AMP from
+ADP even when there is no AMP yet. Its two parameters are guesses. Mahour et
+al. (2021) attribute the AMP to ADP being converted into ATP and AMP, the
+reverse of this reaction. This rate law fits the data better than reversible
+mass action (one parameter) and than the reversible Michaelis-Menten rate law
+of our implementation (four parameters): with scripts/cascade_demo.py's
+settings the MAP log densities are 91.8, 85.0 and 82.7, and the root mean
+square residuals of AMP on the log scale are 0.29, 0.34 and 0.31.
 
-The measurements in gdp_fucose_measurements.csv are that implementation's
-preparation of the data in
-https://github.com/klamt-lab/GDP-Fucose_OptMet2023_Paper (Apache-2.0): the
-adenosine nucleotides are rescaled to add up to the initial ATP, and the rows
-at time 0 hold the known initial amounts rather than measurements.
-load_measurements rescales the guanine nucleotides in the same way.
+The measurements in gdp_fucose_measurements.csv are the time courses in
+https://github.com/klamt-lab/GDP-Fucose_OptMet2023_Paper (Apache-2.0), as
+measured: means of biological triplicates, by HPAEC-UV, in mM in the pot.
+Recorded values of zero are left blank, and the validation experiments did not
+measure AMP. The rows at time 0 hold the initial amounts that Huber et al.
+measured in a negative control (their Supplementary Table 1) rather than the
+planned ones. Fucose was not measured, so its initial amount is taken to equal
+GMP's, as Huber et al. did.
 
 Times are in hours, and amounts in mM in a pot of volume 1, so amounts and
 concentrations are the same numbers. The formation energies are eQuilibrator's
@@ -82,10 +109,8 @@ BALANCED_SPECIES = [
     "gtp",
     "gdp",
     "gmp",
-    "polyp",
 ]
 MEASURED_SPECIES = ["amp", "adp", "atp", "gmp", "gdp", "gtp", "gdp_fucose"]
-GUANINE_SPECIES = ["gmp", "gdp", "gtp", "gdp_fucose"]
 FITTING_EXPERIMENTS = [
     "FE13",
     "FE17_1FKP",
@@ -94,6 +119,15 @@ FITTING_EXPERIMENTS = [
     "FE18_07FKP",
 ]
 VALIDATION_EXPERIMENTS = ["FE20_Validation1", "FE20_Validation2"]
+MEASUREMENT_DAY = {
+    "FE13": "2022-11-08",
+    "FE17_1FKP": "2022-11-17",
+    "FE17_07FKP": "2022-11-17",
+    "FE18_1FKP": "2022-11-24",
+    "FE18_07FKP": "2022-11-24",
+    "FE20_Validation1": "2023-02-01",
+    "FE20_Validation2": "2023-02-01",
+}
 ENZYME_LEVELS = {
     "FE13": (0.002933939, 0.003106716, 0.00115141, 0.03306205),
     "FE17_1FKP": (0.00946432, 0.003106716, 0.00115141, 0.006358087),
@@ -119,14 +153,14 @@ KCAT = {
     "PPA": 558000.0,
     "PPK3_A": 18780.0,
     "PPK3_G": 15048.0,
-    "UNKNOWN_HYDROLASE": 10000.0,
+    "UNKNOWN_HYDROLASE": 0.1,
 }
 SATURATION_CONSTANTS = {
     "km|FKP_fk|atp": 1.08,
     "km|FKP_fk|fucose": 0.045,
     "km|FKP_fk|adp": 1e-2,
     "km|FKP_fk|fucose1p": 1e-2,
-    "ki|FKP_fk|gdp_fucose": 1.0,
+    "ki|FKP_fk|gdp_fucose": 1e-3,
     "km|FKP_gt|fucose1p": 0.03295,
     "km|FKP_gt|gtp": 0.012,
     "km|FKP_gt|pp": 0.135,
@@ -136,10 +170,8 @@ SATURATION_CONSTANTS = {
     "km|PPK3_A|atp": 2.0,
     "km|PPK3_G|gdp": 1.2,
     "km|PPK3_G|gtp": 0.1,
-    "km|PPK3|polyp": 3.0,
-    "km|UNKNOWN_HYDROLASE|atp": 0.5,
     "km|UNKNOWN_HYDROLASE|amp": 0.5,
-    "km|UNKNOWN_HYDROLASE|adp": 0.5,
+    "km|PPK3|polyp": 3.0,
 }
 TEMPERATURE = 298.15
 DGF = {
@@ -159,7 +191,7 @@ DGF = {
     }.items()
 }
 DGF["polyp"] = DGF["atp"] - DGF["adp"] + 0.008314 * TEMPERATURE * np.log(3.0)
-POLYP_INITIAL = 100.0
+POLYP_CONCENTRATION = 50.0
 PPK3_RATE = (
     "kcat * enzyme * (ndp / km_ndp) * (polyp / km_polyp)"
     " * (1 - (1 - reversibility) * polyp)"
@@ -264,9 +296,17 @@ model = KineticModel(
                 },
             },
         ),
-        "UNKNOWN_HYDROLASE": MichaelisMenten(
+        "UNKNOWN_HYDROLASE": SymbolicReaction(
             stoichiometry={"atp": -1.0, "amp": -1.0, "adp": 2.0},
-            enzyme="unknown_hydrolase",
+            expression="kcat * (atp * amp - adp**2 / keq) / (km_amp + amp)",
+            species={"atp": "atp", "amp": "amp", "adp": "adp"},
+            parameters={
+                "kcat": "log_kcat",
+                "km_amp": {
+                    "kind": "log_saturation_constant",
+                    "label": "km|UNKNOWN_HYDROLASE|amp",
+                },
+            },
         ),
     },
     rapid_equilibrium_network=RapidEquilibriumNetwork(
@@ -283,7 +323,7 @@ model = KineticModel(
         fast_moiety_label_species=["gmp", "atp"],
     ),
     balanced_species=BALANCED_SPECIES,
-    moiety_label_species=["p", "polyp", "amp", "fucose", "gmp"],
+    moiety_label_species=["p", "amp", "fucose", "gmp"],
 )
 labelling = model.parameter_labelling | get_initial_state_labelling(model)
 
@@ -291,7 +331,7 @@ labelling = model.parameter_labelling | get_initial_state_labelling(model)
 EXPERIMENTS = FITTING_EXPERIMENTS + VALIDATION_EXPERIMENTS
 EXPERIMENT_SPECIFIC = {
     "log_enzyme": None,
-    "log_amount_initial": [s for s in BALANCED_SPECIES if s != "polyp"],
+    "log_amount_initial": BALANCED_SPECIES,
 }
 layout = get_experiment_layout(labelling, EXPERIMENTS, EXPERIMENT_SPECIFIC)
 parameters = pack_parameters(
@@ -323,8 +363,8 @@ parameters = pack_parameters(
             )
             for experiment in EXPERIMENTS
             for species in EXPERIMENT_SPECIFIC["log_amount_initial"]
-        }
-        | {"polyp": np.log(POLYP_INITIAL)},
+        },
+        "log_conc_unbalanced": {"polyp": np.log(POLYP_CONCENTRATION)},
         "temperature": TEMPERATURE,
     },
 )
@@ -338,13 +378,8 @@ def load_measurements(
 
     Each experiment's time points are labelled by the minute they were taken
     at, as in "50min". The rows at time 0 are left out, since they hold the
-    initial amounts, and so are values of zero, which a lognormal measurement
-    cannot score.
-
-    The measured guanine nucleotides add up to more than the initial GMP, by
-    up to 90% at the end of a run, although the pot conserves them. Like the
-    adenosine nucleotides in the data file, they are rescaled at each time
-    point to add up to the initial GMP.
+    initial amounts, and so are blank values. The values are used as they were
+    measured.
 
     :param error: the standard deviation of every measurement on the log
         scale.
@@ -363,15 +398,10 @@ def load_measurements(
                 continue
             label = f"{round(time * 60)}min"
             grid[label] = time
-            guanine = sum(float(row[species]) for species in GUANINE_SPECIES)
-            scale = {
-                species: INITIAL_AMOUNTS[experiment]["gmp"] / guanine
-                for species in GUANINE_SPECIES
-            }
             for species in MEASURED_SPECIES:
                 if row[species] and float(row[species]) > 0:
                     ids.append(f"{species}|{label}")
-                    values.append(float(row[species]) * scale.get(species, 1.0))
+                    values.append(float(row[species]))
         times[experiment] = grid
         measurements.append(
             LognormalMeasurement(
@@ -392,3 +422,18 @@ def get_dgf_covariance() -> np.ndarray:
     covariance = np.array([[float(v) for v in row[1:]] for row in rows[1:]])
     order = [species.index(s) for s in labelling["dgf"]]
     return covariance[np.ix_(order, order)]
+
+
+def get_conditional_dgf_covariance(free_compounds: list[str]) -> np.ndarray:
+    """Get the prior covariance of some formation energies, given that the
+    others are fixed at their prior means, in the order of free_compounds."""
+    covariance = get_dgf_covariance()
+    compounds = list(labelling["dgf"])
+    free = [compounds.index(c) for c in free_compounds]
+    fixed = [i for i in range(len(compounds)) if i not in free]
+    return covariance[np.ix_(free, free)] - covariance[
+        np.ix_(free, fixed)
+    ] @ np.linalg.solve(
+        covariance[np.ix_(fixed, fixed)],
+        covariance[np.ix_(fixed, free)],
+    )
