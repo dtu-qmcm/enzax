@@ -86,6 +86,7 @@ from enzax.array_types import (
     ParamLabelling,
 )
 from enzax.parameters import get_parameter_positions
+from enzax.utils import pad_rows
 from enzax.reaction import (
     ReactionScope,
     get_products,
@@ -417,15 +418,6 @@ def get_polynomial_species(polynomial: BindingPolynomial) -> list[int]:
             for species in factor.ix_species
         ),
     )
-
-
-def pad_rows(rows: Sequence[Sequence[int]], fill: int) -> np.ndarray:
-    """Stack ragged rows of integers into a matrix, padding with `fill`."""
-    width = max([1, *(len(row) for row in rows)])
-    out = np.full((len(rows), width), fill, dtype=int)
-    for i, row in enumerate(rows):
-        out[i, : len(row)] = row
-    return out
 
 
 class PolynomialTable(eqx.Module):

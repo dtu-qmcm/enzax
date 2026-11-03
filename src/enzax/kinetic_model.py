@@ -39,8 +39,6 @@ from enzax.array_types import (
     StoichiometricMatrix,
     UnbalancedConcArr,
     UnbalancedSpeciesIx,
-    freeze_array,
-    unfreeze_array,
 )
 from enzax.parameters import (
     check_id_has_no_separator,
@@ -55,6 +53,7 @@ from enzax.rapid_equilibrium import (
     has_exact_solution,
     solve_rapid_equilibria_exactly,
 )
+from enzax.utils import freeze_array, get_ix_from_list, unfreeze_array
 from enzax.reaction import (
     Reaction,
     ReactionBatch,
@@ -62,10 +61,6 @@ from enzax.reaction import (
     get_local_conc,
     get_reaction_batches,
 )
-
-
-def get_ix_from_list(s: str, list_of_strings: list[str]):
-    return next(i for i, si in enumerate(list_of_strings) if si == s)
 
 
 def get_link_matrix(

@@ -58,7 +58,6 @@ from enzax.binding import (
     get_polynomial_species,
     get_polynomial_table,
     get_polynomial_table_values,
-    pad_rows,
 )
 from enzax.parameters import (
     get_parameter_position,
@@ -80,6 +79,7 @@ from enzax.reaction import (
     get_substrates,
 )
 from enzax.thermodynamics import GAS_CONSTANT, get_reverse_term
+from enzax.utils import pad_rows
 
 
 def get_michaelis_constant_labels(
@@ -360,8 +360,8 @@ def get_michaelis_menten_batch_indexes(
             [slots(row, ix.ix_reactant) for row, ix in enumerate(ixs)],
             n_slot,
         ),
-        reactant_exponent=pad_float_rows(reactant_exponent),
-        reactant_stoichiometry=pad_float_rows(reactant_stoichiometry),
+        reactant_exponent=pad_rows(reactant_exponent, 0.0, float),
+        reactant_stoichiometry=pad_rows(reactant_stoichiometry, 0.0, float),
         ix_dgf=pad_rows([ix.ix_dgf.tolist() for ix in ixs], -1),
         water_stoichiometry=np.array(
             [ix.water_stoichiometry for ix in ixs],
@@ -382,15 +382,6 @@ def get_michaelis_menten_batch_indexes(
         relaxed_row=np.array(relaxed_row, dtype=int),
         subunits=np.array([r.subunits for r in reactions], dtype=int),
     )
-
-
-def pad_float_rows(rows: Sequence[np.ndarray]) -> np.ndarray:
-    """Stack ragged rows of floats into a matrix, padding with 0."""
-    width = max([1, *(len(row) for row in rows)])
-    out = np.zeros((len(rows), width))
-    for i, row in enumerate(rows):
-        out[i, : len(row)] = row
-    return out
 
 
 def get_michaelis_menten_fluxes(
