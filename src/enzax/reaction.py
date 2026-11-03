@@ -1,15 +1,20 @@
 """Provides `Reaction`, a class representing enzyme-catalysed reactions."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 from equinox import Module, field
+from jax import numpy as jnp
 from jaxtyping import Bool, Int, PyTree, Scalar
 
 from enzax.array_types import (
+    BatchFlux,
     ConcArray,
+    LocalConcArr,
+    LocalSpeciesIx,
     ParamDict,
     ParamLabelling,
     SpeciesIx,
@@ -163,6 +168,42 @@ class ReactionLabels(ABC):
         ...
 
 
+class BatchIndexes(Module):
+    """Where a batch of reactions reads its inputs.
+
+    `local_species` says which species fills each slot of each reaction's
+    row of the local concentration block, with -1 for an unused slot.
+    """
+
+    local_species: LocalSpeciesIx
+
+
+@dataclass(frozen=True)
+class BatchRule:
+    """How to evaluate many reactions of one kind together.
+
+    `get_batch_indexes` takes the reactions and their index bundles, as
+    `get_input_indexes` made them, and returns one `BatchIndexes`.
+    `get_fluxes` takes the local concentration block, the parameters and that
+    bundle, and returns the reactions' fluxes in the order they were given.
+    """
+
+    get_batch_indexes: Callable[
+        [Sequence["Reaction"], Sequence[PyTree]],
+        BatchIndexes,
+    ]
+    get_fluxes: Callable[[LocalConcArr, ParamDict, BatchIndexes], BatchFlux]
+
+
+def get_local_conc(conc: ConcArray, ix: BatchIndexes) -> LocalConcArr:
+    """Get a batch's local concentration block, with 0 in unused slots."""
+    return jnp.where(
+        ix.local_species >= 0,
+        conc[np.maximum(ix.local_species, 0)],
+        0.0,
+    )
+
+
 class Reaction(Module, ABC):
     """Abstract definition of a reaction.
 
@@ -204,6 +245,7 @@ class Reaction(Module, ABC):
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
     compartment: str | None = field(kw_only=True, default=None)
+    batch_rule: ClassVar[BatchRule | None] = None
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species this reaction names, in declaration order.

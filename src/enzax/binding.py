@@ -72,14 +72,17 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import equinox as eqx
+import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Scalar
+from jaxtyping import Array, Bool, Float, Int, Scalar
 
 from enzax.array_types import (
     ConcArray,
     FactorKIx,
     FactorSpeciesIx,
     KArr,
+    LocalConcArr,
+    LocalSpeciesIx,
     ParamLabelling,
 )
 from enzax.parameters import get_parameter_positions
@@ -400,4 +403,124 @@ def get_polynomial_indexes(
             )
             for term in expression.terms
         ),
+    )
+
+
+def get_polynomial_species(polynomial: BindingPolynomial) -> list[int]:
+    """Get the positions of the species a polynomial binds, in first-use
+    order."""
+    return list(
+        dict.fromkeys(
+            int(species)
+            for term in polynomial.terms
+            for factor in term.factors
+            for species in factor.ix_species
+        ),
+    )
+
+
+def pad_rows(rows: Sequence[Sequence[int]], fill: int) -> np.ndarray:
+    """Stack ragged rows of integers into a matrix, padding with `fill`."""
+    width = max([1, *(len(row) for row in rows)])
+    out = np.full((len(rows), width), fill, dtype=int)
+    for i, row in enumerate(rows):
+        out[i, : len(row)] = row
+    return out
+
+
+class PolynomialTable(eqx.Module):
+    """Several binding polynomials, flattened so that they evaluate together.
+
+    A polynomial is made of terms, a term of factors and a factor of
+    (species, constant) pairs. Each level is a flat axis, and each level
+    lists its members by position on the level below, padded with -1.
+    Polynomial `j` reads its species from row `polynomial_row[j]` of a local
+    concentration block.
+    """
+
+    pair_row: Int[np.ndarray, " n_pair"]
+    pair_slot: Int[np.ndarray, " n_pair"]
+    pair_k: Int[np.ndarray, " n_pair"]
+    factor_pairs: Int[np.ndarray, "n_factor max_factor_pairs"]
+    factor_is_site: Bool[np.ndarray, " n_factor"]
+    factor_exponent: Float[np.ndarray, " n_factor"]
+    term_factors: Int[np.ndarray, "n_term max_term_factors"]
+    term_coefficient: Float[np.ndarray, " n_term"]
+    term_to_polynomial: Float[np.ndarray, "n_polynomial n_term"]
+
+
+def get_polynomial_table(
+    polynomials: Sequence[BindingPolynomial],
+    polynomial_row: Sequence[int],
+    local_species: LocalSpeciesIx,
+) -> PolynomialTable:
+    """Flatten some binding polynomials into a `PolynomialTable`.
+
+    Term and factor order is kept, so that the table's values equal the
+    polynomials' own to the last bit.
+    """
+    pair_row, pair_slot, pair_k = [], [], []
+    factor_pairs, factor_is_site, factor_exponent = [], [], []
+    term_factors, term_coefficient, term_polynomial = [], [], []
+    for j, (polynomial, row) in enumerate(
+        zip(polynomials, polynomial_row, strict=True),
+    ):
+        slot_of = {int(s): i for i, s in enumerate(local_species[row])}
+        for term in polynomial.terms:
+            factors = []
+            for factor in term.factors:
+                pairs = []
+                for species, k in zip(factor.ix_species, factor.ix_k):
+                    pairs.append(len(pair_k))
+                    pair_row.append(row)
+                    pair_slot.append(slot_of[int(species)])
+                    pair_k.append(int(k))
+                factors.append(len(factor_pairs))
+                factor_pairs.append(pairs)
+                factor_is_site.append(isinstance(factor, SiteFactor))
+                factor_exponent.append(getattr(factor, "exponent", 1.0))
+            term_factors.append(factors)
+            term_coefficient.append(term.coefficient)
+            term_polynomial.append(j)
+    term_to_polynomial = np.zeros((len(polynomials), len(term_coefficient)))
+    term_to_polynomial[term_polynomial, np.arange(len(term_coefficient))] = 1.0
+    return PolynomialTable(
+        pair_row=np.array(pair_row, dtype=int),
+        pair_slot=np.array(pair_slot, dtype=int),
+        pair_k=np.array(pair_k, dtype=int),
+        factor_pairs=pad_rows(factor_pairs, -1),
+        factor_is_site=np.array(factor_is_site, dtype=bool),
+        factor_exponent=np.array(factor_exponent, dtype=float),
+        term_factors=pad_rows(term_factors, -1),
+        term_coefficient=np.array(term_coefficient, dtype=float),
+        term_to_polynomial=term_to_polynomial,
+    )
+
+
+def get_polynomial_table_values(
+    conc: LocalConcArr,
+    k: KArr,
+    table: PolynomialTable,
+) -> Float[Array, " n_polynomial"]:
+    """Evaluate every polynomial in a table.
+
+    A padding position of -1 reads an appended 1, which leaves a product
+    unchanged; sums mask it out.
+    """
+    ratio = conc[table.pair_row, table.pair_slot] / k[table.pair_k]
+    has_pair = table.factor_pairs >= 0
+    pair_values = jnp.append(ratio, 1.0)[table.factor_pairs]
+    occupancy = jnp.sum(jnp.where(has_pair, pair_values, 0.0), axis=1)
+    factor = jnp.where(
+        table.factor_is_site,
+        (1.0 + occupancy) ** table.factor_exponent,
+        jnp.prod(pair_values, axis=1),
+    )
+    factor_values = jnp.append(factor, 1.0)[table.term_factors]
+    term = table.term_coefficient * jnp.prod(factor_values, axis=1)
+    total = table.term_to_polynomial @ term
+    return eqx.error_if(
+        total,
+        jnp.any(total <= 0.0),
+        "Binding polynomial is not positive!",
     )
