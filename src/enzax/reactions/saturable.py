@@ -28,7 +28,7 @@ from typing import ClassVar
 import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Bool, Float, Int, Scalar
+from jaxtyping import Bool, Int, Scalar
 
 from enzax.array_types import (
     BatchFlux,
@@ -67,6 +67,9 @@ from enzax.reaction import (
     BatchIndexes,
     BatchRule,
     Reaction,
+    get_local_species,
+    get_slots,
+    with_ones_column,
     ReactionLabels,
     ReactionScope,
     check_species_labels_are_distinct,
@@ -78,7 +81,12 @@ from enzax.reaction import (
     get_species_positions,
     get_substrates,
 )
-from enzax.thermodynamics import GAS_CONSTANT, get_reverse_term
+from enzax.thermodynamics import (
+    ReverseTermIx,
+    get_reverse_term,
+    get_reverse_term_indexes,
+    get_reverse_terms,
+)
 from enzax.utils import pad_rows
 
 
@@ -293,12 +301,7 @@ class MichaelisMentenBatchIx(BatchIndexes):
     substrate_slot: Int[np.ndarray, "n_batch max_substrates"]
     ix_substrate_k: Int[np.ndarray, "n_batch max_substrates"]
     reversible: Bool[np.ndarray, " n_batch"]
-    reactant_slot: Int[np.ndarray, "n_batch max_reactants"]
-    reactant_exponent: Float[np.ndarray, "n_batch max_reactants"]
-    reactant_stoichiometry: Float[np.ndarray, "n_batch max_reactants"]
-    ix_dgf: Int[np.ndarray, "n_batch max_reactants"]
-    water_stoichiometry: Float[np.ndarray, " n_batch"]
-    water_dgf: Float[np.ndarray, " n_batch"]
+    reverse: ReverseTermIx
     polynomials: PolynomialTable
     allosteric: Bool[np.ndarray, " n_batch"]
     ix_tc: Int[np.ndarray, " n_batch"]
@@ -324,50 +327,35 @@ def get_michaelis_menten_batch_indexes(
         relaxed_row.append(len(polynomials) + 1)
         polynomials += [ix.allostery.tense_state, ix.allostery.relaxed_state]
         polynomial_row += [row, row]
-    local = [[] for _ in ixs]
+    local = [
+        [*ix.ix_substrate.tolist(), *ix.ix_reactant.tolist()] for ix in ixs
+    ]
     for polynomial, row in zip(polynomials, polynomial_row):
         local[row] += get_polynomial_species(polynomial)
-    local = [
-        list(
-            dict.fromkeys(
-                [*ix.ix_substrate.tolist(), *ix.ix_reactant.tolist(), *species],
-            ),
-        )
-        for ix, species in zip(ixs, local)
-    ]
-    local_species = pad_rows(local, -1)
+    local_species = get_local_species(local)
     n_slot = local_species.shape[1]
-
-    def slots(row: int, species) -> list[int]:
-        return [local[row].index(int(s)) for s in species]
-
-    reactant_stoichiometry = [ix.reactant_stoichiometry for ix in ixs]
-    reactant_exponent = [
-        np.where(stoichiometry < 0, 1.0, 0.0) + stoichiometry
-        for stoichiometry in reactant_stoichiometry
-    ]
     return MichaelisMentenBatchIx(
         local_species=local_species,
         ix_kcat=np.array([ix.ix_kcat for ix in ixs], dtype=int),
         ix_enzyme=np.array([ix.ix_enzyme for ix in ixs], dtype=int),
         substrate_slot=pad_rows(
-            [slots(row, ix.ix_substrate) for row, ix in enumerate(ixs)],
+            [
+                get_slots(local_species, row, ix.ix_substrate)
+                for row, ix in enumerate(ixs)
+            ],
             n_slot,
         ),
         ix_substrate_k=pad_rows([ix.ix_substrate_k.tolist() for ix in ixs], -1),
         reversible=np.array([r.reversible for r in reactions], dtype=bool),
-        reactant_slot=pad_rows(
-            [slots(row, ix.ix_reactant) for row, ix in enumerate(ixs)],
-            n_slot,
-        ),
-        reactant_exponent=pad_rows(reactant_exponent, 0.0, float),
-        reactant_stoichiometry=pad_rows(reactant_stoichiometry, 0.0, float),
-        ix_dgf=pad_rows([ix.ix_dgf.tolist() for ix in ixs], -1),
-        water_stoichiometry=np.array(
+        reverse=get_reverse_term_indexes(
+            local_species,
+            [ix.ix_reactant for ix in ixs],
+            [np.where(ix.reactant_stoichiometry < 0, 1.0, 0.0) for ix in ixs],
+            [ix.reactant_stoichiometry for ix in ixs],
+            [ix.ix_dgf for ix in ixs],
             [ix.water_stoichiometry for ix in ixs],
-            dtype=float,
+            [ix.water_dgf for ix in ixs],
         ),
-        water_dgf=np.array([ix.water_dgf for ix in ixs], dtype=float),
         polynomials=get_polynomial_table(
             polynomials,
             polynomial_row,
@@ -394,7 +382,7 @@ def get_michaelis_menten_fluxes(
     Each step does what `MichaelisMenten.__call__` does for one reaction, in
     the same order, so that the fluxes are equal to the last bit.
     """
-    conc = jnp.concatenate([conc, jnp.ones((conc.shape[0], 1))], axis=1)
+    conc = with_ones_column(conc)
     rows = np.arange(conc.shape[0])[:, None]
     k = jnp.exp(parameters["log_saturation_constant"])
     substrate_kms = jnp.append(k, 1.0)[ix.ix_substrate_k]
@@ -402,22 +390,7 @@ def get_michaelis_menten_fluxes(
     z = get_polynomial_table_values(conc, k, ix.polynomials)
     n = conc.shape[0]
     fer = 1.0 / z[:n]
-    RT = parameters["temperature"] * GAS_CONSTANT
-    dgf = jnp.append(parameters["dgf"], 0.0)[ix.ix_dgf]
-    dgr_std = (
-        jnp.einsum("ij,ij->i", ix.reactant_stoichiometry, dgf)
-        + ix.water_stoichiometry * ix.water_dgf
-    )
-    reactant_conc = conc[rows, ix.reactant_slot]
-    base = jnp.where(
-        ix.reactant_exponent > 0,
-        jnp.maximum(reactant_conc, 0.0),
-        jnp.maximum(reactant_conc, 1e-12),
-    )
-    reverse = jnp.exp(dgr_std / RT) * jnp.prod(
-        base**ix.reactant_exponent,
-        axis=1,
-    )
+    reverse = get_reverse_terms(conc, parameters, ix.reverse)
     numerator = jnp.where(
         ix.reversible,
         numerator - reverse / jnp.prod(substrate_kms, axis=1),

@@ -1,4 +1,4 @@
-"""Tests that batched Michaelis-Menten fluxes equal the per-reaction ones.
+"""Tests that batched fluxes equal the per-reaction ones.
 
 Equal to machine precision rather than to the last bit: inside `jit`, XLA
 divides a vector by a scalar as a multiplication by its reciprocal, so a
@@ -16,25 +16,49 @@ from enzax.examples import (
     glycolysis,
     linear,
     methionine,
+    red_blood_cell,
 )
 from enzax.reaction import get_local_conc
-from enzax.reactions import MichaelisMenten
 
 EXAMPLES = {
-    "linear": linear,
-    "methionine": methionine,
-    "conserved_moiety": conserved_moiety,
-    "glycolysis": glycolysis,
-    "gdp_fucose": gdp_fucose,
+    "linear": (linear.model, linear.parameters, linear.steady_state),
+    "methionine": (
+        methionine.model,
+        methionine.parameters,
+        methionine.steady_state,
+    ),
+    "conserved_moiety": (
+        conserved_moiety.model,
+        conserved_moiety.parameters,
+        conserved_moiety.steady_state,
+    ),
+    "glycolysis": (
+        glycolysis.model,
+        glycolysis.parameters,
+        glycolysis.steady_state,
+    ),
+    "gdp_fucose": (gdp_fucose.model, gdp_fucose.parameters, None),
+    "red_blood_cell": (
+        red_blood_cell.model,
+        red_blood_cell.parameters,
+        red_blood_cell.steady_state,
+    ),
+    "red_blood_cell_rapid_equilibrium": (
+        red_blood_cell.rapid_equilibrium_model,
+        red_blood_cell.rapid_equilibrium_parameters,
+        red_blood_cell.rapid_equilibrium_steady_state,
+    ),
 }
 
 
-def get_saturable_positions(model):
-    return [
-        i
-        for i, reaction_id in enumerate(model.reaction_ids)
-        if isinstance(model.reactions[reaction_id], MichaelisMenten)
-    ]
+def get_batch_groups(model):
+    """Get each batch rule the model's reactions use, with their positions."""
+    groups = {}
+    for i, reaction_id in enumerate(model.reaction_ids):
+        rule = type(model.reactions[reaction_id]).batch_rule
+        if rule is not None:
+            groups.setdefault(id(rule), (rule, []))[1].append(i)
+    return list(groups.values())
 
 
 def get_per_reaction_fluxes(model, conc, parameters, positions):
@@ -46,8 +70,7 @@ def get_per_reaction_fluxes(model, conc, parameters, positions):
     return jnp.stack(fluxes)
 
 
-def get_batched_fluxes(model, conc, parameters, positions):
-    rule = MichaelisMenten.batch_rule
+def get_batched_fluxes(model, conc, parameters, rule, positions):
     ix = rule.get_batch_indexes(
         [model.reactions[model.reaction_ids[i]] for i in positions],
         [model.reaction_ix[i] for i in positions],
@@ -62,55 +85,57 @@ def assert_close_to_scale(actual, expected):
     np.testing.assert_allclose(actual, expected, rtol=0, atol=atol)
 
 
-def get_conc_cases(example):
-    model, parameters = example.model, example.parameters
+def get_conc_cases(name):
+    model, parameters, steady_state = EXAMPLES[name]
     rng = np.random.default_rng(0)
     n_species = len(model.species)
     random_conc = rng.lognormal(sigma=1.0, size=n_species)
     with_zeros = random_conc.copy()
     with_zeros[rng.choice(n_species, size=n_species // 3, replace=False)] = 0
     cases = {"random": random_conc, "with_zeros": with_zeros}
-    if hasattr(example, "steady_state"):
-        balanced = model.get_balanced_conc(example.steady_state, parameters)
+    if steady_state is not None:
+        balanced = model.get_balanced_conc(steady_state, parameters)
         cases["steady_state"] = model.get_conc(
             balanced,
             model.get_log_conc_unbalanced(parameters),
         )
-    return {name: jnp.asarray(conc) for name, conc in cases.items()}
+    return {case: jnp.asarray(conc) for case, conc in cases.items()}
 
 
-CASES = [
-    (name, case)
-    for name, example in EXAMPLES.items()
-    for case in get_conc_cases(example)
-]
+CASES = [(name, case) for name in EXAMPLES for case in get_conc_cases(name)]
 
 
-@pytest.mark.parametrize(("example_name", "case"), CASES)
-def test_batched_fluxes_equal_per_reaction_fluxes(example_name, case):
-    example = EXAMPLES[example_name]
-    model, parameters = example.model, example.parameters
-    conc = get_conc_cases(example)[case]
-    positions = get_saturable_positions(model)
-    expected = get_per_reaction_fluxes(model, conc, parameters, positions)
-    actual = get_batched_fluxes(model, conc, parameters, positions)
-    assert_close_to_scale(actual, expected)
+def test_every_example_has_a_batch():
+    for model, _, _ in EXAMPLES.values():
+        assert get_batch_groups(model)
 
 
-@pytest.mark.parametrize("example_name", list(EXAMPLES))
-def test_batched_flux_derivatives_equal_per_reaction_ones(example_name):
-    example = EXAMPLES[example_name]
-    model, parameters = example.model, example.parameters
-    conc = get_conc_cases(example)["random"]
-    positions = get_saturable_positions(model)
+@pytest.mark.parametrize(("name", "case"), CASES)
+def test_batched_fluxes_equal_per_reaction_fluxes(name, case):
+    model, parameters, _ = EXAMPLES[name]
+    conc = get_conc_cases(name)[case]
+    for rule, positions in get_batch_groups(model):
+        expected = get_per_reaction_fluxes(model, conc, parameters, positions)
+        actual = get_batched_fluxes(model, conc, parameters, rule, positions)
+        assert_close_to_scale(actual, expected)
 
-    def expected(c, p):
-        return get_per_reaction_fluxes(model, c, p, positions)
 
-    def actual(c, p):
-        return get_batched_fluxes(model, c, p, positions)
+@pytest.mark.parametrize("name", list(EXAMPLES))
+def test_batched_flux_derivatives_equal_per_reaction_ones(name):
+    model, parameters, _ = EXAMPLES[name]
+    conc = get_conc_cases(name)["random"]
+    for rule, positions in get_batch_groups(model):
 
-    for argnums in (0, 1):
-        jac_expected = jax.jacfwd(expected, argnums=argnums)(conc, parameters)
-        jac_actual = jax.jacfwd(actual, argnums=argnums)(conc, parameters)
-        jax.tree.map(assert_close_to_scale, jac_actual, jac_expected)
+        def expected(c, p, positions=positions):
+            return get_per_reaction_fluxes(model, c, p, positions)
+
+        def actual(c, p, rule=rule, positions=positions):
+            return get_batched_fluxes(model, c, p, rule, positions)
+
+        for argnums in (0, 1):
+            jac_expected = jax.jacfwd(expected, argnums=argnums)(
+                conc,
+                parameters,
+            )
+            jac_actual = jax.jacfwd(actual, argnums=argnums)(conc, parameters)
+            jax.tree.map(assert_close_to_scale, jac_actual, jac_expected)

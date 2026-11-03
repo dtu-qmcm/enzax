@@ -8,7 +8,7 @@ from typing import ClassVar
 import numpy as np
 from equinox import Module, field
 from jax import numpy as jnp
-from jaxtyping import Bool, Int, PyTree, Scalar
+from jaxtyping import Array, Bool, Float, Int, PyTree, Scalar
 
 from enzax.array_types import (
     BatchFlux,
@@ -21,6 +21,7 @@ from enzax.array_types import (
     StaticSpeciesArr,
 )
 from enzax.parameters import INDEX_DTYPE, SEP
+from enzax.utils import pad_rows
 
 
 @dataclass(frozen=True)
@@ -202,6 +203,34 @@ def get_local_conc(conc: ConcArray, ix: BatchIndexes) -> LocalConcArr:
         conc[np.maximum(ix.local_species, 0)],
         0.0,
     )
+
+
+def get_local_species(
+    species_by_reaction: Sequence[Sequence[int]],
+) -> LocalSpeciesIx:
+    """Lay out a local concentration block: each reaction's species, without
+    repeats, in first-use order, padded with -1."""
+    rows = [
+        list(dict.fromkeys(int(s) for s in row)) for row in species_by_reaction
+    ]
+    return pad_rows(rows, -1)
+
+
+def get_slots(
+    local_species: LocalSpeciesIx,
+    row: int,
+    species: Iterable[int],
+) -> list[int]:
+    """Get the columns of a local block's row that hold some species."""
+    positions = local_species[row].tolist()
+    return [positions.index(int(s)) for s in species]
+
+
+def with_ones_column(
+    conc: LocalConcArr,
+) -> Float[Array, "n_batch n_slot_and_one"]:
+    """Append a column of ones to a local block, for padded slots to read."""
+    return jnp.concatenate([conc, jnp.ones((conc.shape[0], 1))], axis=1)
 
 
 class Reaction(Module, ABC):

@@ -1,15 +1,27 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 import equinox as eqx
+import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Scalar
+from jaxtyping import Int, Scalar
 
-from enzax.array_types import ConcArray, ParamDict, ParamLabelling
+from enzax.array_types import (
+    BatchFlux,
+    ConcArray,
+    LocalConcArr,
+    ParamDict,
+    ParamLabelling,
+)
 from enzax.parameters import get_parameter_position
 from enzax.reaction import (
+    BatchIndexes,
+    BatchRule,
     Reaction,
     ReactionLabels,
     ReactionScope,
+    get_local_species,
     get_reaction_label,
 )
 
@@ -32,6 +44,38 @@ class DrainInput(eqx.Module):
     abs_v: Scalar
 
 
+class DrainBatchIx(BatchIndexes):
+    """Where a batch of drains reads its rates. Drains read no species."""
+
+    ix_drain: Int[np.ndarray, " n_batch"]
+
+
+def get_drain_batch_indexes(
+    reactions: Sequence["Drain"],
+    ixs: Sequence[DrainIx],
+) -> DrainBatchIx:
+    """Combine drains' index bundles into one batch bundle."""
+    return DrainBatchIx(
+        local_species=get_local_species([[] for _ in ixs]),
+        ix_drain=np.array([ix.ix_drain for ix in ixs], dtype=int),
+    )
+
+
+def get_drain_fluxes(
+    conc: LocalConcArr,
+    parameters: ParamDict,
+    ix: DrainBatchIx,
+) -> BatchFlux:
+    """Get the fluxes of a batch of drains."""
+    return jnp.exp(parameters["log_drain"][ix.ix_drain])
+
+
+DRAIN_BATCH_RULE = BatchRule(
+    get_batch_indexes=get_drain_batch_indexes,
+    get_fluxes=get_drain_fluxes,
+)
+
+
 class Drain(Reaction):
     """A reaction with constant flux.
 
@@ -45,6 +89,7 @@ class Drain(Reaction):
     """
 
     drain: str | None = None
+    batch_rule: ClassVar[BatchRule | None] = DRAIN_BATCH_RULE
 
     def get_labels(self, scope: ReactionScope) -> DrainLabels:
         return DrainLabels(
