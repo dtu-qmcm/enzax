@@ -1,9 +1,11 @@
 """Shared code for comparing enzax with AMICI on PEtab problems.
 
 Every tool is timed on the same grid: parameter draws around a problem's
-nominal values, times integrator tolerances. The steady-state tolerance is
-the same for every tool. Each gradient is compared with a reference from
-AMICI's C++ backend with forward sensitivities at tight tolerances.
+nominal values, times tolerances. One tolerance sets both the integrator's
+relative and absolute tolerances and the steady-state stopping criterion, so
+that looser settings are less accurate as well as faster. Each gradient is
+compared with a reference from AMICI's C++ backend with forward
+sensitivities at tight tolerances.
 """
 
 import csv
@@ -35,8 +37,8 @@ jax.config.update("jax_enable_x64", True)
 HERE = Path(__file__).parent
 BUILD = HERE / "build"
 RESULTS = HERE / "results"
-STEADY_STATE_TOL = 1e-12
 REFERENCE_TOL = 1e-10
+REFERENCE_STEADY_STATE_TOL = 1e-12
 TOLERANCES = (1e-6, 1e-8, 1e-10)
 N_DRAWS = 10
 DRAW_SCALE = 0.1
@@ -140,8 +142,8 @@ def get_enzax_steady_state_options(solver_name: str, tol: float) -> dict:
         "solver": solver,
         "stepsize_controller": controller,
         "dt0": None,
-        "steady_state_rtol": STEADY_STATE_TOL,
-        "steady_state_atol": STEADY_STATE_TOL,
+        "steady_state_rtol": tol,
+        "steady_state_atol": tol,
         "max_steps": MAX_STEPS,
     }
 
@@ -180,7 +182,12 @@ class AmiciCpp:
         )
         self.cpu_times: list[float] = []
 
-    def gradient(self, method: str, tol: float) -> Gradient:
+    def gradient(
+        self,
+        method: str,
+        tol: float,
+        steady_state_tol: float | None = None,
+    ) -> Gradient:
         solver = self.model.create_solver()
         solver.set_absolute_tolerance(tol)
         solver.set_relative_tolerance(tol)
@@ -190,7 +197,7 @@ class AmiciCpp:
             solver.set_absolute_tolerance_steady_state_sensi,
             solver.set_relative_tolerance_steady_state_sensi,
         ):
-            setter(STEADY_STATE_TOL)
+            setter(tol if steady_state_tol is None else steady_state_tol)
         solver.set_max_steps(MAX_STEPS)
         solver.set_sensitivity_order(SensitivityOrder.first)
         solver.set_sensitivity_method(
@@ -235,7 +242,7 @@ class AmiciJax:
 
     def gradient(self, solver_name: str, tol: float) -> Gradient:
         solver, controller = get_diffrax_solver(solver_name, tol)
-        event = SteadyStateEvent(rtol=STEADY_STATE_TOL, atol=STEADY_STATE_TOL)
+        event = SteadyStateEvent(rtol=tol, atol=tol)
 
         def llh(theta):
             values = (
@@ -271,7 +278,11 @@ def run_grid(
     draws = get_draws(get_nominal_theta(problem))
     cpp = AmiciCpp(problem, name)
     amici_jax = AmiciJax(problem, name)
-    reference = cpp.gradient("forward", REFERENCE_TOL)
+    reference = cpp.gradient(
+        "forward",
+        REFERENCE_TOL,
+        REFERENCE_STEADY_STATE_TOL,
+    )
     references = [reference(theta) for theta in draws]
     tools = [
         (
