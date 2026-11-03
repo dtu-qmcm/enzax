@@ -432,6 +432,23 @@ class SymbolicReaction(Reaction):
             declarations[symbol] = self.default_parameter_kind
         return declarations
 
+    def get_argument_symbols(
+        self,
+    ) -> tuple[list[str], list[str], list[str], tuple[str, ...]]:
+        """Get the names of the compiled function's arguments, in order: the
+        species symbols, the parameter symbols and the algebraic variable
+        symbols, each sorted, then the reserved symbols the expression uses."""
+        return (
+            sorted(self.species),
+            sorted(self.get_parameter_declarations()),
+            sorted(self.algebraic_variables),
+            tuple(
+                sorted(
+                    get_symbol_names(self.expression) & set(RESERVED_SYMBOLS),
+                ),
+            ),
+        )
+
     def get_species(self) -> tuple[str, ...]:
         """Get every species the expression uses, in declaration order.
 
@@ -502,11 +519,8 @@ class SymbolicReaction(Reaction):
         reserved symbol needs them.
         """
         lab = self.get_labels(scope)
-        species_symbols = sorted(self.species)
-        parameter_symbols = sorted(self.get_parameter_declarations())
-        variable_symbols = sorted(self.algebraic_variables)
-        reserved = tuple(
-            sorted(get_symbol_names(self.expression) & set(RESERVED_SYMBOLS)),
+        species_symbols, parameter_symbols, variable_symbols, reserved = (
+            self.get_argument_symbols()
         )
         by_name = {s.name: s for s in self.expression.free_symbols}
         function = sympy.lambdify(
