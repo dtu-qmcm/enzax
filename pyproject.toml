@@ -69,6 +69,9 @@ extend-select = ["E501", "COM812"]  # line length is checked
 [tool.ruff.lint.isort]
 known-first-party = ["enzax"]
 
+[tool.uv.sources]
+diffrax-bdf = { git = "https://github.com/dtu-qmcm/diffrax-bdf.git" }
+
 [dependency-groups]
 mcmc = [
     "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
@@ -82,4 +85,10 @@ dev = [
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
     "requests>=2.32.5",
+]
+benchmark = [
+    "amici[jax,petab]==1.2.0",
+    "diffrax-bdf ; python_full_version >= '3.13'",
+    "pandas>=3.1.0",
+    "pyyaml>=6.0.3",
 ]
