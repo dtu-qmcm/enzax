@@ -54,6 +54,7 @@ def get_steady_state(
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
     adjoint: diffrax.AbstractAdjoint | None = None,
     negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
+    dt0: float | None = 1e-6,
 ) -> OdeStateArr:
     """Get the steady state of a kinetic model, using diffrax.
 
@@ -94,6 +95,9 @@ def get_steady_state(
 
     :param negative_tolerance: how far below zero a balanced species'
     concentration may go before a step is rejected.
+
+    :param dt0: the size of the first step, or None to let diffrax choose
+    it, which needs an adaptive step size controller.
     """
     term = diffrax.ODETerm(
         lambda t, y, args: clamp_at_zero(y, model.dndt(y, args)),
@@ -102,7 +106,6 @@ def get_steady_state(
         solver = diffrax.Kvaerno5()
     t0 = jnp.array(0.0)
     t1 = jnp.inf
-    dt0 = jnp.array(0.000001)
     if stepsize_controller is None:
         # pcoeff/icoeff are not the diffrax defaults: a pure I controller
         # (pcoeff=0, icoeff=1) needs 2943 steps with 1500 rejections on the

@@ -346,3 +346,16 @@ def test_newton_reports_failure_rather_than_a_bad_root_when_it_diverges():
         throw=False,
     )
     assert sol.result != optx.RESULTS.successful
+
+
+@pytest.mark.parametrize(["name", "example"], EXAMPLES)
+def test_letting_diffrax_choose_the_first_step(name, example):
+    guess = cold_guess(example)
+    by_default = get_steady_state(example.model, guess, example.parameters)
+    chosen = get_steady_state(
+        example.model,
+        guess,
+        example.parameters,
+        dt0=None,
+    )
+    assert jnp.isclose(chosen, by_default, rtol=1e-5).all()
