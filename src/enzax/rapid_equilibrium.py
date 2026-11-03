@@ -23,9 +23,8 @@ from enzax.array_types import (
     ParamLabelling,
     StoichiometricMatrix,
     UnbalancedConcArr,
-    freeze_array,
-    unfreeze_array,
 )
+from enzax.utils import freeze_array, unfreeze_array
 from enzax.thermodynamics import GAS_CONSTANT
 
 

@@ -1,21 +1,27 @@
 """Provides `Reaction`, a class representing enzyme-catalysed reactions."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 from equinox import Module, field
-from jaxtyping import Bool, Int, PyTree, Scalar
+from jax import numpy as jnp
+from jaxtyping import Array, Bool, Float, Int, PyTree, Scalar
 
 from enzax.array_types import (
+    BatchFlux,
     ConcArray,
+    LocalConcArr,
+    LocalSpeciesIx,
     ParamDict,
     ParamLabelling,
     SpeciesIx,
     StaticSpeciesArr,
 )
 from enzax.parameters import INDEX_DTYPE, SEP
+from enzax.utils import pad_rows
 
 
 @dataclass(frozen=True)
@@ -163,6 +169,70 @@ class ReactionLabels(ABC):
         ...
 
 
+class BatchIndexes(Module):
+    """Where a batch of reactions reads its inputs.
+
+    `local_species` says which species fills each slot of each reaction's
+    row of the local concentration block, with -1 for an unused slot.
+    """
+
+    local_species: LocalSpeciesIx
+
+
+@dataclass(frozen=True)
+class BatchRule:
+    """How to evaluate many reactions of one kind together.
+
+    `get_batch_indexes` takes the reactions and their index bundles, as
+    `get_input_indexes` made them, and returns one `BatchIndexes`.
+    `get_fluxes` takes the local concentration block, the parameters and that
+    bundle, and returns the reactions' fluxes in the order they were given.
+    """
+
+    get_batch_indexes: Callable[
+        [Sequence["Reaction"], Sequence[PyTree]],
+        BatchIndexes,
+    ]
+    get_fluxes: Callable[[LocalConcArr, ParamDict, BatchIndexes], BatchFlux]
+
+
+def get_local_conc(conc: ConcArray, ix: BatchIndexes) -> LocalConcArr:
+    """Get a batch's local concentration block, with 0 in unused slots."""
+    return jnp.where(
+        ix.local_species >= 0,
+        conc[np.maximum(ix.local_species, 0)],
+        0.0,
+    )
+
+
+def get_local_species(
+    species_by_reaction: Sequence[Sequence[int]],
+) -> LocalSpeciesIx:
+    """Lay out a local concentration block: each reaction's species, without
+    repeats, in first-use order, padded with -1."""
+    rows = [
+        list(dict.fromkeys(int(s) for s in row)) for row in species_by_reaction
+    ]
+    return pad_rows(rows, -1)
+
+
+def get_slots(
+    local_species: LocalSpeciesIx,
+    row: int,
+    species: Iterable[int],
+) -> list[int]:
+    """Get the columns of a local block's row that hold some species."""
+    positions = local_species[row].tolist()
+    return [positions.index(int(s)) for s in species]
+
+
+def with_ones_column(
+    conc: LocalConcArr,
+) -> Float[Array, "n_batch n_slot_and_one"]:
+    """Append a column of ones to a local block, for padded slots to read."""
+    return jnp.concatenate([conc, jnp.ones((conc.shape[0], 1))], axis=1)
+
+
 class Reaction(Module, ABC):
     """Abstract definition of a reaction.
 
@@ -204,6 +274,7 @@ class Reaction(Module, ABC):
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
     compartment: str | None = field(kw_only=True, default=None)
+    batch_rule: ClassVar[BatchRule | None] = None
 
     def get_species(self) -> tuple[str, ...]:
         """Get every species this reaction names, in declaration order.
@@ -240,3 +311,43 @@ class Reaction(Module, ABC):
         conc: ConcArray,
         rate_equation_input: PyTree,
     ) -> Scalar: ...
+
+
+class ReactionBatch(Module):
+    """Reactions of one model that share a `BatchRule`.
+
+    `positions` are the reactions' positions in the model's reaction order.
+    """
+
+    rule: BatchRule = field(static=True)
+    ix: BatchIndexes
+    positions: Int[np.ndarray, " n_batch"]
+
+
+def get_reaction_batches(
+    reactions: Sequence[Reaction],
+    ixs: Sequence[PyTree],
+) -> list[ReactionBatch]:
+    """Group reactions by their `batch_rule`, in order of first appearance.
+
+    Reactions whose rule is None are left out.
+    """
+    positions: dict[int, list[int]] = {}
+    rules: dict[int, BatchRule] = {}
+    for position, reaction in enumerate(reactions):
+        rule = type(reaction).batch_rule
+        if rule is None:
+            continue
+        positions.setdefault(id(rule), []).append(position)
+        rules[id(rule)] = rule
+    return [
+        ReactionBatch(
+            rule=rules[key],
+            ix=rules[key].get_batch_indexes(
+                [reactions[i] for i in members],
+                [ixs[i] for i in members],
+            ),
+            positions=np.array(members, dtype=int),
+        )
+        for key, members in positions.items()
+    ]

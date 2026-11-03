@@ -1,13 +1,18 @@
 """The thermodynamically consistent mass action rate law."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 import equinox as eqx
+import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Scalar
+from jaxtyping import Bool, Float, Int, Scalar
 
 from enzax.array_types import (
+    BatchFlux,
     ConcArray,
+    LocalConcArr,
     ParamDict,
     ParamLabelling,
     ReactantArr,
@@ -19,15 +24,26 @@ from enzax.array_types import (
 )
 from enzax.parameters import get_parameter_position
 from enzax.reaction import (
+    BatchIndexes,
+    BatchRule,
     Reaction,
     ReactionLabels,
     ReactionScope,
     get_reactants,
     get_reaction_label,
     get_species_positions,
+    get_local_species,
+    get_slots,
     get_substrates,
+    with_ones_column,
 )
-from enzax.thermodynamics import get_reverse_term
+from enzax.thermodynamics import (
+    ReverseTermIx,
+    get_reverse_term,
+    get_reverse_term_indexes,
+    get_reverse_terms,
+)
+from enzax.utils import pad_rows
 
 
 @dataclass(frozen=True)
@@ -63,6 +79,79 @@ class MassActionInput(eqx.Module):
     water_dgf: float
 
 
+class MassActionBatchIx(BatchIndexes):
+    """Where a batch of mass action reactions reads its inputs.
+
+    Substrate slots are padded as in `ReverseTermIx`, with an order of 0.
+    """
+
+    ix_k_plus: Int[np.ndarray, " n_batch"]
+    substrate_slot: Int[np.ndarray, "n_batch max_substrates"]
+    substrate_order: Float[np.ndarray, "n_batch max_substrates"]
+    reversible: Bool[np.ndarray, " n_batch"]
+    reverse: ReverseTermIx
+
+
+def get_mass_action_batch_indexes(
+    reactions: Sequence["MassAction"],
+    ixs: Sequence[MassActionIx],
+) -> MassActionBatchIx:
+    """Combine mass action reactions' index bundles into one batch bundle."""
+    local_species = get_local_species(
+        [[*ix.ix_substrate.tolist(), *ix.ix_reactant.tolist()] for ix in ixs],
+    )
+    return MassActionBatchIx(
+        local_species=local_species,
+        ix_k_plus=np.array([ix.ix_k_plus for ix in ixs], dtype=int),
+        substrate_slot=pad_rows(
+            [
+                get_slots(local_species, row, ix.ix_substrate)
+                for row, ix in enumerate(ixs)
+            ],
+            local_species.shape[1],
+        ),
+        substrate_order=pad_rows(
+            [ix.substrate_order for ix in ixs],
+            0.0,
+            float,
+        ),
+        reversible=np.array([r.reversible for r in reactions], dtype=bool),
+        reverse=get_reverse_term_indexes(
+            local_species,
+            [ix.ix_reactant for ix in ixs],
+            [np.maximum(-ix.reactant_stoichiometry, 0.0) for ix in ixs],
+            [ix.reactant_stoichiometry for ix in ixs],
+            [ix.ix_dgf for ix in ixs],
+            [ix.water_stoichiometry for ix in ixs],
+            [ix.water_dgf for ix in ixs],
+        ),
+    )
+
+
+def get_mass_action_fluxes(
+    conc: LocalConcArr,
+    parameters: ParamDict,
+    ix: MassActionBatchIx,
+) -> BatchFlux:
+    """Get the fluxes of a batch of mass action reactions, as
+    `MassAction.__call__` gets one."""
+    conc = with_ones_column(conc)
+    rows = np.arange(conc.shape[0])[:, None]
+    k_plus = jnp.exp(parameters["log_k_plus"][ix.ix_k_plus])
+    forward = k_plus * jnp.prod(
+        conc[rows, ix.substrate_slot] ** ix.substrate_order,
+        axis=1,
+    )
+    reverse = k_plus * get_reverse_terms(conc, parameters, ix.reverse)
+    return jnp.where(ix.reversible, forward - reverse, forward)
+
+
+MASS_ACTION_BATCH_RULE = BatchRule(
+    get_batch_indexes=get_mass_action_batch_indexes,
+    get_fluxes=get_mass_action_fluxes,
+)
+
+
 class MassAction(Reaction):
     """A reaction whose rate is proportional to its substrates'
     concentrations, each raised to its stoichiometric coefficient.
@@ -79,6 +168,7 @@ class MassAction(Reaction):
 
     k_plus_label: str | None = None
     reversible: bool = True
+    batch_rule: ClassVar[BatchRule | None] = MASS_ACTION_BATCH_RULE
 
     def get_labels(self, scope: ReactionScope) -> MassActionLabels:
         return MassActionLabels(

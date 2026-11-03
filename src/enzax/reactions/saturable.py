@@ -23,14 +23,18 @@ the allosteric positions are a bundle that is there or is not.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import ClassVar
 
 import equinox as eqx
+import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Scalar
+from jaxtyping import Bool, Int, Scalar
 
 from enzax.array_types import (
+    BatchFlux,
     ConcArray,
     KArr,
+    LocalConcArr,
     ParamDict,
     ParamLabelling,
     ReactantArr,
@@ -45,18 +49,27 @@ from enzax.binding import (
     ONE,
     BindingPolynomial,
     BindingPolynomialExpression,
+    PolynomialTable,
     dead_end,
     get_default_expression,
     get_expression_labels,
     get_expression_species,
     get_polynomial_indexes,
+    get_polynomial_species,
+    get_polynomial_table,
+    get_polynomial_table_values,
 )
 from enzax.parameters import (
     get_parameter_position,
     get_parameter_positions,
 )
 from enzax.reaction import (
+    BatchIndexes,
+    BatchRule,
     Reaction,
+    get_local_species,
+    get_slots,
+    with_ones_column,
     ReactionLabels,
     ReactionScope,
     check_species_labels_are_distinct,
@@ -68,7 +81,13 @@ from enzax.reaction import (
     get_species_positions,
     get_substrates,
 )
-from enzax.thermodynamics import get_reverse_term
+from enzax.thermodynamics import (
+    ReverseTermIx,
+    get_reverse_term,
+    get_reverse_term_indexes,
+    get_reverse_terms,
+)
+from enzax.utils import pad_rows
 
 
 def get_michaelis_constant_labels(
@@ -266,6 +285,136 @@ def generalised_mwc_effect(
     return 1.0 / (1 + tc * ratio**subunits)
 
 
+class MichaelisMentenBatchIx(BatchIndexes):
+    """Where a batch of saturable reactions reads its inputs.
+
+    Slot arrays index the columns of the local concentration block, padded
+    with `n_slot`, which reads an appended column of ones. Position arrays
+    index parameter arrays, padded with -1, which reads an appended value
+    that leaves the result unchanged. Binding polynomials sit in one table:
+    each reaction's catalytic polynomial in its own row, then the tense and
+    relaxed polynomials of the allosteric reactions.
+    """
+
+    ix_kcat: Int[np.ndarray, " n_batch"]
+    ix_enzyme: Int[np.ndarray, " n_batch"]
+    substrate_slot: Int[np.ndarray, "n_batch max_substrates"]
+    ix_substrate_k: Int[np.ndarray, "n_batch max_substrates"]
+    reversible: Bool[np.ndarray, " n_batch"]
+    reverse: ReverseTermIx
+    polynomials: PolynomialTable
+    allosteric: Bool[np.ndarray, " n_batch"]
+    ix_tc: Int[np.ndarray, " n_batch"]
+    tense_row: Int[np.ndarray, " n_batch"]
+    relaxed_row: Int[np.ndarray, " n_batch"]
+    subunits: Int[np.ndarray, " n_batch"]
+
+
+def get_michaelis_menten_batch_indexes(
+    reactions: Sequence["MichaelisMenten"],
+    ixs: Sequence[MichaelisMentenIx],
+) -> MichaelisMentenBatchIx:
+    """Combine saturable reactions' index bundles into one batch bundle."""
+    polynomials = [ix.binding_polynomial for ix in ixs]
+    polynomial_row = list(range(len(ixs)))
+    tense_row, relaxed_row = [], []
+    for row, ix in enumerate(ixs):
+        if ix.allostery is None:
+            tense_row.append(0)
+            relaxed_row.append(0)
+            continue
+        tense_row.append(len(polynomials))
+        relaxed_row.append(len(polynomials) + 1)
+        polynomials += [ix.allostery.tense_state, ix.allostery.relaxed_state]
+        polynomial_row += [row, row]
+    local = [
+        [*ix.ix_substrate.tolist(), *ix.ix_reactant.tolist()] for ix in ixs
+    ]
+    for polynomial, row in zip(polynomials, polynomial_row):
+        local[row] += get_polynomial_species(polynomial)
+    local_species = get_local_species(local)
+    n_slot = local_species.shape[1]
+    return MichaelisMentenBatchIx(
+        local_species=local_species,
+        ix_kcat=np.array([ix.ix_kcat for ix in ixs], dtype=int),
+        ix_enzyme=np.array([ix.ix_enzyme for ix in ixs], dtype=int),
+        substrate_slot=pad_rows(
+            [
+                get_slots(local_species, row, ix.ix_substrate)
+                for row, ix in enumerate(ixs)
+            ],
+            n_slot,
+        ),
+        ix_substrate_k=pad_rows([ix.ix_substrate_k.tolist() for ix in ixs], -1),
+        reversible=np.array([r.reversible for r in reactions], dtype=bool),
+        reverse=get_reverse_term_indexes(
+            local_species,
+            [ix.ix_reactant for ix in ixs],
+            [np.where(ix.reactant_stoichiometry < 0, 1.0, 0.0) for ix in ixs],
+            [ix.reactant_stoichiometry for ix in ixs],
+            [ix.ix_dgf for ix in ixs],
+            [ix.water_stoichiometry for ix in ixs],
+            [ix.water_dgf for ix in ixs],
+        ),
+        polynomials=get_polynomial_table(
+            polynomials,
+            polynomial_row,
+            local_species,
+        ),
+        allosteric=np.array([ix.allostery is not None for ix in ixs]),
+        ix_tc=np.array(
+            [0 if ix.allostery is None else ix.allostery.ix_tc for ix in ixs],
+            dtype=int,
+        ),
+        tense_row=np.array(tense_row, dtype=int),
+        relaxed_row=np.array(relaxed_row, dtype=int),
+        subunits=np.array([r.subunits for r in reactions], dtype=int),
+    )
+
+
+def get_michaelis_menten_fluxes(
+    conc: LocalConcArr,
+    parameters: ParamDict,
+    ix: MichaelisMentenBatchIx,
+) -> BatchFlux:
+    """Get the fluxes of a batch of saturable reactions.
+
+    Each step does what `MichaelisMenten.__call__` does for one reaction, in
+    the same order, so that the fluxes are equal to the last bit.
+    """
+    conc = with_ones_column(conc)
+    rows = np.arange(conc.shape[0])[:, None]
+    k = jnp.exp(parameters["log_saturation_constant"])
+    substrate_kms = jnp.append(k, 1.0)[ix.ix_substrate_k]
+    numerator = jnp.prod(conc[rows, ix.substrate_slot] / substrate_kms, axis=1)
+    z = get_polynomial_table_values(conc, k, ix.polynomials)
+    n = conc.shape[0]
+    fer = 1.0 / z[:n]
+    reverse = get_reverse_terms(conc, parameters, ix.reverse)
+    numerator = jnp.where(
+        ix.reversible,
+        numerator - reverse / jnp.prod(substrate_kms, axis=1),
+        numerator,
+    )
+    kcat = jnp.exp(parameters["log_kcat"][ix.ix_kcat])
+    enzyme = jnp.exp(parameters["log_enzyme"][ix.ix_enzyme])
+    rate = kcat * enzyme * numerator * fer
+    if not ix.allosteric.any():
+        return rate
+    tc = jnp.exp(parameters["log_tc"][ix.ix_tc])
+    ratio = z[ix.tense_row] / z[ix.relaxed_row]
+    powered = ratio
+    for subunits in np.unique(ix.subunits[ix.allosteric]).tolist():
+        powered = jnp.where(ix.subunits == subunits, ratio**subunits, powered)
+    return jnp.where(ix.allosteric, rate * (1.0 / (1 + tc * powered)), rate)
+
+
+MICHAELIS_MENTEN_BATCH_RULE = BatchRule(
+    get_batch_indexes=get_michaelis_menten_batch_indexes,
+    get_fluxes=get_michaelis_menten_fluxes,
+)
+
+
 class MichaelisMenten(Reaction):
     """A reaction whose rate saturates as its enzyme's sites fill up.
 
@@ -317,6 +466,7 @@ class MichaelisMenten(Reaction):
     allosteric_inhibitors: list[str] | dict[str, str] | None = None
     allosteric_activators: list[str] | dict[str, str] | None = None
     subunits: int = 1
+    batch_rule: ClassVar[BatchRule | None] = MICHAELIS_MENTEN_BATCH_RULE
 
     # The four polynomials a rate law can write out by hand. This one writes
     # none, so they are all absent; `SaturableReaction` has them as fields

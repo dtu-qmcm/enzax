@@ -142,6 +142,18 @@ FactorSpeciesIx = Int[np.ndarray, " n_factor_species"]  # values index n_species
 FactorKIx = Int[np.ndarray, " n_factor_species"]  # values index n_k
 
 # --------------------------------------------------------------------------
+# Batch-level: several reactions evaluated together
+#
+# `n_batch` counts the reactions in one batch and `n_slot` the columns of the
+# batch's local concentration block, one per species the busiest reaction
+# reads. Both are fixed per batch, so unlike the `n_rxn_*` axes they are not
+# ragged.
+# --------------------------------------------------------------------------
+LocalConcArr = Float[Array, "n_batch n_slot"]
+LocalSpeciesIx = Int[np.ndarray, "n_batch n_slot"]  # index n_species, -1 unused
+BatchFlux = Float[Array, " n_batch"]
+
+# --------------------------------------------------------------------------
 # Parameters
 #
 # A *parameter* is one key of the parameter PyTree, as in
@@ -182,19 +194,3 @@ FloatArray1d = Float[Array, " _"]
 
 # A pair (shape, values) for a static field
 FrozenArray = tuple[tuple[int, ...], tuple[int | float, ...]]
-
-
-def freeze_array(values) -> FrozenArray:
-    """Put an array into a form that a static field can hold.
-
-    This is required because static fields need to be comparable with ==, which
-    numpy arrays are not. See https://github.com/dtu-qmcm/enzax/issues/65.
-    """
-    array = np.asarray(values)
-    return array.shape, tuple(array.ravel().tolist())
-
-
-def unfreeze_array(frozen: FrozenArray, dtype) -> np.ndarray:
-    """Turn a frozen array into a numpy array with the given dtype."""
-    shape, values = frozen
-    return np.array(values, dtype=dtype).reshape(shape)

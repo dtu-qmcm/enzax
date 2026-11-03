@@ -39,8 +39,6 @@ from enzax.array_types import (
     StoichiometricMatrix,
     UnbalancedConcArr,
     UnbalancedSpeciesIx,
-    freeze_array,
-    unfreeze_array,
 )
 from enzax.parameters import (
     check_id_has_no_separator,
@@ -55,11 +53,14 @@ from enzax.rapid_equilibrium import (
     has_exact_solution,
     solve_rapid_equilibria_exactly,
 )
-from enzax.reaction import Reaction, ReactionScope
-
-
-def get_ix_from_list(s: str, list_of_strings: list[str]):
-    return next(i for i, si in enumerate(list_of_strings) if si == s)
+from enzax.utils import freeze_array, get_ix_from_list, unfreeze_array
+from enzax.reaction import (
+    Reaction,
+    ReactionBatch,
+    ReactionScope,
+    get_local_conc,
+    get_reaction_batches,
+)
 
 
 def get_link_matrix(
@@ -419,6 +420,9 @@ class KineticModel(eqx.Module):
     _L0: FrozenArray = eqx.field(static=True, init=False)
     parameter_labelling: ParamLabelling = eqx.field(static=True, init=False)
     reaction_ix: Sequence[PyTree] = eqx.field(static=True, init=False)
+    reaction_batches: list[ReactionBatch] = eqx.field(static=True, init=False)
+    _unbatched_reaction_ix: tuple[int, ...] = eqx.field(static=True, init=False)
+    _flux_order: FrozenArray = eqx.field(static=True, init=False)
 
     def __post_init__(self):
         self.stoichiometry = {
@@ -531,6 +535,19 @@ class KineticModel(eqx.Module):
             )
             for scope in self._scopes()
         ]
+        self.reaction_batches = get_reaction_batches(
+            [self.reactions[r] for r in self.reaction_ids],
+            self.reaction_ix,
+        )
+        batched = {int(i) for b in self.reaction_batches for i in b.positions}
+        self._unbatched_reaction_ix = tuple(
+            i for i in range(len(self.reaction_ids)) if i not in batched
+        )
+        evaluation_order = [
+            *(int(i) for b in self.reaction_batches for i in b.positions),
+            *self._unbatched_reaction_ix,
+        ]
+        self._flux_order = freeze_array(np.argsort(evaluation_order))
         self.constraint_ix = [
             self.algebraic_constraints[scope.constraint_id].get_input_indexes(
                 scope,
@@ -910,11 +927,22 @@ class KineticModel(eqx.Module):
                 "algebraic_variables": algebraic_variables,
             }
         flux_list = []
-        for reaction, ix in zip(self.reaction_ids, self.reaction_ix):
-            rate_equation = self.reactions[reaction]
-            ipt = rate_equation.get_input(parameters, ix)
+        for i in self._unbatched_reaction_ix:
+            rate_equation = self.reactions[self.reaction_ids[i]]
+            ipt = rate_equation.get_input(parameters, self.reaction_ix[i])
             flux_list.append(rate_equation(conc, ipt))
-        return jnp.array(flux_list)
+        if not self.reaction_batches:
+            return jnp.array(flux_list)
+        batch_fluxes = [
+            batch.rule.get_fluxes(
+                get_local_conc(conc, batch.ix),
+                parameters,
+                batch.ix,
+            )
+            for batch in self.reaction_batches
+        ]
+        flux = jnp.concatenate([*batch_fluxes, jnp.array(flux_list)])
+        return flux[unfreeze_array(self._flux_order, np.int64)]
 
     def get_log_conc_unbalanced(self, parameters: PyTree) -> UnbalancedConcArr:
         """Get the log unbalanced concentrations from a PyTree of parameters.

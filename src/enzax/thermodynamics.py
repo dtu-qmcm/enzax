@@ -10,19 +10,25 @@ functions here turn `dgr_std` into what rate laws need, so every reversible
 rate law in a model agrees about where each reaction's equilibrium is.
 """
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
+from jaxtyping import Array, Float, Int, Scalar
 
 from enzax.array_types import (
+    BatchFlux,
     ConcArray,
+    LocalSpeciesIx,
     ParamDict,
     ReactantArr,
     StaticReactantArr,
 )
+
+from enzax.reaction import get_slots
+from enzax.utils import pad_rows
 
 if TYPE_CHECKING:
     from enzax.kinetic_model import KineticModel
@@ -165,3 +171,86 @@ def get_flux_at_equilibrium(
     )
     conc_eq = conc.at[ix_product].set(conc_product)
     return rate_equation(conc_eq, rate_equation.get_input(parameters, ix))
+
+
+class ReverseTermIx(eqx.Module):
+    """Where a batch of reactions reads its reverse terms' inputs.
+
+    Slots index a local concentration block with a column of ones appended,
+    and are padded with the position of that column. `ix_dgf` is padded with
+    -1, which reads an appended formation energy of 0.
+    """
+
+    reactant_slot: Int[np.ndarray, "n_batch max_reactants"]
+    reactant_exponent: Float[np.ndarray, "n_batch max_reactants"]
+    reactant_stoichiometry: Float[np.ndarray, "n_batch max_reactants"]
+    ix_dgf: Int[np.ndarray, "n_batch max_reactants"]
+    water_stoichiometry: Float[np.ndarray, " n_batch"]
+    water_dgf: Float[np.ndarray, " n_batch"]
+
+
+def get_reverse_term_indexes(
+    local_species: LocalSpeciesIx,
+    ix_reactant: Sequence[np.ndarray],
+    forward_order: Sequence[np.ndarray],
+    reactant_stoichiometry: Sequence[np.ndarray],
+    ix_dgf: Sequence[np.ndarray],
+    water_stoichiometry: Sequence[float],
+    water_dgf: Sequence[float],
+) -> ReverseTermIx:
+    """Combine reactions' reverse term inputs into one batch bundle.
+
+    Each reaction's exponents are its forward orders plus its stoichiometry,
+    as in `get_reverse_term`.
+    """
+    n_slot = local_species.shape[1]
+    return ReverseTermIx(
+        reactant_slot=pad_rows(
+            [
+                get_slots(local_species, row, species)
+                for row, species in enumerate(ix_reactant)
+            ],
+            n_slot,
+        ),
+        reactant_exponent=pad_rows(
+            [
+                order + stoichiometry
+                for order, stoichiometry in zip(
+                    forward_order,
+                    reactant_stoichiometry,
+                )
+            ],
+            0.0,
+            float,
+        ),
+        reactant_stoichiometry=pad_rows(reactant_stoichiometry, 0.0, float),
+        ix_dgf=pad_rows([ix.tolist() for ix in ix_dgf], -1),
+        water_stoichiometry=np.array(water_stoichiometry, dtype=float),
+        water_dgf=np.array(water_dgf, dtype=float),
+    )
+
+
+def get_reverse_terms(
+    conc: Float[Array, "n_batch n_slot_and_one"],
+    parameters: ParamDict,
+    ix: ReverseTermIx,
+) -> BatchFlux:
+    """Get a batch of reactions' reverse terms, as `get_reverse_term` gets
+    one."""
+    RT = parameters["temperature"] * GAS_CONSTANT
+    dgf = jnp.append(parameters["dgf"], 0.0)[ix.ix_dgf]
+    dgr_std = (
+        jnp.einsum("ij,ij->i", ix.reactant_stoichiometry, dgf)
+        + ix.water_stoichiometry * ix.water_dgf
+    )
+    rows = np.arange(conc.shape[0])[:, None]
+    reactant_conc = conc[rows, ix.reactant_slot]
+    base = jnp.where(
+        ix.reactant_exponent > 0,
+        jnp.maximum(reactant_conc, 0.0),
+        jnp.maximum(reactant_conc, 1e-12),
+    )
+    return jnp.exp(dgr_std / RT) * jnp.prod(
+        base**ix.reactant_exponent,
+        axis=1,
+    )
