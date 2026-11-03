@@ -133,22 +133,23 @@ def jax_gradient(llh: Callable[[jax.Array], jax.Array]) -> Gradient:
 
 
 def get_enzax_steady_state_options(solver_name: str, tol: float) -> dict:
-    """Get keyword arguments for `get_steady_state`."""
-    options = {
+    """Get keyword arguments for `get_steady_state`, with the same solver,
+    step size controller and choice of first step as AMICI's JAX backend."""
+    solver, controller = get_diffrax_solver(solver_name, tol)
+    return {
+        "solver": solver,
+        "stepsize_controller": controller,
+        "dt0": None,
         "steady_state_rtol": STEADY_STATE_TOL,
         "steady_state_atol": STEADY_STATE_TOL,
         "max_steps": MAX_STEPS,
     }
-    if solver_name == "Kvaerno5":
-        return options | {"ivp_rtol": tol, "ivp_atol": tol}
-    solver, controller = get_diffrax_solver(solver_name, tol)
-    return options | {"solver": solver, "stepsize_controller": controller}
 
 
 def get_enzax_time_course_options(solver_name: str, tol: float) -> dict:
-    """Get keyword arguments for enzax's time-course solves."""
-    if solver_name == "Kvaerno5":
-        return {"rtol": tol, "atol": tol, "max_steps": MAX_STEPS}
+    """Get keyword arguments for enzax's time-course solves, with the same
+    solver and step size controller as AMICI's JAX backend. Their first step
+    is fixed at 1e-6."""
     solver, controller = get_diffrax_solver(solver_name, tol)
     return {
         "solver": solver,
