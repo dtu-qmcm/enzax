@@ -282,3 +282,43 @@ class Reaction(Module, ABC):
         conc: ConcArray,
         rate_equation_input: PyTree,
     ) -> Scalar: ...
+
+
+class ReactionBatch(Module):
+    """Reactions of one model that share a `BatchRule`.
+
+    `positions` are the reactions' positions in the model's reaction order.
+    """
+
+    rule: BatchRule = field(static=True)
+    ix: BatchIndexes
+    positions: Int[np.ndarray, " n_batch"]
+
+
+def get_reaction_batches(
+    reactions: Sequence[Reaction],
+    ixs: Sequence[PyTree],
+) -> list[ReactionBatch]:
+    """Group reactions by their `batch_rule`, in order of first appearance.
+
+    Reactions whose rule is None are left out.
+    """
+    positions: dict[int, list[int]] = {}
+    rules: dict[int, BatchRule] = {}
+    for position, reaction in enumerate(reactions):
+        rule = type(reaction).batch_rule
+        if rule is None:
+            continue
+        positions.setdefault(id(rule), []).append(position)
+        rules[id(rule)] = rule
+    return [
+        ReactionBatch(
+            rule=rules[key],
+            ix=rules[key].get_batch_indexes(
+                [reactions[i] for i in members],
+                [ixs[i] for i in members],
+            ),
+            positions=np.array(members, dtype=int),
+        )
+        for key, members in positions.items()
+    ]
