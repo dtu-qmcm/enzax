@@ -102,6 +102,21 @@ def test_the_built_in_measurements_match_lognormal_and_normal_densities():
     assert jnp.isclose(total, expected)
 
 
+def test_a_lognormal_bias_scales_the_predicted_values():
+    biased = LognormalMeasurement(
+        "e",
+        MODEL.species,
+        CONC_OBS,
+        CONC_ERR,
+        bias=0.2,
+    )
+    unbiased = LognormalMeasurement("e", MODEL.species, CONC_OBS, CONC_ERR)
+    assert jnp.allclose(
+        biased.log_likelihood(CONC),
+        unbiased.log_likelihood(CONC * jnp.exp(0.2)),
+    )
+
+
 def test_there_is_one_log_density_per_observation():
     log_likelihoods = get_log_likelihoods(
         get_measurements(),
@@ -232,6 +247,21 @@ def test_new_data_of_the_same_shape_does_not_retrace():
 def test_values_and_errors_must_be_positive_where_needed(build, message):
     with pytest.raises(ValueError, match=message):
         build()
+
+
+def test_errors_can_be_made_from_parameters_inside_a_jitted_function():
+    @jax.jit
+    def log_likelihood(log_error):
+        measurement = LognormalMeasurement(
+            "e",
+            MODEL.species,
+            CONC_OBS,
+            jnp.exp(log_error) * jnp.ones_like(CONC_ERR),
+        )
+        return measurement.log_likelihood(CONC).sum()
+
+    expected = norm.logpdf(jnp.log(CONC_OBS), jnp.log(CONC), 0.2).sum()
+    assert jnp.isclose(log_likelihood(jnp.log(0.2)), expected)
 
 
 def test_a_normal_measurement_can_have_negative_values():

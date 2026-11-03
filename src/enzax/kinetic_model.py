@@ -52,6 +52,8 @@ from enzax.rapid_equilibrium import (
     RapidEquilibriumNetwork,
     RapidEquilibriumNetworkScope,
     assemble_balanced_conc,
+    has_exact_solution,
+    solve_rapid_equilibria_exactly,
 )
 from enzax.reaction import Reaction, ReactionScope
 
@@ -1095,6 +1097,32 @@ class KineticModel(eqx.Module):
             or self.algebraic_constraints
         ):
             return {"log_conc": jnp.zeros(0), "variables": variables}
+        if not self.algebraic_constraints and has_exact_solution(
+            self.fast_moieties,
+        ):
+            network_input = self._rapid_equilibrium_network.get_input(
+                parameters,
+                self.rapid_equilibrium_network_ix,
+            )
+            conc = solve_rapid_equilibria_exactly(
+                self.fast_moieties,
+                self._get_fast_moiety_totals_at(
+                    ode_state,
+                    parameters,
+                    variables,
+                ),
+                network_input.log_conc_unbalanced,
+                network_input.dgf,
+                network_input.temperature,
+                network_input.water_dgf,
+            )
+            positive = conc > 0
+            log_conc = jnp.where(
+                positive,
+                jnp.log(jnp.where(positive, conc, 1.0)),
+                -jnp.inf,
+            )
+            return {"log_conc": log_conc, "variables": variables}
         initial = {
             "log_conc": self._rapid_equilibrium_network.get_guess(
                 self.fast_moieties,

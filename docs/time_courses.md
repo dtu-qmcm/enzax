@@ -18,7 +18,7 @@ labelling["log_amount_initial"]
 ```
 
 ```
-('pp', 'p', 'atp', 'adp', 'amp', 'fucose', 'fucose1p', 'gdp_fucose', 'gtp', 'gdp', 'gmp', 'polyp')
+('pp', 'p', 'atp', 'adp', 'amp', 'fucose', 'fucose1p', 'gdp_fucose', 'gtp', 'gdp', 'gmp')
 ```
 
 A species that starts at zero should have a fixed value of `-inf` in `log_amount_initial`, i.e. the logarithm of zero.
@@ -46,8 +46,7 @@ jnp.exp(fe13_parameters["log_amount_initial"])
 ```
 
 ```
-Array([  0. ,   0. ,   6. ,   0. ,   0. ,  21.5,   0. ,   0. ,   0. ,
-         0. ,  21.5, 100. ], dtype=float64)
+Array([ 0. ,  0. ,  6. ,  0. ,  0. , 21.5,  0. ,  0. ,  0. ,  0. , 21.5],      dtype=float64)
 ```
 
 ## Solving a time course
@@ -131,24 +130,35 @@ split = split_parameters_by_freeing(
     expanded_parameters,
     {
         "log_kcat": [r for r in gdp_fucose.KCAT if r != "PPA"],
-        "log_amount_initial": ["polyp"],
         "log_saturation_constant": [
             "ki|FKP_fk|gdp_fucose",
-            "km|UNKNOWN_HYDROLASE|atp",
             "km|UNKNOWN_HYDROLASE|amp",
-            "km|UNKNOWN_HYDROLASE|adp",
+            "km|PPK3_A|adp",
+            "km|PPK3_A|atp",
+            "km|PPK3_G|gdp",
+            "km|PPK3_G|gtp",
+            "km|PPK3|polyp",
         ],
-        "dgf": None,
+        "dgf": ["atp", "polyp", "gdp", "gmp"],
     },
 )
 free_parameters = get_free_parameters(split, expanded_parameters)
 times, conc_measurements = gdp_fucose.load_measurements(experiments)
-prior = prior_from_truth(free_parameters, sd=1.0) | {
-    "dgf": (
-        free_parameters["dgf"],
-        jnp.asarray(gdp_fucose.get_dgf_covariance()),
-    ),
-}
+prior = prior_from_truth(free_parameters, sd=1.0)
+saturation_loc, saturation_sd = prior["log_saturation_constant"]
+prior["log_saturation_constant"] = (
+    saturation_loc,
+    saturation_sd.at[0].set(3.0),
+)
+prior["dgf"] = (
+    free_parameters["dgf"],
+    jnp.asarray(
+        gdp_fucose.get_conditional_dgf_covariance(
+            ["atp", "polyp", "gdp", "gmp"],
+        ),
+    )
+    + 2.0**2 * jnp.eye(4),
+)
 log_density_time_course(
     free_parameters,
     model,
@@ -160,11 +170,13 @@ log_density_time_course(
 )
 ```
 
+Only four formation energies are free. The data constrain reactions' standard Gibbs energy changes, not compounds' formation energies, so the other eight are fixed at their prior means, chosen so that the free four still set every reaction's equilibrium constant that the data can see. The prior on the free four is eQuilibrator's multivariate normal, conditioned on the fixed values, which `gdp_fucose.get_conditional_dgf_covariance` gives in the order the compounds are listed, with an extra 2 kJ/mol standard deviation on each, since eQuilibrator's estimates are not for the cascade's temperature, pH and Mg²⁺.
+
 The layout must be made from a labelling that includes `log_amount_initial`, and a model with conserved moieties needs a split that fixes `moiety_totals`; the density raises otherwise. Concentration and flux measurements name time points in their ids; enzyme measurements do not, since enzyme levels do not change over time.
 
 `get_measurables` chooses the solve: the default, `get_measurables_time_course_single_experiment`, or `get_measurables_time_course_single_experiment_dae`, either of them wrapped with `functools.partial` to change its options. Create it once and reuse it, since each new one is compiled anew. As with `log_density`, the density is NaN if any experiment's solve fails, and experiments are solved together with `jax.vmap`.
 
-The figures below compare experiment FE13's measurements with its time course at the prior mean and at the maximum a posteriori (MAP) estimate of this log density.
+The figures below compare experiment FE13's measurements with its time course at the prior mean and at the maximum a posteriori (MAP) estimate. The demo's log density adds two things to the one above: a bias for each measurement day, made with `LognormalMeasurement`'s `bias` field, and an inferred noise level for each measured species. At the MAP, the curves show the time course times its day's bias, which is what the measurements should read.
 
 ??? example "Code for these figures"
 

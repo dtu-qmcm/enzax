@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 import equinox as eqx
+import jax
 import numpy as np
 from jax import numpy as jnp
 from jax.scipy.stats import norm
@@ -30,8 +31,15 @@ from enzax.parameters import INDEX_DTYPE, SEP
 
 
 def check_positive(measurement: "Measurement", field: str) -> None:
-    """Raise unless one of a measurement's fields is all positive."""
-    if not (np.asarray(getattr(measurement, field)) > 0).all():
+    """Raise unless one of a measurement's fields is all positive.
+
+    Traced values, such as errors made from parameters inside a jitted
+    function, cannot be checked and are let through.
+    """
+    value = getattr(measurement, field)
+    if isinstance(value, jax.core.Tracer):
+        return
+    if not (np.asarray(value) > 0).all():
         msg = (
             f"The {field} of a {type(measurement).__name__} in "
             f"{measurement.experiment!r} must all be positive."
@@ -65,11 +73,15 @@ class LognormalMeasurement(Measurement):
 
     errors are standard deviations on the log scale. Suits positive quantities
     such as concentrations and enzyme levels. values and errors must be
-    positive.
+    positive. bias is added to the log of the predicted values, so a bias b
+    means the measurements read e^b times the true values; it defaults to 0
+    and can be a parameter, for example one shared by the measurements made on
+    one day.
     """
 
     values: Array = eqx.field(converter=jnp.asarray)
     errors: Array = eqx.field(converter=jnp.asarray)
+    bias: Array = eqx.field(default=0.0, converter=jnp.asarray)
 
     def __check_init__(self):
         check_positive(self, "values")
@@ -78,7 +90,7 @@ class LognormalMeasurement(Measurement):
     def log_likelihood(self, predicted: Array) -> Array:
         return norm.logpdf(
             x=jnp.log(self.values),
-            loc=jnp.log(predicted),
+            loc=jnp.log(predicted) + self.bias,
             scale=self.errors,
         )
 

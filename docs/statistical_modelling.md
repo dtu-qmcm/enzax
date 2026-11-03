@@ -107,7 +107,7 @@ new_parameters
 
 A measurement holds some measured values from one experiment, together with a method that scores them against the model's predictions. Enzax provides two kinds of measurement:
 
-- `LognormalMeasurement`, for positive quantities such as concentrations and enzyme levels. The logarithms of the values are normally distributed, and `errors` are standard deviations on the log scale.
+- `LognormalMeasurement`, for positive quantities such as concentrations and enzyme levels. The logarithms of the values are normally distributed, and `errors` are standard deviations on the log scale. An optional `bias` is added to the logarithms of the predictions, so that the values read e^bias times the predicted ones; it can be a parameter, for example one shared by everything measured on one day, as in `scripts/cascade_demo.py`.
 - `NormalMeasurement`, for quantities that can be negative, such as fluxes. The values are normally distributed, and `errors` are standard deviations.
 
 Each measurement names its experiment and the ids of its values: species ids for concentrations, reaction ids for fluxes, and labels from `model.parameter_labelling["log_enzyme"]` for enzymes.
