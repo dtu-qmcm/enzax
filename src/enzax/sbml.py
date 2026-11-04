@@ -25,6 +25,10 @@ from enzax.reactions import (
     MichaelisMenten,
     SymbolicReaction,
 )
+from enzax.reactions.drain import DrainIx
+from enzax.reactions.mass_action import MassActionIx
+from enzax.reactions.saturable import MichaelisMentenIx
+from enzax.reactions.symbolic import SymbolicIx
 from enzax.thermodynamics import GAS_CONSTANT
 
 
@@ -524,128 +528,175 @@ def get_polynomial_expression(
     return sympy.Add(*terms)
 
 
+def get_species_symbol(
+    model: KineticModel,
+    position: int | np.integer,
+) -> sympy.Symbol:
+    """Get the symbol of the species at a position of the model's species."""
+    return sympy.Symbol(get_sbml_id(model.species[int(position)]))
+
+
+def get_michaelis_menten_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    reaction: MichaelisMenten,
+    ix: MichaelisMentenIx,
+) -> sympy.Expr:
+    """Get a Michaelis-Menten reaction's flux as an expression, as
+    `MichaelisMenten.__call__` gets its value."""
+    kms = [
+        get_parameter_symbol(model, ids, "log_saturation_constant", int(k))
+        for k in ix.ix_substrate_k
+    ]
+    numerator = sympy.Mul(
+        *(
+            get_species_symbol(model, s) / km
+            for s, km in zip(ix.ix_substrate, kms)
+        ),
+    )
+    if reaction.reversible:
+        numerator -= get_reverse_term_expression(
+            model,
+            ids,
+            ix.ix_reactant,
+            np.where(ix.reactant_stoichiometry < 0, 1.0, 0.0),
+            ix.reactant_stoichiometry,
+            ix.ix_dgf,
+            ix.water_stoichiometry,
+        ) / sympy.Mul(*kms)
+    rate = (
+        get_parameter_symbol(model, ids, "log_kcat", ix.ix_kcat)
+        * get_parameter_symbol(model, ids, "log_enzyme", ix.ix_enzyme)
+        * numerator
+        / get_polynomial_expression(model, ids, ix.binding_polynomial)
+    )
+    if ix.allostery is None:
+        return rate
+    ratio = get_polynomial_expression(
+        model,
+        ids,
+        ix.allostery.tense_state,
+    ) / get_polynomial_expression(model, ids, ix.allostery.relaxed_state)
+    tc = get_parameter_symbol(model, ids, "log_tc", ix.allostery.ix_tc)
+    return rate / (1 + tc * ratio**reaction.subunits)
+
+
+def get_mass_action_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    reaction: MassAction,
+    ix: MassActionIx,
+) -> sympy.Expr:
+    """Get a mass action reaction's flux as an expression, as
+    `MassAction.__call__` gets its value."""
+    k_plus = get_parameter_symbol(model, ids, "log_k_plus", ix.ix_k_plus)
+    forward = k_plus * sympy.Mul(
+        *(
+            get_species_symbol(model, s) ** float(order)
+            for s, order in zip(ix.ix_substrate, ix.substrate_order)
+        ),
+    )
+    if not reaction.reversible:
+        return forward
+    return forward - k_plus * get_reverse_term_expression(
+        model,
+        ids,
+        ix.ix_reactant,
+        np.maximum(-ix.reactant_stoichiometry, 0.0),
+        ix.reactant_stoichiometry,
+        ix.ix_dgf,
+        ix.water_stoichiometry,
+    )
+
+
+def get_drain_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    ix: DrainIx,
+) -> sympy.Expr:
+    """Get a drain's flux as an expression: its rate."""
+    return get_parameter_symbol(model, ids, "log_drain", ix.ix_drain)
+
+
+def get_symbolic_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    reaction_id: str,
+    reaction: SymbolicReaction,
+    ix: SymbolicIx,
+) -> sympy.Expr:
+    """Get a symbolic reaction's flux as an expression, with its symbols
+    renamed to SBML ids and the reserved symbols written out."""
+    species_symbols, parameter_symbols, variable_symbols, reserved = (
+        reaction.get_argument_symbols()
+    )
+    if variable_symbols:
+        msg = (
+            f"Reaction {reaction_id} reads algebraic variables, which "
+            "enzax_to_sbml does not support."
+        )
+        raise NotImplementedError(msg)
+    by_name = {s.name: s for s in reaction.expression.free_symbols}
+    renaming = {
+        by_name[name]: get_species_symbol(model, i)
+        for name, i in zip(species_symbols, ix.ix_species)
+    }
+    renaming |= {
+        by_name[name]: get_parameter_symbol(model, ids, kind, i)
+        for name, (kind, i) in zip(parameter_symbols, ix.parameter_positions)
+    }
+    thermodynamics = ix.thermodynamics
+    if reserved:
+        RT = sympy.Symbol(ids[("temperature", "")]) * GAS_CONSTANT
+        dgr = get_dgr_std_expression(
+            model,
+            ids,
+            thermodynamics.ix_dgf,
+            thermodynamics.reactant_stoichiometry,
+            thermodynamics.water_stoichiometry,
+        )
+    if "reversibility" in reserved:
+        quotient = sympy.Add(
+            *(
+                float(n) * sympy.log(get_species_symbol(model, i))
+                for i, n in zip(
+                    thermodynamics.ix_reactant,
+                    thermodynamics.reactant_stoichiometry,
+                )
+            ),
+        )
+        renaming[by_name["reversibility"]] = 1 - sympy.exp(
+            dgr / RT + quotient,
+        )
+    if "keq" in reserved:
+        renaming[by_name["keq"]] = sympy.exp(-dgr / RT)
+    return reaction.expression.xreplace(renaming)
+
+
 def get_kinetic_law(
     model: KineticModel,
     ids: Mapping[tuple[str, str], str],
     position: int,
 ) -> sympy.Expr:
     """Get a reaction's flux as an expression in SBML ids."""
-    reaction = model.reactions[model.reaction_ids[position]]
+    reaction_id = model.reaction_ids[position]
+    reaction = model.reactions[reaction_id]
     ix = model.reaction_ix[position]
-
-    def species(i):
-        return sympy.Symbol(get_sbml_id(model.species[int(i)]))
-
-    def parameter(kind, i):
-        return get_parameter_symbol(model, ids, kind, i)
-
-    if isinstance(reaction, MichaelisMenten):
-        kms = [
-            parameter("log_saturation_constant", int(k))
-            for k in ix.ix_substrate_k
-        ]
-        numerator = sympy.Mul(
-            *(species(s) / km for s, km in zip(ix.ix_substrate, kms)),
-        )
-        if reaction.reversible:
-            numerator -= get_reverse_term_expression(
-                model,
-                ids,
-                ix.ix_reactant,
-                np.where(ix.reactant_stoichiometry < 0, 1.0, 0.0),
-                ix.reactant_stoichiometry,
-                ix.ix_dgf,
-                ix.water_stoichiometry,
-            ) / sympy.Mul(*kms)
-        rate = (
-            parameter("log_kcat", ix.ix_kcat)
-            * parameter("log_enzyme", ix.ix_enzyme)
-            * numerator
-            / get_polynomial_expression(model, ids, ix.binding_polynomial)
-        )
-        if ix.allostery is None:
-            return rate
-        ratio = get_polynomial_expression(
-            model,
-            ids,
-            ix.allostery.tense_state,
-        ) / get_polynomial_expression(model, ids, ix.allostery.relaxed_state)
-        tc = parameter("log_tc", ix.allostery.ix_tc)
-        return rate / (1 + tc * ratio**reaction.subunits)
-    if isinstance(reaction, MassAction):
-        k_plus = parameter("log_k_plus", ix.ix_k_plus)
-        forward = k_plus * sympy.Mul(
-            *(
-                species(s) ** float(order)
-                for s, order in zip(ix.ix_substrate, ix.substrate_order)
-            ),
-        )
-        if not reaction.reversible:
-            return forward
-        return forward - k_plus * get_reverse_term_expression(
-            model,
-            ids,
-            ix.ix_reactant,
-            np.maximum(-ix.reactant_stoichiometry, 0.0),
-            ix.reactant_stoichiometry,
-            ix.ix_dgf,
-            ix.water_stoichiometry,
-        )
-    if isinstance(reaction, Drain):
-        return parameter("log_drain", ix.ix_drain)
-    if isinstance(reaction, SymbolicReaction):
-        species_symbols, parameter_symbols, variable_symbols, reserved = (
-            reaction.get_argument_symbols()
-        )
-        if variable_symbols:
+    match reaction:
+        case MichaelisMenten():
+            return get_michaelis_menten_law(model, ids, reaction, ix)
+        case MassAction():
+            return get_mass_action_law(model, ids, reaction, ix)
+        case Drain():
+            return get_drain_law(model, ids, ix)
+        case SymbolicReaction():
+            return get_symbolic_law(model, ids, reaction_id, reaction, ix)
+        case _:
             msg = (
-                f"Reaction {model.reaction_ids[position]} reads algebraic "
-                "variables, which enzax_to_sbml does not support."
+                f"Reaction {reaction_id} is a {type(reaction).__name__}, "
+                "which enzax_to_sbml does not support."
             )
             raise NotImplementedError(msg)
-        by_name = {s.name: s for s in reaction.expression.free_symbols}
-        renaming = {
-            by_name[name]: species(i)
-            for name, i in zip(species_symbols, ix.ix_species)
-        }
-        renaming |= {
-            by_name[name]: parameter(kind, i)
-            for name, (kind, i) in zip(
-                parameter_symbols,
-                ix.parameter_positions,
-            )
-        }
-        thermodynamics = ix.thermodynamics
-        if reserved:
-            RT = sympy.Symbol(ids[("temperature", "")]) * GAS_CONSTANT
-            dgr = get_dgr_std_expression(
-                model,
-                ids,
-                thermodynamics.ix_dgf,
-                thermodynamics.reactant_stoichiometry,
-                thermodynamics.water_stoichiometry,
-            )
-        if "reversibility" in reserved:
-            quotient = sympy.Add(
-                *(
-                    float(n) * sympy.log(species(i))
-                    for i, n in zip(
-                        thermodynamics.ix_reactant,
-                        thermodynamics.reactant_stoichiometry,
-                    )
-                ),
-            )
-            renaming[by_name["reversibility"]] = 1 - sympy.exp(
-                dgr / RT + quotient,
-            )
-        if "keq" in reserved:
-            renaming[by_name["keq"]] = sympy.exp(-dgr / RT)
-        return reaction.expression.xreplace(renaming)
-    msg = (
-        f"Reaction {model.reaction_ids[position]} is a "
-        f"{type(reaction).__name__}, which enzax_to_sbml does not support."
-    )
-    raise NotImplementedError(msg)
 
 
 def check_model_is_exportable(model: KineticModel) -> None:
