@@ -1,16 +1,35 @@
 import math
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
 import libsbml
+import numpy as np
 import requests
 import sympy
 from sbmlmath import SBMLMathMLParser
+from sympy.printing.str import StrPrinter
 
-from enzax.array_types import ParamDict
+from enzax.array_types import BalancedConcArr, ParamDict
+from enzax.binding import BindingPolynomial, SiteFactor
 from enzax.kinetic_model import KineticModel
-from enzax.parameters import CUSTOM_PREFIX, SEP, pack_parameters
-from enzax.reactions import SymbolicReaction
+from enzax.parameters import (
+    CUSTOM_PREFIX,
+    SEP,
+    pack_parameters,
+    unpack_parameters,
+)
+from enzax.reactions import (
+    Drain,
+    MassAction,
+    MichaelisMenten,
+    SymbolicReaction,
+)
+from enzax.reactions.drain import DrainIx
+from enzax.reactions.mass_action import MassActionIx
+from enzax.reactions.saturable import MichaelisMentenIx
+from enzax.reactions.symbolic import SymbolicIx
+from enzax.thermodynamics import GAS_CONSTANT
 
 
 def _get_libsbml_model_from_doc(doc):
@@ -355,3 +374,454 @@ def sbml_to_enzax(
             for species_id in labelling["log_conc_unbalanced"]
         }
     return model, pack_parameters(labelling, spec)
+
+
+class L3FormulaPrinter(StrPrinter):
+    """Print a sympy expression in libsbml's level 3 infix syntax."""
+
+    def _print_Pow(self, expr, rational=False):
+        base, exponent = expr.as_base_exp()
+        return f"pow({self._print(base)}, {self._print(exponent)})"
+
+    def _print_log(self, expr):
+        return f"ln({self._print(expr.args[0])})"
+
+    def _print_Abs(self, expr):
+        return f"abs({self._print(expr.args[0])})"
+
+    def _print_Min(self, expr):
+        return f"min({', '.join(self._print(a) for a in expr.args)})"
+
+    def _print_Max(self, expr):
+        return f"max({', '.join(self._print(a) for a in expr.args)})"
+
+
+def get_sbml_id(name: str) -> str:
+    """Turn a name into a valid SBML identifier."""
+    sid = re.sub(r"[^A-Za-z0-9_]", "_", name)
+    return sid if re.match(r"[A-Za-z_]", sid) else f"_{sid}"
+
+
+def get_parameter_ids(model: KineticModel) -> dict[tuple[str, str], str]:
+    """Get an SBML id for every labelled parameter value, keyed by
+    `(parameter, label)`.
+
+    A parameter whose name starts with `log_` is stored on its natural scale,
+    so its id drops the prefix. An unlabelled parameter's label is "".
+    """
+    ids = {}
+    for kind, labels in model.parameter_labelling.items():
+        base = kind.removeprefix("log_")
+        if not labels:
+            ids[(kind, "")] = get_sbml_id(base)
+        for label in labels:
+            ids[(kind, label)] = get_sbml_id(f"{base}__{label}")
+    clashes = [i for i in set(ids.values()) if list(ids.values()).count(i) > 1]
+    if clashes:
+        msg = f"Parameters share the SBML ids {sorted(clashes)}."
+        raise ValueError(msg)
+    return ids
+
+
+def get_parameter_symbol(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    kind: str,
+    position: int | None,
+) -> sympy.Symbol:
+    """Get the symbol of the value at a position of a parameter array."""
+    label = (
+        "" if position is None else model.parameter_labelling[kind][position]
+    )
+    return sympy.Symbol(ids[(kind, label)])
+
+
+def get_dgr_std_expression(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    ix_dgf: np.ndarray,
+    stoichiometry: np.ndarray,
+    water_stoichiometry: float,
+) -> sympy.Expr:
+    """Get a reaction's standard Gibbs energy change from formation
+    energies."""
+    dgr = sum(
+        float(n) * get_parameter_symbol(model, ids, "dgf", int(i))
+        for i, n in zip(ix_dgf, stoichiometry)
+    )
+    return dgr + water_stoichiometry * model.water_dgf
+
+
+def get_reverse_term_expression(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    ix_reactant: np.ndarray,
+    forward_order: np.ndarray,
+    stoichiometry: np.ndarray,
+    ix_dgf: np.ndarray,
+    water_stoichiometry: float,
+) -> sympy.Expr:
+    """Get a reaction's reverse term as an expression, as `get_reverse_term`
+    gets its value.
+
+    A reversible rate law has the form forward * (1 - Q/K), where:
+
+    * forward is the product of each reactant's concentration raised to its
+      forward order;
+    * Q is the mass action ratio, the product of each reactant's
+      concentration raised to its stoichiometric coefficient;
+    * K is the reaction's equilibrium constant.
+
+    The reverse term is forward * Q/K, so that the rate is forward minus the
+    reverse term. K comes from the formation energies through
+    1/K = exp(dgr_std / RT), with dgr_std from `get_dgr_std_expression`.
+    Multiplying out, the reverse term is
+
+        exp(dgr_std / RT) * prod(conc ** (forward_order + stoichiometry))
+
+    which is the expression returned, with each reactant's two exponents
+    added before its concentration is raised to them. Unlike
+    `get_reverse_term`, it does not clip concentrations.
+    """
+    RT = sympy.Symbol(ids[("temperature", "")]) * GAS_CONSTANT
+    dgr = get_dgr_std_expression(
+        model,
+        ids,
+        ix_dgf,
+        stoichiometry,
+        water_stoichiometry,
+    )
+    product = sympy.Mul(
+        *(
+            sympy.Symbol(get_sbml_id(model.species[int(i)]))
+            ** (float(order) + float(n))
+            for i, order, n in zip(ix_reactant, forward_order, stoichiometry)
+        ),
+    )
+    return sympy.exp(dgr / RT) * product
+
+
+def get_polynomial_expression(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    polynomial: BindingPolynomial,
+) -> sympy.Expr:
+    """Get a binding polynomial as an expression."""
+
+    def ratio(species, k):
+        return sympy.Symbol(
+            get_sbml_id(model.species[int(species)]),
+        ) / get_parameter_symbol(model, ids, "log_saturation_constant", int(k))
+
+    terms = []
+    for term in polynomial.terms:
+        value = sympy.Float(term.coefficient)
+        for factor in term.factors:
+            ratios = [
+                ratio(s, k) for s, k in zip(factor.ix_species, factor.ix_k)
+            ]
+            if isinstance(factor, SiteFactor):
+                value *= (1 + sympy.Add(*ratios)) ** factor.exponent
+            else:
+                value *= sympy.Mul(*ratios)
+        terms.append(value)
+    return sympy.Add(*terms)
+
+
+def get_species_symbol(
+    model: KineticModel,
+    position: int | np.integer,
+) -> sympy.Symbol:
+    """Get the symbol of the species at a position of the model's species."""
+    return sympy.Symbol(get_sbml_id(model.species[int(position)]))
+
+
+def get_michaelis_menten_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    reaction: MichaelisMenten,
+    ix: MichaelisMentenIx,
+) -> sympy.Expr:
+    """Get a Michaelis-Menten reaction's flux as an expression, as
+    `MichaelisMenten.__call__` gets its value."""
+    kms = [
+        get_parameter_symbol(model, ids, "log_saturation_constant", int(k))
+        for k in ix.ix_substrate_k
+    ]
+    numerator = sympy.Mul(
+        *(
+            get_species_symbol(model, s) / km
+            for s, km in zip(ix.ix_substrate, kms)
+        ),
+    )
+    if reaction.reversible:
+        numerator -= get_reverse_term_expression(
+            model,
+            ids,
+            ix.ix_reactant,
+            np.where(ix.reactant_stoichiometry < 0, 1.0, 0.0),
+            ix.reactant_stoichiometry,
+            ix.ix_dgf,
+            ix.water_stoichiometry,
+        ) / sympy.Mul(*kms)
+    rate = (
+        get_parameter_symbol(model, ids, "log_kcat", ix.ix_kcat)
+        * get_parameter_symbol(model, ids, "log_enzyme", ix.ix_enzyme)
+        * numerator
+        / get_polynomial_expression(model, ids, ix.binding_polynomial)
+    )
+    if ix.allostery is None:
+        return rate
+    ratio = get_polynomial_expression(
+        model,
+        ids,
+        ix.allostery.tense_state,
+    ) / get_polynomial_expression(model, ids, ix.allostery.relaxed_state)
+    tc = get_parameter_symbol(model, ids, "log_tc", ix.allostery.ix_tc)
+    return rate / (1 + tc * ratio**reaction.subunits)
+
+
+def get_mass_action_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    reaction: MassAction,
+    ix: MassActionIx,
+) -> sympy.Expr:
+    """Get a mass action reaction's flux as an expression, as
+    `MassAction.__call__` gets its value."""
+    k_plus = get_parameter_symbol(model, ids, "log_k_plus", ix.ix_k_plus)
+    forward = k_plus * sympy.Mul(
+        *(
+            get_species_symbol(model, s) ** float(order)
+            for s, order in zip(ix.ix_substrate, ix.substrate_order)
+        ),
+    )
+    if not reaction.reversible:
+        return forward
+    return forward - k_plus * get_reverse_term_expression(
+        model,
+        ids,
+        ix.ix_reactant,
+        np.maximum(-ix.reactant_stoichiometry, 0.0),
+        ix.reactant_stoichiometry,
+        ix.ix_dgf,
+        ix.water_stoichiometry,
+    )
+
+
+def get_drain_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    ix: DrainIx,
+) -> sympy.Expr:
+    """Get a drain's flux as an expression: its rate."""
+    return get_parameter_symbol(model, ids, "log_drain", ix.ix_drain)
+
+
+def get_symbolic_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    reaction_id: str,
+    reaction: SymbolicReaction,
+    ix: SymbolicIx,
+) -> sympy.Expr:
+    """Get a symbolic reaction's flux as an expression, with its symbols
+    renamed to SBML ids and the reserved symbols written out."""
+    species_symbols, parameter_symbols, variable_symbols, reserved = (
+        reaction.get_argument_symbols()
+    )
+    if variable_symbols:
+        msg = (
+            f"Reaction {reaction_id} reads algebraic variables, which "
+            "enzax_to_sbml does not support."
+        )
+        raise NotImplementedError(msg)
+    by_name = {s.name: s for s in reaction.expression.free_symbols}
+    renaming = {
+        by_name[name]: get_species_symbol(model, i)
+        for name, i in zip(species_symbols, ix.ix_species)
+    }
+    renaming |= {
+        by_name[name]: get_parameter_symbol(model, ids, kind, i)
+        for name, (kind, i) in zip(parameter_symbols, ix.parameter_positions)
+    }
+    thermodynamics = ix.thermodynamics
+    if reserved:
+        RT = sympy.Symbol(ids[("temperature", "")]) * GAS_CONSTANT
+        dgr = get_dgr_std_expression(
+            model,
+            ids,
+            thermodynamics.ix_dgf,
+            thermodynamics.reactant_stoichiometry,
+            thermodynamics.water_stoichiometry,
+        )
+    if "reversibility" in reserved:
+        quotient = sympy.Add(
+            *(
+                float(n) * sympy.log(get_species_symbol(model, i))
+                for i, n in zip(
+                    thermodynamics.ix_reactant,
+                    thermodynamics.reactant_stoichiometry,
+                )
+            ),
+        )
+        renaming[by_name["reversibility"]] = 1 - sympy.exp(
+            dgr / RT + quotient,
+        )
+    if "keq" in reserved:
+        renaming[by_name["keq"]] = sympy.exp(-dgr / RT)
+    return reaction.expression.xreplace(renaming)
+
+
+def get_kinetic_law(
+    model: KineticModel,
+    ids: Mapping[tuple[str, str], str],
+    position: int,
+) -> sympy.Expr:
+    """Get a reaction's flux as an expression in SBML ids."""
+    reaction_id = model.reaction_ids[position]
+    reaction = model.reactions[reaction_id]
+    ix = model.reaction_ix[position]
+    match reaction:
+        case MichaelisMenten():
+            return get_michaelis_menten_law(model, ids, reaction, ix)
+        case MassAction():
+            return get_mass_action_law(model, ids, reaction, ix)
+        case Drain():
+            return get_drain_law(model, ids, ix)
+        case SymbolicReaction():
+            return get_symbolic_law(model, ids, reaction_id, reaction, ix)
+        case _:
+            msg = (
+                f"Reaction {reaction_id} is a {type(reaction).__name__}, "
+                "which enzax_to_sbml does not support."
+            )
+            raise NotImplementedError(msg)
+
+
+def check_model_is_exportable(model: KineticModel) -> None:
+    """Raise if a model uses something enzax_to_sbml does not handle."""
+    problems = []
+    if model._rapid_equilibrium_network.reactions:
+        problems.append("rapid equilibria")
+    if model.algebraic_constraints:
+        problems.append("algebraic constraints")
+    for compartment_id, compartment in (model.compartments or {}).items():
+        if compartment.variable_volume or compartment.volume != 1.0:
+            problems.append(
+                f"compartment {compartment_id!r} with volume other than 1",
+            )
+    if problems:
+        msg = f"enzax_to_sbml does not support {', '.join(problems)}."
+        raise NotImplementedError(msg)
+
+
+def enzax_to_sbml(
+    model: KineticModel,
+    parameters: ParamDict,
+    conc_balanced: BalancedConcArr,
+    model_id: str = "enzax_model",
+) -> libsbml.SBMLDocument:
+    """Write a kinetic model and parameter values as an SBML level 3 version 2
+    document.
+
+    This is experimental. Every species is in one compartment of size 1, with
+    the unbalanced species as constant boundary species and the balanced
+    species starting at `conc_balanced`. Each reaction's kinetic law is its
+    rate law written out as an expression, and every parameter value is an
+    SBML parameter on its natural scale, named as in `get_parameter_ids`.
+    Formation energies stay parameters, so the equilibrium constants follow
+    from them as they do in enzax. Concentrations are not clipped at zero as
+    enzax's rate laws clip them.
+
+    Not supported: rapid equilibria, algebraic constraints, and compartments
+    whose volume is not 1.
+    """
+    check_model_is_exportable(model)
+    ids = get_parameter_ids(model)
+    values = unpack_parameters(model.parameter_labelling, parameters)
+    doc = libsbml.SBMLDocument(3, 2)
+    sbml = doc.createModel()
+    sbml.setId(get_sbml_id(model_id))
+    used = {get_sbml_id(i) for i in [*model.species, *model.reaction_ids]}
+    n_named = len(model.species) + len(model.reaction_ids)
+    duplicated = len(used) < n_named or used & set(ids.values())
+    if duplicated:
+        msg = "Species, reactions and parameters do not have distinct SBML ids."
+        raise ValueError(msg)
+    compartment_id = "compartment"
+    while compartment_id in used:
+        compartment_id = f"_{compartment_id}"
+    compartment = sbml.createCompartment()
+    compartment.setId(compartment_id)
+    compartment.setSize(1.0)
+    compartment.setConstant(True)
+    initial = dict(zip(model.balanced_species, np.asarray(conc_balanced)))
+    unbalanced = dict(
+        zip(
+            model.unbalanced_species,
+            np.exp(np.asarray(model.get_log_conc_unbalanced(parameters))),
+        ),
+    )
+    for species_id in model.species:
+        species = sbml.createSpecies()
+        species.setId(get_sbml_id(species_id))
+        species.setName(species_id)
+        species.setCompartment(compartment_id)
+        species.setHasOnlySubstanceUnits(False)
+        is_unbalanced = species_id in unbalanced
+        species.setBoundaryCondition(is_unbalanced)
+        species.setConstant(is_unbalanced)
+        species.setInitialConcentration(
+            float(
+                unbalanced[species_id]
+                if is_unbalanced
+                else initial[species_id],
+            ),
+        )
+    for (kind, label), sid in ids.items():
+        if kind == "log_conc_unbalanced":
+            continue
+        value = values[kind] if label == "" else values[kind][label]
+        parameter = sbml.createParameter()
+        parameter.setId(sid)
+        parameter.setName(f"{kind} {label}".strip())
+        parameter.setConstant(True)
+        parameter.setValue(
+            float(np.exp(value) if kind.startswith("log_") else value),
+        )
+    printer = L3FormulaPrinter()
+    for position, reaction_id in enumerate(model.reaction_ids):
+        reaction = sbml.createReaction()
+        reaction.setId(get_sbml_id(reaction_id))
+        reaction.setName(reaction_id)
+        reaction.setReversible(True)
+        for species_id, coefficient in model.stoichiometry[reaction_id].items():
+            reference = (
+                reaction.createReactant()
+                if coefficient < 0
+                else reaction.createProduct()
+            )
+            reference.setSpecies(get_sbml_id(species_id))
+            reference.setStoichiometry(abs(float(coefficient)))
+            reference.setConstant(True)
+        expression = get_kinetic_law(model, ids, position)
+        participants = {
+            get_sbml_id(s) for s in model.stoichiometry[reaction_id]
+        }
+        species_ids = {get_sbml_id(s) for s in model.species}
+        for symbol in sorted(expression.free_symbols, key=str):
+            if symbol.name in species_ids - participants:
+                modifier = reaction.createModifier()
+                modifier.setSpecies(symbol.name)
+        law = reaction.createKineticLaw()
+        formula = printer.doprint(expression)
+        math = libsbml.parseL3Formula(formula)
+        if math is None:
+            msg = (
+                f"Could not parse reaction {reaction_id}'s kinetic law "
+                f"{formula!r}: {libsbml.getLastParseL3Error()}"
+            )
+            raise ValueError(msg)
+        law.setMath(math)
+    return doc
