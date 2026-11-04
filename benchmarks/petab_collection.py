@@ -1,11 +1,13 @@
-"""Compare enzax with AMICI on two steady-state problems from the PEtab
-benchmark collection, the ones AMICI's steady-state adjoint paper used that
-are small enough to run here.
+"""Compare enzax with AMICI on two problems from the PEtab benchmark collection.
 
-Blasi_CellSystems2016 has steady-state data only. Zheng_PNAS2012 has a
-time course that starts from a steady state (PEtab's preequilibration). Both
-are SBML models of mass action kinetics, which enzax imports as
-`SymbolicReaction`s.
+The problems are two of the three that benchmarked AMICI's steady-state
+adjoint method (https://doi.org/10.1371/journal.pcbi.1010783), chosen
+because they are small enough for a comparison to be practical. The model of
+histone H4 acetylation from https://doi.org/10.1016/j.cels.2016.01.002 has
+steady-state data only. The model of histone H3 methylation from
+https://doi.org/10.1073/pnas.1205707109 has a time course that starts from a
+steady state (PEtab's preequilibration). Both are SBML models of mass action
+kinetics, which enzax imports as `SymbolicReaction`s.
 
 Run with `uv run --group benchmark python benchmarks/petab_collection.py`.
 """
