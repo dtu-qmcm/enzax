@@ -1,10 +1,18 @@
 """Compare enzax with AMICI on the glycolysis example.
 
-The model goes to AMICI as SBML written by `enzax_to_sbml`. The PEtab
-problem has steady-state measurements of every balanced concentration,
-simulated from enzax with log-normal noise, and estimates every log-scale
-kinetic parameter (on natural log scale) and every formation energy. Every
-steady state is solved from 1.5 times the example's steady state.
+The problem is to fit the glycolysis and pentose phosphate pathway model to
+steady-state measurements of every balanced species' concentration,
+simulated from the model with log-normal noise. For each tool, the benchmark
+measures how long it takes to compute the gradient of the log likelihood
+with respect to the model's kinetic parameters and formation energies, and
+how accurate that gradient is.
+
+The model goes to AMICI as SBML written by `enzax_to_sbml`, and the problem
+as PEtab, which estimates every log-scale kinetic parameter on natural log
+scale and every formation energy on linear scale. All steady state solves
+use the same starting guess, specifically the steady state at the nominal
+parameters with each concentration multiplied by a random factor, drawn
+once from a log-normal distribution.
 
 Run with `uv run --group benchmark python benchmarks/glycolysis.py`.
 """
@@ -39,7 +47,11 @@ ESTIMATED_KINDS = (
     "dgf",
 )
 MODEL, PARAMETERS = glycolysis.model, glycolysis.parameters
-GUESS = glycolysis.steady_state * 1.5
+GUESS_SD = 0.4
+GUESS = glycolysis.steady_state * np.exp(
+    GUESS_SD
+    * np.random.default_rng(1).standard_normal(glycolysis.steady_state.shape),
+)
 
 
 def write_problem() -> petab.Problem:
