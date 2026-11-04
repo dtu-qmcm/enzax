@@ -457,7 +457,28 @@ def get_reverse_term_expression(
     ix_dgf: np.ndarray,
     water_stoichiometry: float,
 ) -> sympy.Expr:
-    """Get a reaction's forward term times Q/K, as `get_reverse_term`."""
+    """Get a reaction's reverse term as an expression, as `get_reverse_term`
+    gets its value.
+
+    A reversible rate law has the form forward * (1 - Q/K), where:
+
+    * forward is the product of each reactant's concentration raised to its
+      forward order;
+    * Q is the mass action ratio, the product of each reactant's
+      concentration raised to its stoichiometric coefficient;
+    * K is the reaction's equilibrium constant.
+
+    The reverse term is forward * Q/K, so that the rate is forward minus the
+    reverse term. K comes from the formation energies through
+    1/K = exp(dgr_std / RT), with dgr_std from `get_dgr_std_expression`.
+    Multiplying out, the reverse term is
+
+        exp(dgr_std / RT) * prod(conc ** (forward_order + stoichiometry))
+
+    which is the expression returned, with each reactant's two exponents
+    added before its concentration is raised to them. Unlike
+    `get_reverse_term`, it does not clip concentrations.
+    """
     RT = sympy.Symbol(ids[("temperature", "")]) * GAS_CONSTANT
     dgr = get_dgr_std_expression(
         model,
