@@ -19,8 +19,8 @@ from enzax.rapid_equilibrium import (
     solve_rapid_equilibria,
     solve_rapid_equilibria_exactly,
 )
-from enzax.parameters import pack_parameters
-from enzax.reactions import Drain, MichaelisMenten
+from enzax.parameters import pack_parameters, unpack_parameters
+from enzax.reactions import Drain, MassAction, MichaelisMenten
 from enzax.steady_state import get_steady_state_dae, get_steady_state_hybrid
 from enzax.thermodynamics import GAS_CONSTANT
 
@@ -696,18 +696,60 @@ def test_the_dae_state_holds_the_balanced_concentrations():
 
 
 @pytest.mark.parametrize("suppress_algebraic_error", [True, False])
-def test_the_dae_steady_state_matches_the_hybrid_one(suppress_algebraic_error):
+@pytest.mark.parametrize("dae_guess", [[1.0, 1.0], [0.2, 2.0]])
+def test_the_dae_steady_state_matches_the_hybrid_one(
+    suppress_algebraic_error,
+    dae_guess,
+):
     pytest.importorskip("diffrax_bdf")
     parameters = get_energy_parameters()
-    guess = jnp.array([1.0, 1.0])
     dae = get_steady_state_dae(
         ENERGY,
-        guess,
+        jnp.array(dae_guess),
         parameters,
         suppress_algebraic_error=suppress_algebraic_error,
     )
-    hybrid = get_steady_state_hybrid(ENERGY, guess, parameters)
+    hybrid = get_steady_state_hybrid(ENERGY, jnp.array([1.0, 1.0]), parameters)
     assert np.allclose(dae, hybrid, rtol=1e-8, atol=0.0)
+
+
+# ENERGY with Mg binding as fast mass action reactions instead of rapid
+# equilibria. The equilibrium constants come from the same formation energies.
+ENERGY_STIFF = KineticModel(
+    reactions=dict(ENERGY.reactions)
+    | {
+        reaction_id: MassAction(stoichiometry=dict(reaction.stoichiometry))
+        for reaction_id, reaction in (
+            ENERGY.rapid_equilibrium_network.reactions.items()
+        )
+    },
+    balanced_species=ENERGY.balanced_species,
+    moiety_label_species=ENERGY.moiety_label_species,
+)
+
+
+def test_the_stiff_formulation_converges_to_the_rapid_equilibrium_one():
+    rapid = get_energy_parameters()
+    steady = get_steady_state_hybrid(ENERGY, jnp.array([1.0, 1.0]), rapid)
+    expected = ENERGY.get_balanced_conc(steady, rapid)
+    ks = np.array([1e3, 1e4])
+    errors = []
+    for k in ks:
+        spec = unpack_parameters(ENERGY.parameter_labelling, rapid)
+        spec["log_k_plus"] = dict.fromkeys(
+            ENERGY_STIFF.parameter_labelling["log_k_plus"],
+            np.log(k),
+        )
+        stiff = pack_parameters(ENERGY_STIFF.parameter_labelling, spec)
+        guess = ENERGY_STIFF.get_ode_state(expected)
+        conc = ENERGY_STIFF.get_balanced_conc(
+            get_steady_state_hybrid(ENERGY_STIFF, guess, stiff),
+            stiff,
+        )
+        errors.append(float(jnp.max(jnp.abs(conc / expected - 1.0))))
+    errors = np.array(errors)
+    assert np.allclose(errors * ks, errors[0] * ks[0], rtol=0.05)
+    assert errors[-1] < 1e-3
 
 
 def test_dae_steady_state_gradients_match_the_hybrid_ones():
