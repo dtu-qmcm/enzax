@@ -151,9 +151,18 @@ def test_hybrid_finds_the_same_steady_state(name, example):
     To the event tolerance rather than bit for bit: the hybrid converges
     further than the event does when Newton succeeds, so
     `tests/test_bit_exact.py`'s style of assertion does not transfer here.
+    From the warm guess the ODE solve lets diffrax choose its first step.
     """
-    for guess in [cold_guess(example), example.steady_state * 1.01]:
-        by_ode = get_steady_state(example.model, guess, example.parameters)
+    for guess, dt0 in [
+        (cold_guess(example), 1e-6),
+        (example.steady_state * 1.01, None),
+    ]:
+        by_ode = get_steady_state(
+            example.model,
+            guess,
+            example.parameters,
+            dt0=dt0,
+        )
         by_hybrid = get_steady_state_hybrid(
             example.model,
             guess,
@@ -346,16 +355,3 @@ def test_newton_reports_failure_rather_than_a_bad_root_when_it_diverges():
         throw=False,
     )
     assert sol.result != optx.RESULTS.successful
-
-
-@pytest.mark.parametrize(["name", "example"], EXAMPLES)
-def test_letting_diffrax_choose_the_first_step(name, example):
-    guess = cold_guess(example)
-    by_default = get_steady_state(example.model, guess, example.parameters)
-    chosen = get_steady_state(
-        example.model,
-        guess,
-        example.parameters,
-        dt0=None,
-    )
-    assert jnp.isclose(chosen, by_default, rtol=1e-5).all()

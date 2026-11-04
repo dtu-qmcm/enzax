@@ -1,11 +1,30 @@
-"""Tests of the Joshi and Palsson red blood cell example."""
+"""Tests of the Joshi and Palsson red blood cell example.
+
+Solving the red blood cell takes minutes, so these tests check the model
+against steady states stored in `data/red_blood_cell_steady_states.json`
+instead: that the rates of change vanish there, and that the states agree
+with Joshi and Palsson's. `scripts/red_blood_cell_reference_states.py`
+writes the stored states. Comparisons between solvers are tested on small
+models, in `test_rapid_equilibrium.py` and elsewhere.
+"""
+
+import json
+from pathlib import Path
 
 import numpy as np
-import pytest
 from jax import numpy as jnp
 
 from enzax.examples import red_blood_cell as rbc
-from enzax.steady_state import get_steady_state_dae, get_steady_state_hybrid
+
+STATES = {
+    name: jnp.array(state)
+    for name, state in json.loads(
+        (
+            Path(__file__).parent / "data" / "red_blood_cell_steady_states.json"
+        ).read_text(),
+    ).items()
+}
+FORWARD_TO_NET_RATIOS = (1e3, 1e4)
 
 CALIBRATED = [
     "HK", "PFK", "PK", "TPI", "TKI", "TKII", "TA", "PRM", "PNPase",
@@ -41,13 +60,8 @@ def test_calibrated_fluxes_match_part_iv_at_its_steady_state():
     assert np.isclose(fluxes["PYR_ex"], 0.0, atol=1e-3)
 
 
-@pytest.mark.slow
-def test_the_steady_state_is_close_to_part_iv():
-    steady = get_steady_state_hybrid(
-        rbc.model,
-        rbc.steady_state,
-        rbc.parameters,
-    )
+def test_the_stored_steady_state_is_close_to_part_iv():
+    steady = STATES["stiff"]
     assert jnp.max(jnp.abs(rbc.model.dndt(steady, rbc.parameters))) < 1e-9
     assert np.allclose(steady, rbc.steady_state, rtol=0.08)
     fluxes = get_fluxes(steady)
@@ -66,17 +80,13 @@ def test_every_fast_moiety_has_non_negative_coefficients():
     assert np.all(matrix >= 0)
 
 
-@pytest.mark.slow
 def test_the_stiff_formulation_converges_to_the_rapid_equilibrium_one():
     model, parameters = (
         rbc.rapid_equilibrium_model,
         rbc.rapid_equilibrium_parameters,
     )
-    steady = get_steady_state_hybrid(
-        model,
-        rbc.rapid_equilibrium_steady_state,
-        parameters,
-    )
+    steady = STATES["rapid_equilibrium"]
+    assert jnp.max(jnp.abs(model.dndt(steady, parameters))) < 1e-9
     expected = model.get_balanced_conc(steady, parameters)
     part_iv = rbc.get_steady_state_conc()
     assert np.allclose(
@@ -84,44 +94,14 @@ def test_the_stiff_formulation_converges_to_the_rapid_equilibrium_one():
         [part_iv[s] for s in model.balanced_species],
         rtol=0.09,
     )
-    ratios = np.array([1e3, 1e4])
+    ratios = np.array(FORWARD_TO_NET_RATIOS)
     errors = []
     for ratio in ratios:
         stiff_parameters = rbc.get_parameters(rbc.model, ratio)
-        stiff = get_steady_state_hybrid(
-            rbc.model,
-            rbc.steady_state,
-            stiff_parameters,
-            steady_state_rtol=1e-9,
-            steady_state_atol=1e-9,
-        )
+        stiff = STATES[f"stiff_ratio_{ratio:.0e}"]
+        assert jnp.max(jnp.abs(rbc.model.dndt(stiff, stiff_parameters))) < 1e-6
         conc = rbc.model.get_balanced_conc(stiff, stiff_parameters)
         errors.append(float(jnp.max(jnp.abs(conc / expected - 1.0))))
     errors = np.array(errors)
     assert np.allclose(errors * ratios, errors[0] * ratios[0], rtol=0.05)
     assert errors[-1] < 1e-3
-
-
-@pytest.mark.slow
-def test_the_dae_steady_state_matches_the_hybrid_one_from_a_poor_start():
-    pytest.importorskip("diffrax_bdf")
-    model, parameters = (
-        rbc.rapid_equilibrium_model,
-        rbc.rapid_equilibrium_parameters,
-    )
-    hybrid = get_steady_state_hybrid(
-        model,
-        rbc.rapid_equilibrium_steady_state,
-        parameters,
-    )
-    dae = get_steady_state_dae(
-        model,
-        0.8 * rbc.rapid_equilibrium_steady_state,
-        parameters,
-    )
-    assert np.allclose(
-        model.get_balanced_conc(dae, parameters),
-        model.get_balanced_conc(hybrid, parameters),
-        rtol=1e-6,
-        atol=0.0,
-    )

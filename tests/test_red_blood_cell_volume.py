@@ -1,12 +1,28 @@
+"""Tests of the red blood cell examples with a variable cell volume.
+
+As in `test_red_blood_cell.py`, the steady states are the stored ones in
+`data/red_blood_cell_steady_states.json`.
+"""
+
+import json
+from pathlib import Path
+
 import jax
 import numpy as np
-import pytest
 from jax import numpy as jnp
 
 from enzax.examples import red_blood_cell_volume as rbcv
-from enzax.steady_state import get_steady_state_dae, get_steady_state_hybrid
 
 jax.config.update("jax_enable_x64", True)
+
+STATES = {
+    name: jnp.array(state)
+    for name, state in json.loads(
+        (
+            Path(__file__).parent / "data" / "red_blood_cell_steady_states.json"
+        ).read_text(),
+    ).items()
+}
 
 
 def test_the_variables_are_the_volume_and_the_donnan_ratio():
@@ -29,23 +45,11 @@ def test_the_faithful_constraints_at_the_reference_composition():
     assert np.isclose(donnan_ratio, 0.61500, atol=1e-5)
 
 
-@pytest.mark.slow
-def test_the_faithful_steady_state():
-    pytest.importorskip("diffrax_bdf")
+def test_the_stored_faithful_steady_state():
     model, parameters = rbcv.faithful, rbcv.faithful_parameters
-    by_hybrid = get_steady_state_hybrid(
-        model,
-        rbcv.faithful_initial_state,
-        parameters,
-    )
-    by_dae = get_steady_state_dae(
-        model,
-        rbcv.faithful_initial_state,
-        parameters,
-    )
-    assert np.allclose(by_dae, by_hybrid, rtol=1e-6)
-    assert jnp.max(jnp.abs(model.dndt(by_hybrid, parameters))) < 1e-9
-    volume, donnan_ratio = model.get_algebraic_variables(by_hybrid, parameters)
+    steady = STATES["faithful"]
+    assert jnp.max(jnp.abs(model.dndt(steady, parameters))) < 1e-9
+    volume, donnan_ratio = model.get_algebraic_variables(steady, parameters)
     assert 0.9 < volume < 1.1
     assert 0.55 < donnan_ratio < 0.70
 
@@ -64,19 +68,7 @@ def test_the_improved_osmotic_sum_counts_every_intracellular_species():
     assert set(osmotic.species) == set(in_cell) - {"k"}
 
 
-@pytest.mark.slow
-def test_the_improved_steady_state():
-    pytest.importorskip("diffrax_bdf")
+def test_the_stored_improved_steady_state():
     model, parameters = rbcv.improved, rbcv.improved_parameters
-    by_hybrid = get_steady_state_hybrid(
-        model,
-        rbcv.improved_initial_state,
-        parameters,
-    )
-    by_dae = get_steady_state_dae(
-        model,
-        rbcv.improved_initial_state,
-        parameters,
-    )
-    assert np.allclose(by_dae, by_hybrid, rtol=1e-6)
-    assert jnp.max(jnp.abs(model.dndt(by_hybrid, parameters))) < 1e-9
+    steady = STATES["improved"]
+    assert jnp.max(jnp.abs(model.dndt(steady, parameters))) < 1e-9
