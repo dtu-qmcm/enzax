@@ -10,6 +10,7 @@ sensitivities at tight tolerances.
 
 import csv
 import os
+import shutil
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -273,8 +274,11 @@ def run_grid(
 
     `enzax_llh(solver_name, tol)` returns the problem's log likelihood in
     enzax as a function of the estimated parameters on their PEtab scales.
+    AMICI's models are compiled afresh, since AMICI reuses a compiled model
+    without checking that the SBML it came from is unchanged.
     """
     RESULTS.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(BUILD / name, ignore_errors=True)
     draws = get_draws(get_nominal_theta(problem))
     cpp = AmiciCpp(problem, name)
     amici_jax = AmiciJax(problem, name)

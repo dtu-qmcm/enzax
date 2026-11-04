@@ -8,31 +8,31 @@
       <species id="glc_e" name="glc_e" compartment="compartment" initialConcentration="0.0299987370943989" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="glc_c" name="glc_c" compartment="compartment" initialConcentration="0.0134911818939771" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="atp_c" name="atp_c" compartment="compartment" initialConcentration="0.00399085973045097" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="g6p_c" name="g6p_c" compartment="compartment" initialConcentration="0.000699594455506933" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="g6p_c" name="g6p_c" compartment="compartment" initialConcentration="0.000535536681244411" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="adp_c" name="adp_c" compartment="compartment" initialConcentration="0.00130051739180107" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="f6p_c" name="f6p_c" compartment="compartment" initialConcentration="0.000331554457775564" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="fdp_c" name="fdp_c" compartment="compartment" initialConcentration="0.000846358076322743" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="g3p_c" name="g3p_c" compartment="compartment" initialConcentration="6.61015359669125e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="dhap_c" name="dhap_c" compartment="compartment" initialConcentration="8.54685253295622e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="f6p_c" name="f6p_c" compartment="compartment" initialConcentration="0.000307038830184811" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="fdp_c" name="fdp_c" compartment="compartment" initialConcentration="0.000643970070398375" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="g3p_c" name="g3p_c" compartment="compartment" initialConcentration="6.32989804361847e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="dhap_c" name="dhap_c" compartment="compartment" initialConcentration="3.38324426082627e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="pi_c" name="pi_c" compartment="compartment" initialConcentration="0.0159360009265174" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="nad_c" name="nad_c" compartment="compartment" initialConcentration="0.00115732045327122" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="nadh_c" name="nadh_c" compartment="compartment" initialConcentration="5.17564335358803e-07" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="dpg_c" name="dpg_c" compartment="compartment" initialConcentration="3.72954507632054e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="p3g_c" name="p3g_c" compartment="compartment" initialConcentration="0.022112245519043" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="p2g_c" name="p2g_c" compartment="compartment" initialConcentration="0.00325923346414848" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="pep_c" name="pep_c" compartment="compartment" initialConcentration="1.20937166401655e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="pyr_c" name="pyr_c" compartment="compartment" initialConcentration="0.000206692735425915" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="lac_c" name="lac_c" compartment="compartment" initialConcentration="0.000631421337963332" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="dpg_c" name="dpg_c" compartment="compartment" initialConcentration="2.97240379367923e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="p3g_c" name="p3g_c" compartment="compartment" initialConcentration="0.011892228846682" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="p2g_c" name="p2g_c" compartment="compartment" initialConcentration="0.00274141488252202" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pep_c" name="pep_c" compartment="compartment" initialConcentration="9.32827287176305e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pyr_c" name="pyr_c" compartment="compartment" initialConcentration="0.000154999394603516" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="lac_c" name="lac_c" compartment="compartment" initialConcentration="0.000425760575383271" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="nadp_c" name="nadp_c" compartment="compartment" initialConcentration="6.04584201169821e-05" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="pgl6_c" name="pgl6_c" compartment="compartment" initialConcentration="0.0127403132992816" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pgl6_c" name="pgl6_c" compartment="compartment" initialConcentration="0.0105696990581685" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="nadph_c" name="nadph_c" compartment="compartment" initialConcentration="1.3492204010902e-05" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="pgc6_c" name="pgc6_c" compartment="compartment" initialConcentration="2.04291294757922e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="ru5p_c" name="ru5p_c" compartment="compartment" initialConcentration="1.57549939307171e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pgc6_c" name="pgc6_c" compartment="compartment" initialConcentration="1.01443312802958e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="ru5p_c" name="ru5p_c" compartment="compartment" initialConcentration="9.84071432737521e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="co2_c" name="co2_c" compartment="compartment" initialConcentration="0.00183838362185888" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="r5p_c" name="r5p_c" compartment="compartment" initialConcentration="7.30357058524153e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="xu5p_c" name="xu5p_c" compartment="compartment" initialConcentration="3.23788875424193e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="s7p_c" name="s7p_c" compartment="compartment" initialConcentration="0.000226939532882014" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="e4p_c" name="e4p_c" compartment="compartment" initialConcentration="3.91115751856453e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="r5p_c" name="r5p_c" compartment="compartment" initialConcentration="4.01505287492952e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="xu5p_c" name="xu5p_c" compartment="compartment" initialConcentration="2.74284273004307e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="s7p_c" name="s7p_c" compartment="compartment" initialConcentration="0.000134590360471314" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="e4p_c" name="e4p_c" compartment="compartment" initialConcentration="2.64919840516967e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="lac_e" name="lac_e" compartment="compartment" initialConcentration="0.000420947262226127" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="gdp_c" name="gdp_c" compartment="compartment" initialConcentration="0.000281065449326085" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="f26bp_c" name="f26bp_c" compartment="compartment" initialConcentration="1.1206584675426" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
