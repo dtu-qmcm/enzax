@@ -37,6 +37,7 @@ build-backend = "hatchling.build"
 distribution = true
 
 [tool.pytest.ini_options]
+addopts = "-n auto --maxprocesses=16"
 markers = [
   "slow: takes more than about 20 seconds; deselect with -m 'not slow'",
 ]
@@ -82,4 +83,5 @@ dev = [
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
     "requests>=2.32.5",
+    "pytest-xdist>=3.6",
 ]
