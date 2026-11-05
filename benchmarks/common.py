@@ -27,9 +27,17 @@ import petab.v1 as petab
 # model with a conserved moiety, and AMICI's JAX gradients are wrong.
 os.environ["AMICI_EXPERIMENTAL_SBML_NONCONST_CLS"] = "1"
 
+# Every tool runs on one core. AMICI's C++ solver uses one anyway, and on
+# problems this small XLA is slower spread over many cores than on one.
+os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
+
 from amici.importers.petab.v1 import import_petab_problem  # noqa: E402
 from amici.sim.jax.petab import SteadyStateEvent, run_simulations  # noqa: E402
-from amici.sim.sundials import SensitivityMethod, SensitivityOrder  # noqa: E402
+from amici.sim.sundials import (  # noqa: E402
+    SensitivityMethod,
+    SensitivityOrder,
+    SteadyStateSensitivityMode,
+)
 from amici.sim.sundials.petab.v1 import LLH, RDATAS, SLLH, simulate_petab  # noqa: E402
 from diffrax_bdf import BDF, BDFController  # noqa: E402
 
@@ -181,6 +189,7 @@ class AmiciCpp:
             problem,
             output_dir=BUILD / name / "amici_cpp",
         )
+        self.default_mode = self.model.get_steady_state_sensitivity_mode()
         self.cpu_times: list[float] = []
 
     def gradient(
@@ -188,6 +197,7 @@ class AmiciCpp:
         method: str,
         tol: float,
         steady_state_tol: float | None = None,
+        newton_sensitivities: bool = False,
     ) -> Gradient:
         solver = self.model.create_solver()
         solver.set_absolute_tolerance(tol)
@@ -207,7 +217,14 @@ class AmiciCpp:
             else SensitivityMethod.forward,
         )
 
+        mode = (
+            SteadyStateSensitivityMode.newtonOnly
+            if newton_sensitivities
+            else self.default_mode
+        )
+
         def gradient(theta):
+            self.model.set_steady_state_sensitivity_mode(mode)
             result = simulate_petab(
                 petab_problem=self.problem,
                 amici_model=self.model,
@@ -302,6 +319,11 @@ def run_grid(
         ),
         ("amici_jax", "BDF", lambda tol: amici_jax.gradient("BDF", tol)),
         ("amici_cpp", "adjoint", lambda tol: cpp.gradient("adjoint", tol)),
+        (
+            "amici_cpp",
+            "adjoint, Newton",
+            lambda tol: cpp.gradient("adjoint", tol, newton_sensitivities=True),
+        ),
         ("amici_cpp", "forward", lambda tol: cpp.gradient("forward", tol)),
     ]
     path = RESULTS / f"{name}.csv"

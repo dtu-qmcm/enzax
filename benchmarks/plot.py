@@ -33,6 +33,7 @@ STYLES = {
     "BDF": ("-", "o"),
     "Kvaerno5": ("--", "s"),
     "adjoint": ("-", "^"),
+    "adjoint, Newton": (":", "v"),
     "forward": ("--", "D"),
 }
 SERIES = [
@@ -41,6 +42,7 @@ SERIES = [
     ("amici_jax", "BDF"),
     ("amici_jax", "Kvaerno5"),
     ("amici_cpp", "adjoint"),
+    ("amici_cpp", "adjoint, Newton"),
     ("amici_cpp", "forward"),
 ]
 TEXT = "#0b0b0b"
@@ -122,14 +124,20 @@ def plot(results_dir: Path) -> plt.Figure:
         )
         for tool, solver in SERIES
     ]
+    tools = list(dict.fromkeys(tool for tool, _ in SERIES))
+    n_rows = max(sum(t == tool for t, _ in SERIES) for tool in tools)
+    columns = []
+    for tool in tools:
+        column = [h for h, (t, _) in zip(handles, SERIES) if t == tool]
+        columns += column + [Line2D([], [], alpha=0)] * (n_rows - len(column))
     fig.legend(
-        handles=handles,
+        handles=columns,
         loc="lower center",
-        ncol=len(SERIES) // 2,
+        ncol=len(tools),
         frameon=False,
         labelcolor=TEXT,
     )
-    fig.tight_layout(rect=(0, 0.16, 1, 1))
+    fig.tight_layout(rect=(0, 0.2, 1, 1))
     return fig
 
 
