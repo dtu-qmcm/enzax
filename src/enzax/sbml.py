@@ -363,18 +363,19 @@ def sbml_to_enzax(
         if not s.getBoundaryCondition() and s.getId() in in_a_reaction
     ]
     if moiety_label_species is None:
+        S_balanced = get_stoichiometric_matrix(
+            {
+                reaction_id: {
+                    s: c
+                    for s, c in coefficients.items()
+                    if s in balanced_species
+                }
+                for reaction_id, coefficients in stoichiometry.items()
+            },
+            balanced_species,
+        )
         moiety_label_species = choose_moiety_label_species(
-            get_stoichiometric_matrix(
-                {
-                    reaction_id: {
-                        s: c
-                        for s, c in coefficients.items()
-                        if s in balanced_species
-                    }
-                    for reaction_id, coefficients in stoichiometry.items()
-                },
-                balanced_species,
-            ),
+            S_balanced,
             balanced_species,
         )
     model = KineticModel(
