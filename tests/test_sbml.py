@@ -7,6 +7,7 @@ import pytest
 from jax import numpy as jnp
 
 from enzax import examples, sbml
+from enzax.examples import conserved_moiety
 from enzax.steady_state import get_steady_state
 from tests import data
 
@@ -119,4 +120,57 @@ def test_unsupported_sbml_is_rejected():
     rule.setVariable("B")
     rule.setMath(libsbml.parseL3Formula("1"))
     with pytest.raises(ValueError, match="rate rules.*compartment 'Cytosol'"):
+        sbml.sbml_to_enzax(libsbml_model)
+
+
+def export_conserved_moiety():
+    conc = conserved_moiety.model.get_balanced_conc(
+        conserved_moiety.steady_state,
+        conserved_moiety.parameters,
+    )
+    doc = sbml.enzax_to_sbml(
+        conserved_moiety.model,
+        conserved_moiety.parameters,
+        conc,
+        "conserved_moiety",
+    )
+    return doc, dict(zip(conserved_moiety.model.balanced_species, conc))
+
+
+@pytest.mark.filterwarnings(
+    "error::enzax.kinetic_model.UndeclaredMoietyWarning",
+)
+def test_conserved_moieties_are_found_and_keep_the_steady_state():
+    doc, expected = export_conserved_moiety()
+    model, parameters = sbml.sbml_to_enzax(doc.getModel())
+    assert model.moiety_label_species == ["X1_c"]
+    assert jnp.allclose(parameters["moiety_totals"], jnp.array([1.0]))
+    values = sbml.get_initial_values(doc.getModel())
+    steady_state = get_steady_state(
+        model,
+        jnp.array([values[s] for s in model.ode_state_species]),
+        parameters,
+    )
+    conc = model.get_balanced_conc(steady_state, parameters)
+    assert jnp.allclose(
+        conc,
+        jnp.array([expected[s] for s in model.balanced_species]),
+    )
+
+
+def test_moiety_label_species_can_be_chosen():
+    doc, _ = export_conserved_moiety()
+    model, parameters = sbml.sbml_to_enzax(
+        doc.getModel(),
+        moiety_label_species=["X2_c"],
+    )
+    assert model.moiety_label_species == ["X2_c"]
+    assert jnp.allclose(parameters["moiety_totals"], jnp.array([1.0]))
+
+
+def test_moieties_need_initial_concentrations():
+    doc, _ = export_conserved_moiety()
+    libsbml_model = doc.getModel().clone()
+    libsbml_model.getSpecies("X2_c").unsetInitialConcentration()
+    with pytest.raises(ValueError, match=r"\['X2_c'\] are in conserved"):
         sbml.sbml_to_enzax(libsbml_model)

@@ -1,18 +1,23 @@
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import libsbml
 import numpy as np
 import requests
 import sympy
+from jax import numpy as jnp
 from sbmlmath import SBMLMathMLParser
 from sympy.printing.str import StrPrinter
 
 from enzax.array_types import BalancedConcArr, ParamDict
 from enzax.binding import BindingPolynomial, SiteFactor
-from enzax.kinetic_model import KineticModel
+from enzax.kinetic_model import (
+    KineticModel,
+    choose_moiety_label_species,
+    get_stoichiometric_matrix,
+)
 from enzax.parameters import (
     CUSTOM_PREFIX,
     SEP,
@@ -30,6 +35,7 @@ from enzax.reactions.mass_action import MassActionIx
 from enzax.reactions.saturable import MichaelisMentenIx
 from enzax.reactions.symbolic import SymbolicIx
 from enzax.thermodynamics import GAS_CONSTANT
+from enzax.time_course import get_initial_ode_state
 
 
 def _get_libsbml_model_from_doc(doc):
@@ -260,6 +266,7 @@ def get_stoichiometry(
 def sbml_to_enzax(
     libsbml_model: libsbml.Model,
     parameter_kinds: Mapping[str, str] | None = None,
+    moiety_label_species: Sequence[str] | None = None,
 ) -> tuple[KineticModel, ParamDict]:
     """Turn a libsbml.Model into a KineticModel plus parameters.
 
@@ -278,6 +285,10 @@ def sbml_to_enzax(
     concentrations. Boundary species are unbalanced; the others are balanced
     if a reaction changes them.
 
+    Conserved moieties are found from the stoichiometry and declared, and
+    their totals come from the initial concentrations, so the model's steady
+    states are unique.
+
     SBML has no formation energies, so every `dgf` is 0 and the temperature is
     298.15 K. Neither matters unless a rate law is changed to use
     `reversibility` or `keq`.
@@ -293,6 +304,9 @@ def sbml_to_enzax(
         parameter_kinds: `{label: kind}` for values whose kind should not be
             chosen by sign, where the kind is "log_custom" or "custom". A value
             that is not positive cannot be log_custom.
+        moiety_label_species: One species from each conserved moiety. If
+            None, each moiety's first species in SBML order is chosen. Pass
+            `[]` to declare no moieties.
 
     Returns:
         A tuple of a KineticModel and its packed parameters.
@@ -348,9 +362,25 @@ def sbml_to_enzax(
         for s in all_species
         if not s.getBoundaryCondition() and s.getId() in in_a_reaction
     ]
+    if moiety_label_species is None:
+        moiety_label_species = choose_moiety_label_species(
+            get_stoichiometric_matrix(
+                {
+                    reaction_id: {
+                        s: c
+                        for s, c in coefficients.items()
+                        if s in balanced_species
+                    }
+                    for reaction_id, coefficients in stoichiometry.items()
+                },
+                balanced_species,
+            ),
+            balanced_species,
+        )
     model = KineticModel(
         balanced_species=balanced_species,
         reactions=reactions,
+        moiety_label_species=list(moiety_label_species),
     )
     labelling = model.parameter_labelling
     spec = {
@@ -373,7 +403,35 @@ def sbml_to_enzax(
             else -math.inf
             for species_id in labelling["log_conc_unbalanced"]
         }
+    if model.moiety_label_species:
+        spec["moiety_totals"] = get_moiety_totals(model, values)
     return model, pack_parameters(labelling, spec)
+
+
+def get_moiety_totals(
+    model: KineticModel,
+    values: Mapping[str, float],
+) -> dict[str, float]:
+    """Get the moiety totals that the initial concentrations in `values`
+    imply, raising if a species in a moiety has none.
+    """
+    in_a_moiety = model.moiety_label_species + [
+        s
+        for s, column in zip(model.ode_state_species, model.L0.T)
+        if np.any(column)
+    ]
+    missing = [s for s in in_a_moiety if s not in values]
+    if missing:
+        msg = (
+            f"Species {missing} are in conserved moieties but have no "
+            "initial concentration, so the moiety totals are unknown."
+        )
+        raise ValueError(msg)
+    _, totals = get_initial_ode_state(
+        model,
+        jnp.array([values.get(s, 0.0) for s in model.balanced_species]),
+    )
+    return dict(zip(model.moiety_label_species, np.asarray(totals).tolist()))
 
 
 class L3FormulaPrinter(StrPrinter):

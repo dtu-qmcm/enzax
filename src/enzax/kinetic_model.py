@@ -264,14 +264,40 @@ def get_conserved_moieties(
     conserved moiety's first species has coefficient 1 and appears in no
     other conserved moiety.
     """
-    basis = sympy.Matrix(S).applyfunc(sympy.nsimplify).T.nullspace()
-    if not basis:
-        return []
-    rows, _ = sympy.Matrix.hstack(*basis).T.rref()
+    rows, _ = get_conserved_moiety_basis(S)
     return [
         format_linear_combination(list(rows.row(i)), species)
         for i in range(rows.rows)
     ]
+
+
+def get_conserved_moiety_basis(
+    S: StoichiometricMatrix,
+) -> tuple[sympy.Matrix, tuple[int, ...]]:
+    """Get a basis of `S`'s left null space in reduced row echelon form,
+    along with each row's pivot.
+
+    Each row is a conserved moiety, and its pivot species has coefficient 1
+    and appears in no other moiety.
+    """
+    basis = sympy.Matrix(S).applyfunc(sympy.nsimplify).T.nullspace()
+    if not basis:
+        return sympy.zeros(0, S.shape[0]), ()
+    return sympy.Matrix.hstack(*basis).T.rref()
+
+
+def choose_moiety_label_species(
+    S: StoichiometricMatrix,
+    species: Sequence[str],
+) -> list[str]:
+    """Choose each conserved moiety's first species in `species` order as its
+    label.
+
+    No other moiety contains that species, so the choice always passes
+    `validate_kinetic_model`.
+    """
+    _, pivots = get_conserved_moiety_basis(S)
+    return [species[i] for i in pivots]
 
 
 def warn_about_undeclared_moieties(model: "KineticModel") -> None:
