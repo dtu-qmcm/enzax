@@ -35,7 +35,7 @@ os.environ.setdefault("EQX_ON_ERROR", "nan")
 
 import csv
 import functools
-import textwrap
+import shutil
 import time
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -43,7 +43,18 @@ from typing import Callable, NamedTuple
 import diffrax
 import equinox as eqx
 import jax
+import libsbml
 import numpy as np
+import pandas as pd
+import petab.v1 as petab
+import pymc
+import pytensor.tensor as pt
+import pypesto.petab
+import yaml
+from amici.importers.petab.v1 import import_petab_problem
+from amici.sim.jax.petab import SteadyStateEvent, run_simulations
+from amici.sim.sundials import SensitivityMethod, SteadyStateSensitivityMode
+from common import BUILD, HERE, RESULTS
 from diffrax_bdf import BDF, BDFController
 from grapevine import GuessInputs, guess_implicit
 from grapevine.adaptation import grapenuts_window_adaptation
@@ -51,7 +62,11 @@ from grapevine.grapenuts import grapenuts_sampler
 from grapevine.integrator import grapevine_velocity_verlet
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
+from jax.scipy.stats import norm
+from pypesto.history import MemoryHistory
+from pypesto.sample.pymc import PymcObjectiveOp
 
+from enzax import sbml
 from enzax.examples import glycolysis
 from enzax.measurements import (
     LognormalMeasurement,
@@ -117,9 +132,9 @@ MAX_TREEDEPTH = 6
 
 N_TIMED = 6
 N_REPEAT = 3
-OUT_PREFIX = (
-    Path(__file__).parents[1] / "docs" / "img" / "optimisation_benchmark"
-)
+OUT_PREFIX = RESULTS / "optimisation_ladder"
+PETAB_DIR = HERE / "data" / "optimisation_ladder"
+AMICI_BUILD = BUILD / "optimisation_ladder"
 
 # Solve tolerances and step cap, all of them enzax's own defaults, repeated
 # here so that every configuration gets the same ones.
@@ -156,6 +171,14 @@ SOLVERS = {
 ADJOINTS = {
     "implicit": diffrax.ImplicitAdjoint(),
     "backprop": diffrax.RecursiveCheckpointAdjoint(checkpoints=64),
+}
+
+PETAB_BOUND = 10.0
+AMICI_FORWARD_STEADY_STATE_TOL = 1e-10
+WITHOUT_PYMC = "AMICI + pyPESTO, without PyMC"
+SENSITIVITY_METHODS = {
+    "forward": SensitivityMethod.forward,
+    "adjoint": SensitivityMethod.adjoint,
 }
 
 
@@ -345,7 +368,7 @@ def simulate(key, truth, error):
     )
 
 
-def make_density(problem: Problem, configuration: Configuration) -> Callable:
+def get_density(problem: Problem, configuration: Configuration) -> Callable:
     """Get `(position, guess) -> (log density, steady state)`.
 
     This is `enzax.statistical_modelling.log_density_grapevine` with the
@@ -399,7 +422,7 @@ def make_density(problem: Problem, configuration: Configuration) -> Callable:
     return density
 
 
-def make_guess_fn(problem: Problem) -> Callable:
+def get_guess_fn(problem: Problem) -> Callable:
     """Get grapevine's implicit heuristic, bound to this problem.
 
     `guess_implicit` takes an Euler step from the previous steady state, so it
@@ -442,8 +465,8 @@ def warm_up(
         chain ended at, and the median leapfrog count.
     """
     optimised = CONFIGURATIONS[-1]
-    density = make_density(problem, optimised)
-    guess_fn = make_guess_fn(problem)
+    density = get_density(problem, optimised)
+    guess_fn = get_guess_fn(problem)
     bound = dict(
         integrator=grapevine_velocity_verlet,
         guess_fn=guess_fn,
@@ -528,8 +551,8 @@ def build_trajectory(
         starts a trajectory, where the previous solution is the default guess
         and is used as it is.
     """
-    density = make_density(problem, CONFIGURATIONS[-1])
-    guess_fn = make_guess_fn(problem)
+    density = get_density(problem, CONFIGURATIONS[-1])
+    guess_fn = get_guess_fn(problem)
     value_and_grad = eqx.filter_jit(jax.value_and_grad(density, has_aux=True))
     inverse_mass_matrix = jnp.asarray(warmed["inverse_mass_matrix"])
     step_size = jnp.asarray(warmed["step_size"])
@@ -567,11 +590,11 @@ def build_trajectory(
     return steps
 
 
-def make_leapfrog_cost(
+def get_leapfrog_cost(
     problem: Problem,
     configuration: Configuration,
 ) -> Callable:
-    """Get the work one leapfrog step does, as a function to time.
+    """Find how much work one leapfrog step does, as a function to time.
 
     That is the guess, if the configuration computes one, and then the log
     density and its gradient. The guess is made as grapevine's integrator
@@ -580,9 +603,9 @@ def make_leapfrog_cost(
     configuration takes all four arguments whether or not it uses them, so
     that each is timed through a function of the same shape.
     """
-    density = make_density(problem, configuration)
+    density = get_density(problem, configuration)
     value_and_grad = jax.value_and_grad(density, has_aux=True)
-    guess_fn = make_guess_fn(problem) if configuration.grapevine else None
+    guess_fn = get_guess_fn(problem) if configuration.grapevine else None
     default_guess = problem.default_guess
 
     @eqx.filter_jit()
@@ -602,7 +625,292 @@ def make_leapfrog_cost(
                 GuessInputs(previous_solution, previous_position, is_default),
                 position,
             )
-        return value_and_grad(position, guess=guess)
+        (log_density, _), gradient = value_and_grad(position, guess=guess)
+        return log_density, gradient
+
+    return leapfrog_cost
+
+
+def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
+    """Write the ladder's statistical model as a PEtab problem, for AMICI.
+
+    The SBML comes from `enzax_to_sbml`, with two additions: a parameter for
+    each unbalanced species' concentration, which sets the species' initial
+    amount, and an assignment rule for each reaction's rate, which flux
+    observables read. Every measurement is taken at steady state. Each free
+    parameter gets the ladder's normal prior on the log scale, and bounds
+    `PETAB_BOUND` either side of its location, which PEtab requires.
+    """
+    model = problem.model
+    ids = sbml.get_parameter_ids(model)
+    doc = sbml.enzax_to_sbml(
+        model,
+        glycolysis.parameters,
+        problem.default_guess,
+        "optimisation_ladder",
+    )
+    sbml_model = doc.getModel()
+    for species_id in model.unbalanced_species:
+        parameter_id = ids[("log_conc_unbalanced", species_id)]
+        parameter = sbml_model.createParameter()
+        parameter.setId(parameter_id)
+        parameter.setConstant(True)
+        parameter.setValue(1.0)
+        assignment = sbml_model.createInitialAssignment()
+        assignment.setSymbol(sbml.get_sbml_id(species_id))
+        assignment.setMath(libsbml.parseL3Formula(parameter_id))
+    for reaction_id in model.reaction_ids:
+        sid = sbml.get_sbml_id(reaction_id)
+        parameter = sbml_model.createParameter()
+        parameter.setId(f"flux__{sid}")
+        parameter.setConstant(False)
+        rule = sbml_model.createAssignmentRule()
+        rule.setVariable(f"flux__{sid}")
+        rule.setMath(
+            sbml_model.getReaction(sid).getKineticLaw().getMath().deepCopy(),
+        )
+    directory.mkdir(parents=True, exist_ok=True)
+    libsbml.writeSBMLToFile(doc, str(directory / "model.xml"))
+    conc_msts, enzyme_msts, flux_msts = problem.measurements
+    observed = [
+        *(
+            (f"conc__{sbml.get_sbml_id(i)}", sbml.get_sbml_id(i), True)
+            for i in conc_msts.ids
+        ),
+        *(
+            (f"enzyme__{sbml.get_sbml_id(i)}", ids[("log_enzyme", i)], True)
+            for i in enzyme_msts.ids
+        ),
+        *(
+            (
+                f"flux__{sbml.get_sbml_id(i)}",
+                f"flux__{sbml.get_sbml_id(i)}",
+                False,
+            )
+            for i in flux_msts.ids
+        ),
+    ]
+    values = np.concatenate(
+        [np.asarray(m.values) for m in problem.measurements],
+    )
+    errors = np.concatenate(
+        [np.asarray(m.errors) for m in problem.measurements],
+    )
+    observable_ids = [f"obs_{name}" for name, _, _ in observed]
+    pd.DataFrame(
+        {
+            petab.C.OBSERVABLE_ID: observable_ids,
+            petab.C.OBSERVABLE_FORMULA: [formula for _, formula, _ in observed],
+            petab.C.NOISE_FORMULA: [
+                f"noiseParameter1_{i}" for i in observable_ids
+            ],
+            petab.C.OBSERVABLE_TRANSFORMATION: [
+                petab.C.LOG if is_log else petab.C.LIN
+                for _, _, is_log in observed
+            ],
+            petab.C.NOISE_DISTRIBUTION: petab.C.NORMAL,
+        },
+    ).to_csv(directory / "observables.tsv", sep="\t", index=False)
+    pd.DataFrame(
+        {petab.C.CONDITION_ID: ["control"], petab.C.CONDITION_NAME: [""]},
+    ).to_csv(directory / "conditions.tsv", sep="\t", index=False)
+    pd.DataFrame(
+        {
+            petab.C.OBSERVABLE_ID: observable_ids,
+            petab.C.SIMULATION_CONDITION_ID: "control",
+            petab.C.MEASUREMENT: values,
+            petab.C.TIME: np.inf,
+            petab.C.NOISE_PARAMETERS: errors,
+        },
+    ).to_csv(directory / "measurements.tsv", sep="\t", index=False)
+    labelling = model.parameter_labelling
+    parameter_ids = jax.tree.leaves(
+        {
+            kind: [ids[(kind, label)] for label in labelling[kind]]
+            for kind in problem.prior
+        },
+    )
+    locs, scales = (
+        ravel_pytree({kind: leaf[i] for kind, leaf in problem.prior.items()})[0]
+        for i in (0, 1)
+    )
+    pd.DataFrame(
+        {
+            petab.C.PARAMETER_ID: parameter_ids,
+            petab.C.PARAMETER_SCALE: petab.C.LOG,
+            petab.C.LOWER_BOUND: np.exp(locs - PETAB_BOUND),
+            petab.C.UPPER_BOUND: np.exp(locs + PETAB_BOUND),
+            petab.C.NOMINAL_VALUE: np.exp(locs),
+            petab.C.ESTIMATE: 1,
+            petab.C.OBJECTIVE_PRIOR_TYPE: petab.C.PARAMETER_SCALE_NORMAL,
+            petab.C.OBJECTIVE_PRIOR_PARAMETERS: [
+                f"{float(loc)!r};{float(scale)!r}"
+                for loc, scale in zip(locs, scales, strict=True)
+            ],
+        },
+    ).to_csv(directory / "parameters.tsv", sep="\t", index=False)
+    (directory / "problem.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "format_version": 1,
+                "parameter_file": "parameters.tsv",
+                "problems": [
+                    {
+                        "sbml_files": ["model.xml"],
+                        "condition_files": ["conditions.tsv"],
+                        "measurement_files": ["measurements.tsv"],
+                        "observable_files": ["observables.tsv"],
+                    },
+                ],
+            },
+        ),
+    )
+    return petab.Problem.from_yaml(directory / "problem.yaml")
+
+
+def get_pypesto_problem(
+    importer: pypesto.petab.PetabImporter,
+    sensitivity_method: str,
+    steady_state_tol: float,
+    newton_sensitivities: bool,
+) -> pypesto.Problem:
+    """Get a pyPESTO problem whose AMICI solver has the given settings.
+
+    `steady_state_tol` sets AMICI's steady-state tolerances for both the state
+    and the sensitivities; AMICI's defaults stop the glycolysis model far from
+    its steady state. With `newton_sensitivities`, AMICI gets the steady
+    state's sensitivities by a Newton solve instead of by integrating. The
+    objective keeps its history in memory, as pyPESTO's `PymcSampler` sets it
+    up.
+    """
+    problem = importer.create_problem()
+    amici_objective = problem.objective._objectives[0]
+    solver = amici_objective.amici_solver
+    for setter in (
+        solver.set_absolute_tolerance_steady_state,
+        solver.set_relative_tolerance_steady_state,
+        solver.set_absolute_tolerance_steady_state_sensi,
+        solver.set_relative_tolerance_steady_state_sensi,
+    ):
+        setter(steady_state_tol)
+    solver.set_sensitivity_method(SENSITIVITY_METHODS[sensitivity_method])
+    if newton_sensitivities:
+        amici_objective.amici_model.set_steady_state_sensitivity_mode(
+            SteadyStateSensitivityMode.newtonOnly,
+        )
+    problem.objective.history = MemoryHistory()
+    return problem
+
+
+def get_pymc_cost(problem: pypesto.Problem) -> Callable:
+    """Find how much work one leapfrog step does through pyPESTO and PyMC.
+
+    The PyMC model copies the one pyPESTO's `PymcSampler` builds: a uniform
+    prior between each parameter's bounds, with the objective added as a
+    potential. Timing calls PyMC's compiled log density and gradient, so it
+    includes PyTensor's and pyPESTO's overhead. The position is mapped onto
+    PyMC's unbounded scale, and the function returns the objective's own
+    value and gradient, so they can be compared with the other
+    configurations'.
+    """
+    log_posterior = PymcObjectiveOp.create_instance(problem.objective)
+    lower, upper = np.asarray(problem.lb), np.asarray(problem.ub)
+    with pymc.Model():
+        variables = [
+            pymc.Uniform(name, lower=lb, upper=ub)
+            for name, lb, ub in zip(problem.x_names, lower, upper, strict=True)
+        ]
+        value = log_posterior(pt.as_tensor_variable(variables))
+        pymc.Potential("potential", value)
+        pymc.Deterministic("loggyposty", value)
+        logp_dlogp = pymc.NUTS()._logp_dlogp_func
+
+    def leapfrog_cost(
+        previous_position,
+        previous_solution,
+        position,
+        is_default,
+    ):
+        log_posterior._last_evaluation.clear()
+        theta = np.asarray(position)
+        logp_dlogp(np.log(theta - lower) - np.log(upper - theta))
+        evaluation = log_posterior._last_evaluation
+        return evaluation["fval"], evaluation["grad"]
+
+    return leapfrog_cost
+
+
+def get_pypesto_cost(problem: pypesto.Problem) -> Callable:
+    """Find how much work one leapfrog step does through pyPESTO alone.
+
+    This calls the pyPESTO objective directly, without PyMC, so the difference
+    from `get_pymc_cost` shows PyMC's overhead. The objective returns a
+    negative log density, so both outputs are negated.
+    """
+
+    def leapfrog_cost(
+        previous_position,
+        previous_solution,
+        position,
+        is_default,
+    ):
+        fval, grad = problem.objective(
+            np.asarray(position),
+            sensi_orders=(0, 1),
+        )
+        return -fval, -grad
+
+    return leapfrog_cost
+
+
+def get_amici_jax_cost(
+    petab_problem: petab.Problem,
+    prior,
+    steady_state_tol: float,
+) -> Callable:
+    """Find how much work one leapfrog step does through AMICI's JAX backend.
+
+    The log density adds the ladder's prior to the log likelihood from
+    `run_simulations`, with AMICI's default solver settings apart from the
+    steady-state tolerance. It is jitted and differentiated with JAX, as
+    blackjax would use it.
+    """
+    jax_problem = import_petab_problem(
+        petab_problem,
+        output_dir=AMICI_BUILD / "jax",
+        jax=True,
+    )
+    estimated = list(petab_problem.x_free_ids)
+    order = np.array(
+        [list(jax_problem.parameter_ids).index(i) for i in estimated],
+    )
+    locs, scales = (
+        ravel_pytree({kind: leaf[i] for kind, leaf in prior.items()})[0]
+        for i in (0, 1)
+    )
+    event = SteadyStateEvent(rtol=steady_state_tol, atol=steady_state_tol)
+
+    def log_density(theta):
+        values = (
+            jnp.asarray(jax_problem.parameters).at[order].set(jnp.exp(theta))
+        )
+        with_values = eqx.tree_at(
+            lambda p: p.parameters,
+            jax_problem,
+            values,
+        )
+        llh = run_simulations(with_values, steady_state_event=event)[0]
+        return llh + norm.logpdf(theta, locs, scales).sum()
+
+    value_and_grad = jax.jit(jax.value_and_grad(log_density))
+
+    def leapfrog_cost(
+        previous_position,
+        previous_solution,
+        position,
+        is_default,
+    ):
+        return value_and_grad(position)
 
     return leapfrog_cost
 
@@ -623,14 +931,19 @@ def time_call(f, *args, n_repeat: int) -> float:
 
 
 def time_configuration(
-    problem: Problem,
-    configuration: Configuration,
+    label: str,
+    leapfrog_cost: Callable,
     steps: list[tuple],
     where: np.ndarray,
     n_repeat: int,
     reference_gradients: np.ndarray | None,
 ) -> list[dict]:
     """Time one configuration at several points along the trajectory.
+
+    :param label: what the row is called, in the figure and the csv.
+
+    :param leapfrog_cost: what `get_leapfrog_cost` returned, or one of the
+        functions of the same shape for another tool.
 
     :param steps: what `build_trajectory` returned.
 
@@ -642,7 +955,6 @@ def time_configuration(
 
     :return: one record per timed step.
     """
-    leapfrog_cost = make_leapfrog_cost(problem, configuration)
     began = time.time()
     jax.block_until_ready(leapfrog_cost(*steps[0]))
     print(f"  compiled in {time.time() - began:.0f} s", end="", flush=True)
@@ -650,7 +962,7 @@ def time_configuration(
     for position, step in enumerate(where):
         arguments = steps[step]
         seconds = time_call(leapfrog_cost, *arguments, n_repeat=n_repeat)
-        (log_density, _), gradient = leapfrog_cost(*arguments)
+        log_density, gradient = leapfrog_cost(*arguments)
         gradient = np.asarray(gradient)
         if reference_gradients is None:
             error = 0.0
@@ -662,11 +974,7 @@ def time_configuration(
             )
         records.append(
             {
-                "configuration": configuration.label,
-                "adjoint": configuration.adjoint,
-                "solver": configuration.solver,
-                "grapevine": configuration.grapevine,
-                "hybrid": configuration.hybrid,
+                "configuration": label,
                 "step": int(step),
                 "is_default": bool(arguments[3]),
                 "seconds": seconds,
@@ -686,7 +994,7 @@ def summarise(
     records: list[dict],
     n_leapfrog: int,
     n_default: int,
-    configurations: tuple[Configuration, ...],
+    labels: list[str],
 ) -> list[dict]:
     """Turn the timed steps into one row per configuration.
 
@@ -698,16 +1006,14 @@ def summarise(
     and an unweighted mean over the timed steps would count them several times
     over.
 
-    :return: a row per configuration, in `configurations` order, with the
-        seconds one NUTS iteration would take and the factor gained over the
-        row above.
+    :return: a row per configuration, in `labels` order, with the seconds
+        one NUTS iteration would take, the factor gained over the row above,
+        and the factor over the fully optimised enzax configuration.
     """
     rows = []
-    for configuration in configurations:
+    for label in labels:
         mine = [
-            record
-            for record in records
-            if record["configuration"] == configuration.label
+            record for record in records if record["configuration"] == label
         ]
         default = [r["seconds"] for r in mine if r["is_default"]]
         other = [r["seconds"] for r in mine if not r["is_default"]]
@@ -716,7 +1022,7 @@ def summarise(
         )
         rows.append(
             {
-                "configuration": configuration.label,
+                "configuration": label,
                 "seconds_per_leapfrog": seconds_per_iteration / n_leapfrog,
                 "seconds_per_iteration": seconds_per_iteration,
                 "gradient_relative_error": float(
@@ -729,8 +1035,9 @@ def summarise(
                 ),
             },
         )
+    n_ladder = len(CONFIGURATIONS)
     for position, row in enumerate(rows):
-        previous = rows[position - 1] if position else None
+        previous = rows[position - 1] if 0 < position < n_ladder else None
         row["factor"] = (
             previous["seconds_per_iteration"] / row["seconds_per_iteration"]
             if previous is not None
@@ -738,6 +1045,15 @@ def summarise(
         )
         row["cumulative_factor"] = (
             rows[0]["seconds_per_iteration"] / row["seconds_per_iteration"]
+            if position < n_ladder
+            else 1.0
+        )
+    optimised = next(
+        row for row in rows if row["configuration"] == CONFIGURATIONS[-1].label
+    )
+    for row in rows:
+        row["times_optimised"] = (
+            row["seconds_per_iteration"] / optimised["seconds_per_iteration"]
         )
     return rows
 
@@ -748,9 +1064,10 @@ def report(rows: list[dict], n_leapfrog: int, n_free: int) -> None:
         f"\nOne NUTS iteration: {n_leapfrog} leapfrog steps, {n_free} free "
         f"parameters",
     )
+    width = max(len(row["configuration"]) for row in rows) + 2
     header = (
-        f"{'configuration':<20}{'s/leapfrog':>12}{'s/iteration':>13}"
-        f"{'factor':>9}{'cumulative':>12}{'|grad err|':>12}"
+        f"{'configuration':<{width}}{'s/leapfrog':>12}{'s/iteration':>13}"
+        f"{'factor':>9}{'cumulative':>12}{'vs enzax':>10}{'|grad err|':>12}"
     )
     print(header)
     print("-" * len(header))
@@ -762,10 +1079,11 @@ def report(rows: list[dict], n_leapfrog: int, n_free: int) -> None:
             else f"{row['cumulative_factor']:.1f}x"
         )
         print(
-            f"{row['configuration']:<20}"
+            f"{row['configuration']:<{width}}"
             f"{row['seconds_per_leapfrog']:>12.4f}"
             f"{row['seconds_per_iteration']:>13.2f}"
             f"{factor:>9}{cumulative:>12}"
+            f"{row['times_optimised']:>9.1f}x"
             f"{row['gradient_relative_error']:>12.2e}",
         )
     if not all(np.isfinite(row["log_density"]) for row in rows):
@@ -789,9 +1107,11 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 BASELINE = "#c3c2b7"
 SURFACE = "#fcfcfb"
+COMPARISON = "#eb6834"
+COMPARISON_LABEL_DECADES = 0.6
 
 
-def plot(rows: list[dict], path: str, subtitle: str) -> None:
+def plot(rows: list[dict], path: str) -> None:
     """Draw the figure: where each optimisation gets you, in order.
 
     A dot plot rather than bars, because the axis is logarithmic and a bar's
@@ -803,15 +1123,38 @@ def plot(rows: list[dict], path: str, subtitle: str) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    seconds = [row["seconds_per_iteration"] for row in rows]
-    labels = [row["configuration"] for row in rows]
-    height = [position for position in range(len(rows))]
-    figure, axes = plt.subplots(figsize=(8.4, 0.72 * len(rows) + 1.9))
+    n_ladder = len(CONFIGURATIONS)
+    ladder, comparisons = rows[:n_ladder], rows[n_ladder:]
+    seconds = [row["seconds_per_iteration"] for row in ladder]
+    labels = [row["configuration"] for row in ladder]
+    height = list(range(n_ladder))
+    figure, axes = plt.subplots(figsize=(8.4, 0.72 * n_ladder + 1.4))
     figure.patch.set_facecolor(SURFACE)
     axes.set_facecolor(SURFACE)
     axes.plot(seconds, height, color=BASELINE, linewidth=2, zorder=1)
+    comparisons = sorted(comparisons, key=lambda r: r["seconds_per_iteration"])
+    for position, row in enumerate(comparisons):
+        x = row["seconds_per_iteration"]
+        following = comparisons[position + 1 :]
+        on_left = bool(following) and (
+            np.log10(following[0]["seconds_per_iteration"] / x)
+            < COMPARISON_LABEL_DECADES
+        )
+        axes.axvline(x, color=COMPARISON, linewidth=1.5, zorder=1)
+        axes.annotate(
+            "\n+ ".join(row["configuration"].rsplit(" + ", 1))
+            + f"\n{format_seconds(x)}",
+            (x, -0.95),
+            xytext=(-5 if on_left else 5, 0),
+            textcoords="offset points",
+            ha="right" if on_left else "left",
+            va="center",
+            fontsize=8.5,
+            color=COMPARISON,
+            alpha=0.8,
+        )
     for position, (x, y) in enumerate(zip(seconds, height)):
-        last = position == len(rows) - 1
+        last = position == n_ladder - 1
         axes.plot(
             [x],
             [y],
@@ -831,10 +1174,12 @@ def plot(rows: list[dict], path: str, subtitle: str) -> None:
             fontsize=10,
             color=TEXT_PRIMARY,
             fontweight="bold" if last else "normal",
+            bbox=dict(boxstyle="square,pad=0.1", fc=SURFACE, ec="none"),
+            zorder=2,
         )
-    for position in range(1, len(rows)):
+    for position in range(1, n_ladder):
         axes.annotate(
-            f"{rows[position]['factor']:.1f}x faster",
+            f"{ladder[position]['factor']:.1f}x faster",
             (
                 np.sqrt(seconds[position] * seconds[position - 1]),
                 position - 0.5,
@@ -851,34 +1196,15 @@ def plot(rows: list[dict], path: str, subtitle: str) -> None:
     axes.set_xscale("log")
     axes.set_yticks(height, labels, fontsize=11, color=TEXT_PRIMARY)
     axes.invert_yaxis()
-    axes.set_ylim(len(rows) - 0.4, -0.6)
-    low, high = min(seconds), max(seconds)
+    axes.set_ylim(n_ladder - 0.4, -1.4)
+    every = [row["seconds_per_iteration"] for row in rows]
     # Room on the right for the value labels, which are drawn outside the
     # marks and so outside the data's own range.
-    axes.set_xlim(low / 2.5, high * 4)
+    axes.set_xlim(min(every) / 2.5, max(every) * 5)
     axes.set_xlabel(
         "wall time for one NUTS iteration (s, log scale)",
         fontsize=10,
         color=TEXT_SECONDARY,
-    )
-    wrapped = textwrap.fill(subtitle, width=86)
-    axes.set_title(
-        "What each of enzax's optimisations is worth",
-        fontsize=13.5,
-        color=TEXT_PRIMARY,
-        loc="left",
-        pad=16 + 13 * (wrapped.count("\n") + 1),
-    )
-    axes.annotate(
-        wrapped,
-        (0, 1),
-        xytext=(0, 10),
-        xycoords="axes fraction",
-        textcoords="offset points",
-        fontsize=9.5,
-        color=TEXT_SECONDARY,
-        va="bottom",
-        linespacing=1.45,
     )
     axes.grid(axis="x", color=GRID, linewidth=0.8)
     axes.set_axisbelow(True)
@@ -945,8 +1271,8 @@ def main() -> None:
     for configuration in reversed(CONFIGURATIONS):
         print(f"{configuration.label}:")
         mine = time_configuration(
-            problem,
-            configuration,
+            configuration.label,
+            get_leapfrog_cost(problem, configuration),
             steps,
             where,
             N_REPEAT,
@@ -955,17 +1281,64 @@ def main() -> None:
         if reference is None:
             reference = np.stack([record["gradient"] for record in mine])
         records.extend(mine)
-    rows = summarise(records, n_step, len(defaults), CONFIGURATIONS)
+    petab_problem = write_petab_problem(problem, PETAB_DIR)
+    shutil.rmtree(AMICI_BUILD, ignore_errors=True)
+    importer = pypesto.petab.PetabImporter(
+        petab_problem,
+        output_folder=AMICI_BUILD / "cpp",
+        model_name="optimisation_ladder",
+    )
+    comparisons = {
+        "AMICI + pyPESTO + PyMC, defaults": lambda: get_pymc_cost(
+            get_pypesto_problem(
+                importer,
+                "forward",
+                AMICI_FORWARD_STEADY_STATE_TOL,
+                newton_sensitivities=False,
+            ),
+        ),
+        "AMICI + pyPESTO + PyMC": lambda: get_pymc_cost(
+            get_pypesto_problem(
+                importer,
+                "adjoint",
+                STEADY_STATE_RTOL,
+                newton_sensitivities=True,
+            ),
+        ),
+        WITHOUT_PYMC: lambda: get_pypesto_cost(
+            get_pypesto_problem(
+                importer,
+                "adjoint",
+                STEADY_STATE_RTOL,
+                newton_sensitivities=True,
+            ),
+        ),
+        "AMICI JAX + blackjax": lambda: get_amici_jax_cost(
+            petab_problem,
+            problem.prior,
+            STEADY_STATE_RTOL,
+        ),
+    }
+    for label, get_cost in comparisons.items():
+        print(f"{label}:")
+        records.extend(
+            time_configuration(
+                label,
+                get_cost(),
+                steps,
+                where,
+                N_REPEAT,
+                reference,
+            ),
+        )
+    labels = [c.label for c in CONFIGURATIONS] + list(comparisons)
+    rows = summarise(records, n_step, len(defaults), labels)
     report(rows, n_step, n_free)
     write_csv(records, f"{OUT_PREFIX}.csv")
+    write_csv(rows, f"{OUT_PREFIX}_summary.csv")
     plot(
-        rows,
+        [row for row in rows if row["configuration"] != WITHOUT_PYMC],
         f"{OUT_PREFIX}.png",
-        subtitle=(
-            f"glycolysis: {len(problem.model.ode_state_species)} balanced "
-            f"species, {n_free} free parameters, {n_step} leapfrog steps per "
-            f"iteration. Each row adds one optimisation to the row above."
-        ),
     )
 
 

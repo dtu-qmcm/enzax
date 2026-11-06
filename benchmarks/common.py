@@ -5,10 +5,11 @@ nominal values, times tolerances. One tolerance sets both the integrator's
 relative and absolute tolerances and the steady-state stopping criterion, so
 that looser settings are less accurate as well as faster. Each gradient is
 compared with a reference from AMICI's C++ backend with forward
-sensitivities at tight tolerances.
+sensitivities, solved by Newton at the steady state, at tight tolerances.
 """
 
 import csv
+import functools
 import os
 import shutil
 import time
@@ -27,11 +28,22 @@ import petab.v1 as petab
 # model with a conserved moiety, and AMICI's JAX gradients are wrong.
 os.environ["AMICI_EXPERIMENTAL_SBML_NONCONST_CLS"] = "1"
 
+# Every tool runs on one core. AMICI's C++ solver uses one anyway, and on
+# problems this small XLA is slower spread over many cores than on one.
+os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
+
 from amici.importers.petab.v1 import import_petab_problem  # noqa: E402
 from amici.sim.jax.petab import SteadyStateEvent, run_simulations  # noqa: E402
-from amici.sim.sundials import SensitivityMethod, SensitivityOrder  # noqa: E402
+from amici.sim.sundials import (  # noqa: E402
+    SensitivityMethod,
+    SensitivityOrder,
+    SteadyStateComputationMode,
+    SteadyStateSensitivityMode,
+)
 from amici.sim.sundials.petab.v1 import LLH, RDATAS, SLLH, simulate_petab  # noqa: E402
 from diffrax_bdf import BDF, BDFController  # noqa: E402
+
+from enzax.steady_state import get_steady_state, get_steady_state_hybrid  # noqa: E402
 
 jax.config.update("jax_enable_x64", True)
 
@@ -42,9 +54,10 @@ REFERENCE_TOL = 1e-10
 REFERENCE_STEADY_STATE_TOL = 1e-12
 TOLERANCES = (1e-6, 1e-8, 1e-10)
 N_DRAWS = 10
-DRAW_SCALE = 0.1
+DRAW_SCALE = 0.3
 N_REPEATS = 5
-MAX_STEPS = 10**5
+MAX_STEPS = 10**4
+NEWTON_MAX_STEPS = 10
 
 FIELDS = [
     "problem",
@@ -149,6 +162,25 @@ def get_enzax_steady_state_options(solver_name: str, tol: float) -> dict:
     }
 
 
+def get_enzax_steady_state_solve(solver_name: str, tol: float) -> Callable:
+    """Wrap an enzax steady-state solve for a solver name and tolerance.
+
+    A name ending in ", hybrid" gives `get_steady_state_hybrid`, which tries
+    Newton before integrating. Any other name gives `get_steady_state`.
+    """
+    base, _, variant = solver_name.partition(", ")
+    options = get_enzax_steady_state_options(base, tol)
+    if variant == "hybrid":
+        return functools.partial(
+            get_steady_state_hybrid,
+            **options,
+            newton_max_steps=NEWTON_MAX_STEPS,
+            newton_rtol=tol,
+            newton_atol=tol,
+        )
+    return functools.partial(get_steady_state, **options)
+
+
 def get_enzax_time_course_options(solver_name: str, tol: float) -> dict:
     """Get keyword arguments for enzax's time-course solves, with the same
     solver and step size controller as AMICI's JAX backend. Their first step
@@ -181,6 +213,10 @@ class AmiciCpp:
             problem,
             output_dir=BUILD / name / "amici_cpp",
         )
+        self.default_mode = self.model.get_steady_state_sensitivity_mode()
+        self.default_computation_mode = (
+            self.model.get_steady_state_computation_mode()
+        )
         self.cpu_times: list[float] = []
 
     def gradient(
@@ -188,6 +224,8 @@ class AmiciCpp:
         method: str,
         tol: float,
         steady_state_tol: float | None = None,
+        newton_sensitivities: bool = False,
+        newton_state: bool = False,
     ) -> Gradient:
         solver = self.model.create_solver()
         solver.set_absolute_tolerance(tol)
@@ -200,6 +238,13 @@ class AmiciCpp:
         ):
             setter(tol if steady_state_tol is None else steady_state_tol)
         solver.set_max_steps(MAX_STEPS)
+        if newton_state:
+            solver.set_newton_max_steps(NEWTON_MAX_STEPS)
+        computation_mode = (
+            SteadyStateComputationMode.integrateIfNewtonFails
+            if newton_state
+            else self.default_computation_mode
+        )
         solver.set_sensitivity_order(SensitivityOrder.first)
         solver.set_sensitivity_method(
             SensitivityMethod.adjoint
@@ -207,7 +252,15 @@ class AmiciCpp:
             else SensitivityMethod.forward,
         )
 
+        mode = (
+            SteadyStateSensitivityMode.newtonOnly
+            if newton_sensitivities
+            else self.default_mode
+        )
+
         def gradient(theta):
+            self.model.set_steady_state_sensitivity_mode(mode)
+            self.model.set_steady_state_computation_mode(computation_mode)
             result = simulate_petab(
                 petab_problem=self.problem,
                 amici_model=self.model,
@@ -286,6 +339,7 @@ def run_grid(
         "forward",
         REFERENCE_TOL,
         REFERENCE_STEADY_STATE_TOL,
+        newton_sensitivities=True,
     )
     references = [reference(theta) for theta in draws]
     tools = [
@@ -296,13 +350,43 @@ def run_grid(
         ),
         ("enzax", "BDF", lambda tol: jax_gradient(enzax_llh("BDF", tol))),
         (
+            "enzax",
+            "Kvaerno5, hybrid",
+            lambda tol: jax_gradient(enzax_llh("Kvaerno5, hybrid", tol)),
+        ),
+        (
+            "enzax",
+            "BDF, hybrid",
+            lambda tol: jax_gradient(enzax_llh("BDF, hybrid", tol)),
+        ),
+        (
             "amici_jax",
             "Kvaerno5",
             lambda tol: amici_jax.gradient("Kvaerno5", tol),
         ),
         ("amici_jax", "BDF", lambda tol: amici_jax.gradient("BDF", tol)),
         ("amici_cpp", "adjoint", lambda tol: cpp.gradient("adjoint", tol)),
+        (
+            "amici_cpp",
+            "adjoint, Newton",
+            lambda tol: cpp.gradient("adjoint", tol, newton_sensitivities=True),
+        ),
+        (
+            "amici_cpp",
+            "adjoint, Newton, hybrid",
+            lambda tol: cpp.gradient(
+                "adjoint",
+                tol,
+                newton_sensitivities=True,
+                newton_state=True,
+            ),
+        ),
         ("amici_cpp", "forward", lambda tol: cpp.gradient("forward", tol)),
+        (
+            "amici_cpp",
+            "forward, Newton",
+            lambda tol: cpp.gradient("forward", tol, newton_sensitivities=True),
+        ),
     ]
     path = RESULTS / f"{name}.csv"
     with open(path, "w", newline="") as f:

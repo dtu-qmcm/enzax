@@ -93,5 +93,7 @@ benchmark = [
     "diffrax-bdf ; python_full_version >= '3.13'",
     "matplotlib>=3.9",
     "pandas>=3.1.0",
+    "pymc>=6.4.0",
+    "pypesto>=0.8.0",
     "pyyaml>=6.0.3",
 ]

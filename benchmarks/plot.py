@@ -1,10 +1,14 @@
-"""Plot time against gradient error for every benchmark problem.
+"""Plot time and gradient error against tolerance for every benchmark problem.
 
-Each point is one tool and solver at one integrator tolerance: the median
-over parameter draws of the time per gradient and of the gradient's error
-relative to the reference. AMICI C++ is shown by its own CPU time, which
-leaves out the PEtab interface's overhead. Its forward sensitivities at the
-reference tolerance are the reference, so they have no error to plot.
+Each point represents one tool and solver at one tolerance. The top row shows
+the median time per gradient over parameter draws, with a bar from the
+fastest to the slowest draw. The bottom row shows the median relative error
+over the draws that didn't fail. AMICI C++ is shown by its own CPU time,
+which leaves out the PEtab interface's overhead.
+
+A draw fails if its gradient is NaN or its relative error is above 1, so
+that it is worse than a zero gradient. A point where any draw failed is
+ringed in red.
 
 Run with `uv run --group benchmark python benchmarks/plot.py [results_dir]`.
 """
@@ -32,35 +36,54 @@ TOOL_NAMES = {
 STYLES = {
     "BDF": ("-", "o"),
     "Kvaerno5": ("--", "s"),
-    "adjoint": ("-", "^"),
-    "forward": ("--", "D"),
+    "adjoint, Newton": ("-", "^"),
+    "BDF, hybrid": (":", "o"),
+    "adjoint, Newton, hybrid": (":", "^"),
 }
 SERIES = [
     ("enzax", "BDF"),
     ("enzax", "Kvaerno5"),
-    ("amici_jax", "BDF"),
+    ("enzax", "BDF, hybrid"),
     ("amici_jax", "Kvaerno5"),
-    ("amici_cpp", "adjoint"),
-    ("amici_cpp", "forward"),
+    ("amici_cpp", "adjoint, Newton"),
+    ("amici_cpp", "adjoint, Newton, hybrid"),
 ]
+MEASURES = {
+    "time": "Time per gradient (ms)",
+    "error": "Gradient error (relative)",
+}
+TOLERANCES = [1e-10, 1e-8, 1e-6]
+DODGE = 10**0.07
+MAX_ERROR = 1.0
+FAILURE = "#d1242f"
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
 
 
 def summarise(results: pd.DataFrame) -> pd.DataFrame:
-    """Median time and gradient error per tool, solver and tolerance."""
+    """Summarise time and gradient error per tool, solver and tolerance."""
     results = results.assign(
         time=results["cpu_ms"].where(
             results["tool"] == "amici_cpp",
             results["time_ms"],
         ),
+        error=results["gradient_error"].where(
+            results["gradient_error"] <= MAX_ERROR,
+        ),
     )
-    return (
+    summary = (
         results.groupby(["tool", "solver", "tolerance"])
-        .agg(time=("time", "median"), error=("gradient_error", "median"))
+        .agg(
+            time_median=("time", "median"),
+            time_min=("time", "min"),
+            time_max=("time", "max"),
+            error_median=("error", "median"),
+            n_failed=("error", lambda error: error.isna().sum()),
+        )
         .reset_index()
     )
+    return summary
 
 
 def plot(results_dir: Path) -> plt.Figure:
@@ -76,38 +99,74 @@ def plot(results_dir: Path) -> plt.Figure:
             "axes.spines.right": False,
         },
     )
-    fig, axes = plt.subplots(1, len(PROBLEMS), figsize=(7.5, 2.7))
-    for ax, (problem, title) in zip(axes, PROBLEMS.items(), strict=True):
+    fig, axes = plt.subplots(
+        len(MEASURES),
+        len(PROBLEMS),
+        figsize=(7.5, 4.8),
+        sharex=True,
+    )
+    for column, (problem, title) in zip(
+        axes.T,
+        PROBLEMS.items(),
+        strict=True,
+    ):
         summary = summarise(pd.read_csv(results_dir / f"{problem}.csv"))
-        for tool, solver in SERIES:
+        for position, (tool, solver) in enumerate(SERIES):
             rows = summary[
-                (summary["tool"] == tool)
-                & (summary["solver"] == solver)
-                & (summary["error"] > 0)
+                (summary["tool"] == tool) & (summary["solver"] == solver)
             ].sort_values("tolerance")
-            linestyle, marker = STYLES[solver]
-            ax.plot(
-                rows["error"],
-                rows["time"],
-                color=COLOURS[tool],
-                linestyle=linestyle,
-                linewidth=1.5,
-                marker=marker,
-                markersize=5,
-                markeredgecolor="white",
-                markeredgewidth=1,
-                solid_capstyle="round",
+            tolerance = rows["tolerance"] * DODGE ** (
+                position - (len(SERIES) - 1) / 2
             )
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.yaxis.set_major_locator(LogLocator(subs=(1.0, 2.0, 5.0)))
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
-        ax.yaxis.set_minor_formatter(NullFormatter())
-        ax.set_title(title, loc="left", color=TEXT, fontsize=9)
-        ax.set_xlabel("Gradient error (relative)")
-        ax.grid(color=GRID, linewidth=0.6)
-        ax.set_axisbelow(True)
-    axes[0].set_ylabel("Time per gradient (ms)")
+            linestyle, marker = STYLES[solver]
+            column[0].vlines(
+                tolerance,
+                rows["time_min"],
+                rows["time_max"],
+                color=COLOURS[tool],
+                linewidth=1,
+                alpha=0.5,
+            )
+            for ax, measure in zip(column, MEASURES, strict=True):
+                ax.plot(
+                    tolerance,
+                    rows[f"{measure}_median"],
+                    color=COLOURS[tool],
+                    linestyle=linestyle,
+                    linewidth=1.5,
+                    marker=marker,
+                    markersize=5,
+                    markeredgecolor="white",
+                    markeredgewidth=1,
+                    solid_capstyle="round",
+                )
+                failed = rows["n_failed"] > 0
+                ax.plot(
+                    tolerance[failed],
+                    rows.loc[failed, f"{measure}_median"],
+                    linestyle="none",
+                    marker="o",
+                    markersize=10,
+                    markerfacecolor="none",
+                    markeredgecolor=FAILURE,
+                    markeredgewidth=1.5,
+                )
+        column[0].set_title(title, loc="left", color=TEXT, fontsize=9)
+        column[-1].set_xlabel("Tolerance")
+        for ax in column:
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_xticks(TOLERANCES)
+            ax.xaxis.set_minor_formatter(NullFormatter())
+            ax.grid(color=GRID, linewidth=0.6)
+            ax.set_axisbelow(True)
+        column[0].yaxis.set_major_locator(LogLocator(subs=(1.0, 2.0, 5.0)))
+        column[0].yaxis.set_major_formatter(
+            FuncFormatter(lambda v, _: f"{v:g}"),
+        )
+        column[0].yaxis.set_minor_formatter(NullFormatter())
+    for ax, label in zip(axes[:, 0], MEASURES.values(), strict=True):
+        ax.set_ylabel(label)
     handles = [
         Line2D(
             [],
@@ -122,14 +181,35 @@ def plot(results_dir: Path) -> plt.Figure:
         )
         for tool, solver in SERIES
     ]
+    tools = list(dict.fromkeys(tool for tool, _ in SERIES))
+    tool_columns = [
+        [h for h, (t, _) in zip(handles, SERIES) if t == tool] for tool in tools
+    ]
+    tool_columns[-1].append(
+        Line2D(
+            [],
+            [],
+            linestyle="none",
+            marker="o",
+            markersize=10,
+            markerfacecolor="none",
+            markeredgecolor=FAILURE,
+            markeredgewidth=1.5,
+            label="Failed on at least one draw",
+        ),
+    )
+    n_rows = max(len(column) for column in tool_columns)
+    columns = []
+    for column in tool_columns:
+        columns += column + [Line2D([], [], alpha=0)] * (n_rows - len(column))
     fig.legend(
-        handles=handles,
+        handles=columns,
         loc="lower center",
-        ncol=len(SERIES) // 2,
+        ncol=len(tools),
         frameon=False,
         labelcolor=TEXT,
     )
-    fig.tight_layout(rect=(0, 0.16, 1, 1))
+    fig.tight_layout(rect=(0, 0.13, 1, 1))
     return fig
 
 

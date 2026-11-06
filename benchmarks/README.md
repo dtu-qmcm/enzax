@@ -9,7 +9,7 @@ These scripts compare how fast and how accurately enzax and [AMICI](https://gith
 
 ## What is measured
 
-For each problem, each tool and solver (enzax and AMICI JAX with Kvaerno5 and with diffrax-bdf's BDF; AMICI C++ with adjoint and with forward sensitivities) is timed on ten parameter sets drawn around the problem's nominal values, at tolerances of 1e-6, 1e-8 and 1e-10. One tolerance sets both the integrator's tolerances and the steady-state stopping criterion. Each time is the median of five gradient evaluations after compilation. Each gradient is compared with a reference from AMICI C++ with forward sensitivities at tight tolerances.
+For each problem, each tool and solver is timed on ten parameter sets drawn around the problem's nominal values, at tolerances of 1e-6, 1e-8 and 1e-10. enzax runs Kvaerno5 and diffrax-bdf's BDF, each on its own and after a Newton solve (the hybrid method). AMICI JAX runs the same two solvers. AMICI C++ runs adjoint and forward sensitivities, each by integration or by a Newton solve at the steady state, and also runs adjoint sensitivities with a Newton solve for the steady state itself. One tolerance sets both the integrator's tolerances and the steady-state stopping criterion. Each time is the median of five gradient evaluations after compilation; AMICI C++ is timed by its own CPU time. Each gradient is compared with a reference from AMICI C++ with forward sensitivities, solved by Newton at the steady state, at tight tolerances.
 
 enzax is given the same diffrax solvers and step size controllers as AMICI's JAX backend. AMICI is run with `AMICI_EXPERIMENTAL_SBML_NONCONST_CLS` set, so that it removes conservation laws; without it, its JAX gradients on the histone acetylation model are wrong. AMICI's models are compiled afresh on every run, in `build/`.
 
@@ -23,4 +23,4 @@ uv run --group benchmark python benchmarks/glycolysis.py
 uv run --group benchmark python benchmarks/plot.py
 ```
 
-The first two write `results/<problem>.csv`, one row per tool, solver, tolerance and parameter set. The third draws time against gradient error for every problem, as `results/work_precision.pdf` and `.png`. A full run takes about an hour.
+The first two write `results/<problem>.csv`, one row per tool, solver, tolerance and parameter set. The third draws time and gradient error against tolerance for every problem, as `results/work_precision.pdf` and `.png`. A full run takes about an hour.

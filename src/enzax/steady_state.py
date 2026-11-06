@@ -219,6 +219,7 @@ def get_steady_state_hybrid(
     newton_rtol: float = 1e-9,
     newton_atol: float = 1e-9,
     negative_tolerance: float = DEFAULT_NEGATIVE_TOLERANCE,
+    dt0: float | None = 1e-6,
 ) -> OdeStateArr:
     """Get a steady state, trying Newton first and integrating from its answer.
 
@@ -248,6 +249,7 @@ def get_steady_state_hybrid(
         stepsize_controller=stepsize_controller,
         adjoint=adjoint,
         negative_tolerance=negative_tolerance,
+        dt0=dt0,
     )
 
 

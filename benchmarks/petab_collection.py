@@ -22,7 +22,7 @@ import sympy
 
 from common import (
     HERE,
-    get_enzax_steady_state_options,
+    get_enzax_steady_state_solve,
     get_enzax_time_course_options,
     get_estimated,
     run_grid,
@@ -31,7 +31,6 @@ from common import (
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import pack_parameters, unpack_parameters
 from enzax.sbml import sbml_to_enzax
-from enzax.steady_state import get_steady_state
 from enzax.time_course import (
     get_initial_ode_state,
     get_measurables_time_course_single_experiment,
@@ -103,7 +102,7 @@ def blasi_llh(solver_name: str, tol: float):
         ],
     )
     y = jnp.array(measurements[petab.C.MEASUREMENT].to_numpy())
-    options = get_enzax_steady_state_options(solver_name, tol)
+    solve = get_enzax_steady_state_solve(solver_name, tol)
 
     def llh(theta):
         values = unscale(theta, scales)
@@ -112,7 +111,7 @@ def blasi_llh(solver_name: str, tol: float):
             .at[positions]
             .set(jnp.log(values[kinetic_ix])),
         }
-        steady = get_steady_state(model, guess, p, **options)
+        steady = solve(model, guess, p)
         conc = model.get_balanced_conc(steady, p)
         sigma = values[sigma_ix]
         r = (jnp.log(y) - jnp.log(conc[species_ix])) / sigma
@@ -164,8 +163,11 @@ def zheng_llh(solver_name: str, tol: float):
         [obs_ids.index(o) for o in measurements[petab.C.OBSERVABLE_ID]],
     )
     y = jnp.array(measurements[petab.C.MEASUREMENT].to_numpy())
-    steady_options = get_enzax_steady_state_options(solver_name, tol)
-    course_options = get_enzax_time_course_options(solver_name, tol)
+    solve = get_enzax_steady_state_solve(solver_name, tol)
+    course_options = get_enzax_time_course_options(
+        solver_name.partition(", ")[0],
+        tol,
+    )
 
     def llh(theta):
         values = unscale(theta, scales)
@@ -177,12 +179,7 @@ def zheng_llh(solver_name: str, tol: float):
         preequilibration = p | {
             "custom": p["custom"].at[dilution_ix].set(1.0),
         }
-        steady = get_steady_state(
-            model,
-            guess,
-            preequilibration,
-            **steady_options,
-        )
+        steady = solve(model, guess, preequilibration)
         _, conc, _, _ = get_measurables_time_course_single_experiment(
             model,
             p,

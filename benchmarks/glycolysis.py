@@ -27,7 +27,7 @@ import yaml
 
 from common import (
     HERE,
-    get_enzax_steady_state_options,
+    get_enzax_steady_state_solve,
     get_estimated,
     run_grid,
     unscale,
@@ -146,7 +146,7 @@ def get_llh(problem: petab.Problem):
     y = jnp.array(problem.measurement_df[petab.C.MEASUREMENT].to_numpy())
 
     def make(solver_name: str, tol: float):
-        options = get_enzax_steady_state_options(solver_name, tol)
+        solve = get_enzax_steady_state_solve(solver_name, tol)
 
         def llh(theta):
             values = unscale(theta, scales)
@@ -156,7 +156,7 @@ def get_llh(problem: petab.Problem):
                 if kind.startswith("log_"):
                     new = jnp.log(new)
                 p[kind] = p[kind].at[np.array(at)].set(new)
-            steady = get_steady_state(MODEL, GUESS, p, **options)
+            steady = solve(MODEL, GUESS, p)
             conc = MODEL.get_balanced_conc(steady, p)
             r = (jnp.log(y) - jnp.log(conc)) / SIGMA
             return jnp.sum(
