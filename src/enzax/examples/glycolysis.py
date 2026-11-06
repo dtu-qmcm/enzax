@@ -514,3 +514,29 @@ steady_state = jnp.array(
         0.00015129302192134288,  # s7p_c
     ],
 )
+
+atom_mappings = {
+    "HEX1": "glc_c(abcdef) <-> g6p_c(abcdef)",
+    "HEX2": "glc_c(abcdef) <-> g6p_c(abcdef)",
+    "PGI": "g6p_c(abcdef) <-> f6p_c(abcdef)",
+    "PFKM": "f6p_c(abcdef) <-> fdp_c(abcdef)",
+    "PFKL": "f6p_c(abcdef) <-> fdp_c(abcdef)",
+    "FBA": "fdp_c(abcdef) <-> dhap_c(abc) + g3p_c(def)",
+    "TPI": "dhap_c(abc) <-> g3p_c(cba)",
+    "GAPD": "g3p_c(abc) <-> dpg_c(abc)",
+    "PGK": "dpg_c(abc) <-> p3g_c(abc)",
+    "PGM": "p3g_c(abc) <-> p2g_c(abc)",
+    "ENO": "p2g_c(abc) <-> pep_c(abc)",
+    "PKM1": "pep_c(abc) <-> pyr_c(abc)",
+    "PKM2": "pep_c(abc) <-> pyr_c(abc)",
+    "LDHA": "pyr_c(abc) <-> lac_c(abc)",
+    "G6PDH": "g6p_c(abcdef) <-> pgl6_c(abcdef)",
+    "PGL": "pgl6_c(abcdef) <-> pgc6_c(abcdef)",
+    "GND": "pgc6_c(abcdef) <-> ru5p_c(bcdef) + co2_c(a)",
+    "RPI": "ru5p_c(abcde) <-> r5p_c(abcde)",
+    "RPE": "ru5p_c(abcde) <-> xu5p_c(abcde)",
+    "TKT1": "r5p_c(abcde) + xu5p_c(fghij) <-> s7p_c(fgabcde) + g3p_c(hij)",
+    "TKT2": "e4p_c(abcd) + xu5p_c(fghij) <-> f6p_c(fgabcd) + g3p_c(hij)",
+    "TALA": "e4p_c(defg) + f6p_c(abchij) <-> s7p_c(abcdefg) + g3p_c(hij)",
+    "lac_transport": "lac_c(abc) <-> lac_e(abc)",
+}

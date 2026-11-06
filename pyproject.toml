@@ -73,6 +73,7 @@ known-first-party = ["enzax"]
 
 [tool.uv.sources]
 diffrax-bdf = { git = "https://github.com/dtu-qmcm/diffrax-bdf.git" }
+miemu = { path = "../miemu", editable = true }
 
 [dependency-groups]
 mcmc = [
@@ -87,6 +88,9 @@ dev = [
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
     "pytest-xdist>=3.6",
+]
+labelling = [
+    "miemu",
 ]
 benchmark = [
     "amici[jax,petab]==1.2.0",
