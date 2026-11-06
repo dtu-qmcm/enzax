@@ -368,7 +368,7 @@ def simulate(key, truth, error):
     )
 
 
-def make_density(problem: Problem, configuration: Configuration) -> Callable:
+def get_density(problem: Problem, configuration: Configuration) -> Callable:
     """Get `(position, guess) -> (log density, steady state)`.
 
     This is `enzax.statistical_modelling.log_density_grapevine` with the
@@ -422,7 +422,7 @@ def make_density(problem: Problem, configuration: Configuration) -> Callable:
     return density
 
 
-def make_guess_fn(problem: Problem) -> Callable:
+def get_guess_fn(problem: Problem) -> Callable:
     """Get grapevine's implicit heuristic, bound to this problem.
 
     `guess_implicit` takes an Euler step from the previous steady state, so it
@@ -465,8 +465,8 @@ def warm_up(
         chain ended at, and the median leapfrog count.
     """
     optimised = CONFIGURATIONS[-1]
-    density = make_density(problem, optimised)
-    guess_fn = make_guess_fn(problem)
+    density = get_density(problem, optimised)
+    guess_fn = get_guess_fn(problem)
     bound = dict(
         integrator=grapevine_velocity_verlet,
         guess_fn=guess_fn,
@@ -551,8 +551,8 @@ def build_trajectory(
         starts a trajectory, where the previous solution is the default guess
         and is used as it is.
     """
-    density = make_density(problem, CONFIGURATIONS[-1])
-    guess_fn = make_guess_fn(problem)
+    density = get_density(problem, CONFIGURATIONS[-1])
+    guess_fn = get_guess_fn(problem)
     value_and_grad = eqx.filter_jit(jax.value_and_grad(density, has_aux=True))
     inverse_mass_matrix = jnp.asarray(warmed["inverse_mass_matrix"])
     step_size = jnp.asarray(warmed["step_size"])
@@ -590,11 +590,11 @@ def build_trajectory(
     return steps
 
 
-def make_leapfrog_cost(
+def get_leapfrog_cost(
     problem: Problem,
     configuration: Configuration,
 ) -> Callable:
-    """Get the work one leapfrog step does, as a function to time.
+    """Find how much work one leapfrog step does, as a function to time.
 
     That is the guess, if the configuration computes one, and then the log
     density and its gradient. The guess is made as grapevine's integrator
@@ -603,9 +603,9 @@ def make_leapfrog_cost(
     configuration takes all four arguments whether or not it uses them, so
     that each is timed through a function of the same shape.
     """
-    density = make_density(problem, configuration)
+    density = get_density(problem, configuration)
     value_and_grad = jax.value_and_grad(density, has_aux=True)
-    guess_fn = make_guess_fn(problem) if configuration.grapevine else None
+    guess_fn = get_guess_fn(problem) if configuration.grapevine else None
     default_guess = problem.default_guess
 
     @eqx.filter_jit()
@@ -632,7 +632,15 @@ def make_leapfrog_cost(
 
 
 def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
-    """TODO."""
+    """Write the ladder's statistical model as a PEtab problem, for AMICI.
+
+    The SBML comes from `enzax_to_sbml`, with two additions: a parameter for
+    each unbalanced species' concentration, which sets the species' initial
+    amount, and an assignment rule for each reaction's rate, which flux
+    observables read. Every measurement is taken at steady state. Each free
+    parameter gets the ladder's normal prior on the log scale, and bounds
+    `PETAB_BOUND` either side of its location, which PEtab requires.
+    """
     model = problem.model
     ids = sbml.get_parameter_ids(model)
     doc = sbml.enzax_to_sbml(
@@ -760,13 +768,21 @@ def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
     return petab.Problem.from_yaml(directory / "problem.yaml")
 
 
-def make_pypesto_problem(
+def get_pypesto_problem(
     importer: pypesto.petab.PetabImporter,
     sensitivity_method: str,
     steady_state_tol: float,
     newton_sensitivities: bool,
 ) -> pypesto.Problem:
-    """TODO."""
+    """Get a pyPESTO problem whose AMICI solver has the given settings.
+
+    `steady_state_tol` sets AMICI's steady-state tolerances for both the state
+    and the sensitivities; AMICI's defaults stop the glycolysis model far from
+    its steady state. With `newton_sensitivities`, AMICI gets the steady
+    state's sensitivities by a Newton solve instead of by integrating. The
+    objective keeps its history in memory, as pyPESTO's `PymcSampler` sets it
+    up.
+    """
     problem = importer.create_problem()
     amici_objective = problem.objective._objectives[0]
     solver = amici_objective.amici_solver
@@ -786,8 +802,17 @@ def make_pypesto_problem(
     return problem
 
 
-def make_pymc_cost(problem: pypesto.Problem) -> Callable:
-    """TODO."""
+def get_pymc_cost(problem: pypesto.Problem) -> Callable:
+    """Find how much work one leapfrog step does through pyPESTO and PyMC.
+
+    The PyMC model copies the one pyPESTO's `PymcSampler` builds: a uniform
+    prior between each parameter's bounds, with the objective added as a
+    potential. Timing calls PyMC's compiled log density and gradient, so it
+    includes PyTensor's and pyPESTO's overhead. The position is mapped onto
+    PyMC's unbounded scale, and the function returns the objective's own
+    value and gradient, so they can be compared with the other
+    configurations'.
+    """
     log_posterior = PymcObjectiveOp.create_instance(problem.objective)
     lower, upper = np.asarray(problem.lb), np.asarray(problem.ub)
     with pymc.Model():
@@ -815,8 +840,13 @@ def make_pymc_cost(problem: pypesto.Problem) -> Callable:
     return leapfrog_cost
 
 
-def make_pypesto_cost(problem: pypesto.Problem) -> Callable:
-    """TODO."""
+def get_pypesto_cost(problem: pypesto.Problem) -> Callable:
+    """Find how much work one leapfrog step does through pyPESTO alone.
+
+    This calls the pyPESTO objective directly, without PyMC, so the difference
+    from `get_pymc_cost` shows PyMC's overhead. The objective returns a
+    negative log density, so both outputs are negated.
+    """
 
     def leapfrog_cost(
         previous_position,
@@ -833,12 +863,18 @@ def make_pypesto_cost(problem: pypesto.Problem) -> Callable:
     return leapfrog_cost
 
 
-def make_amici_jax_cost(
+def get_amici_jax_cost(
     petab_problem: petab.Problem,
     prior,
     steady_state_tol: float,
 ) -> Callable:
-    """TODO."""
+    """Find how much work one leapfrog step does through AMICI's JAX backend.
+
+    The log density adds the ladder's prior to the log likelihood from
+    `run_simulations`, with AMICI's default solver settings apart from the
+    steady-state tolerance. It is jitted and differentiated with JAX, as
+    blackjax would use it.
+    """
     jax_problem = import_petab_problem(
         petab_problem,
         output_dir=AMICI_BUILD / "jax",
@@ -906,7 +942,7 @@ def time_configuration(
 
     :param label: what the row is called, in the figure and the csv.
 
-    :param leapfrog_cost: what `make_leapfrog_cost` returned, or one of the
+    :param leapfrog_cost: what `get_leapfrog_cost` returned, or one of the
         functions of the same shape for another tool.
 
     :param steps: what `build_trajectory` returned.
@@ -1236,7 +1272,7 @@ def main() -> None:
         print(f"{configuration.label}:")
         mine = time_configuration(
             configuration.label,
-            make_leapfrog_cost(problem, configuration),
+            get_leapfrog_cost(problem, configuration),
             steps,
             where,
             N_REPEAT,
@@ -1253,42 +1289,42 @@ def main() -> None:
         model_name="optimisation_ladder",
     )
     comparisons = {
-        "AMICI + pyPESTO + PyMC, defaults": lambda: make_pymc_cost(
-            make_pypesto_problem(
+        "AMICI + pyPESTO + PyMC, defaults": lambda: get_pymc_cost(
+            get_pypesto_problem(
                 importer,
                 "forward",
                 AMICI_FORWARD_STEADY_STATE_TOL,
                 newton_sensitivities=False,
             ),
         ),
-        "AMICI + pyPESTO + PyMC": lambda: make_pymc_cost(
-            make_pypesto_problem(
+        "AMICI + pyPESTO + PyMC": lambda: get_pymc_cost(
+            get_pypesto_problem(
                 importer,
                 "adjoint",
                 STEADY_STATE_RTOL,
                 newton_sensitivities=True,
             ),
         ),
-        WITHOUT_PYMC: lambda: make_pypesto_cost(
-            make_pypesto_problem(
+        WITHOUT_PYMC: lambda: get_pypesto_cost(
+            get_pypesto_problem(
                 importer,
                 "adjoint",
                 STEADY_STATE_RTOL,
                 newton_sensitivities=True,
             ),
         ),
-        "AMICI JAX + blackjax": lambda: make_amici_jax_cost(
+        "AMICI JAX + blackjax": lambda: get_amici_jax_cost(
             petab_problem,
             problem.prior,
             STEADY_STATE_RTOL,
         ),
     }
-    for label, make_cost in comparisons.items():
+    for label, get_cost in comparisons.items():
         print(f"{label}:")
         records.extend(
             time_configuration(
                 label,
-                make_cost(),
+                get_cost(),
                 steps,
                 where,
                 N_REPEAT,
