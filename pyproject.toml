@@ -77,6 +77,9 @@ extend-select = ["E501", "COM812"]  # line length is checked
 [tool.ruff.lint.isort]
 known-first-party = ["enzax"]
 
+[tool.uv.sources]
+miemu = { path = "../miemu", editable = true }
+
 [dependency-groups]
 plot = [
     "matplotlib>=3.9",
@@ -87,6 +90,9 @@ dev = [
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
     "pytest-xdist>=3.6",
+]
+labelling = [
+    "miemu",
 ]
 benchmark = [
     "amici[jax,petab]==1.2.0",
