@@ -686,7 +686,7 @@ wheels = [
 
 [[package]]
 name = "enzax"
-version = "0.8.0"
+version = "0.8.1"
 source = { editable = "." }
 dependencies = [
     { name = "arviz" },
@@ -698,6 +698,7 @@ dependencies = [
     { name = "lineax" },
     { name = "optimistix" },
     { name = "python-libsbml" },
+    { name = "requests" },
     { name = "sbmlmath" },
 ]
 
@@ -726,7 +727,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
-    { name = "requests" },
 ]
 mcmc = [
     { name = "blackjax", extra = ["progress"] },
@@ -751,6 +751,7 @@ requires-dist = [
     { name = "optimistix", specifier = ">=0.1.0" },
     { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.9" },
     { name = "python-libsbml", specifier = ">=5.20.4" },
+    { name = "requests", specifier = ">=2.32.5" },
     { name = "sbmlmath", specifier = ">=0.2.0" },
 ]
 provides-extras = ["docs"]
@@ -771,7 +772,6 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
-    { name = "requests", specifier = ">=2.32.5" },
 ]
 mcmc = [
     { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },

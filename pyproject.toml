@@ -1,6 +1,6 @@
 [project]
 name = "enzax"
-version = "0.8.0"
+version = "0.8.1"
 description = "Differentiable models of enzyme-catalysed reaction networks"
 authors = [
     {name = "Teddy Groves", email = "tedgro@dtu.dk"},
@@ -16,6 +16,7 @@ dependencies = [
     "sbmlmath>=0.2.0",
     "jax>=0.9.0",
     "beartype>=0.22.9",
+    "requests>=2.32.5",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
@@ -85,7 +86,6 @@ dev = [
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
-    "requests>=2.32.5",
     "pytest-xdist>=3.6",
 ]
 benchmark = [
