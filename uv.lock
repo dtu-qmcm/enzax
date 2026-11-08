@@ -723,13 +723,11 @@ benchmark = [
 ]
 dev = [
     { name = "diffrax-bdf", marker = "python_full_version >= '3.13'" },
+    { name = "miemu" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
-]
-labelling = [
-    { name = "miemu" },
 ]
 mcmc = [
     { name = "blackjax", extra = ["progress"] },
@@ -771,12 +769,12 @@ benchmark = [
 ]
 dev = [
     { name = "diffrax-bdf", marker = "python_full_version >= '3.13'", git = "https://github.com/dtu-qmcm/diffrax-bdf.git" },
+    { name = "miemu", git = "https://github.com/dtu-qmcm/miemu.git?branch=emu-network-arrays" },
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
 ]
-labelling = [{ name = "miemu", editable = "../miemu" }]
 mcmc = [
     { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },
     { name = "blackjax-utils", marker = "python_full_version >= '3.13'", git = "https://github.com/teddygroves/blackjax-utils.git" },
@@ -1651,7 +1649,7 @@ wheels = [
 [[package]]
 name = "miemu"
 version = "0.0.1"
-source = { editable = "../miemu" }
+source = { git = "https://github.com/dtu-qmcm/miemu.git?branch=emu-network-arrays#91b37e841cce6a83b7b3d3240500a472fcea4c13" }
 dependencies = [
     { name = "jax" },
     { name = "numpy" },
@@ -1660,21 +1658,6 @@ dependencies = [
     { name = "scipy" },
     { name = "sympy" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "black", marker = "extra == 'development'" },
-    { name = "jax" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pre-commit", marker = "extra == 'development'" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pytest", marker = "extra == 'development'" },
-    { name = "ruff", marker = "extra == 'development'" },
-    { name = "scipy" },
-    { name = "sympy" },
-]
-provides-extras = ["development"]
 
 [[package]]
 name = "mkdocs"

@@ -73,7 +73,7 @@ known-first-party = ["enzax"]
 
 [tool.uv.sources]
 diffrax-bdf = { git = "https://github.com/dtu-qmcm/diffrax-bdf.git" }
-miemu = { path = "../miemu", editable = true }
+miemu = { git = "https://github.com/dtu-qmcm/miemu.git", branch = "emu-network-arrays" }
 
 [dependency-groups]
 mcmc = [
@@ -84,13 +84,11 @@ mcmc = [
 ]
 dev = [
     "diffrax-bdf @ git+https://github.com/dtu-qmcm/diffrax-bdf.git ; python_version >= '3.13'",
+    "miemu",
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
     "pytest-xdist>=3.6",
-]
-labelling = [
-    "miemu",
 ]
 benchmark = [
     "amici[jax,petab]==1.2.0",
