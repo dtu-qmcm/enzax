@@ -1,14 +1,12 @@
 import jax
+import miemu
 import numpy as np
-import pytest
 from jax import numpy as jnp
+from miemu.mid import NATURAL_13C, natural_mid, positional_mid
 
 from enzax.examples import glycolysis
 from enzax.steady_state import get_steady_state
 from enzax.thermodynamics import get_one_way_fluxes
-
-miemu = pytest.importorskip("miemu")
-from miemu.mid import NATURAL_13C, natural_mid, positional_mid  # noqa: E402
 
 jax.config.update("jax_enable_x64", True)
 
