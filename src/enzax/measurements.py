@@ -96,7 +96,15 @@ class LognormalMeasurement(Measurement):
 
 
 class PooledLognormalMeasurement(Measurement):
-    """TODO."""
+    """Measured values that are each the sum of several predicted ones.
+
+    The values have lognormal errors. Suits measurements that can't tell some
+    quantities apart, such as two metabolites that share a mass spectrometry
+    peak, or isoforms that share their peptides. pools[i] is the position of
+    the value that ids[i] contributes to, so ids ["p2g_c", "p3g_c", "pep_c"]
+    with pools [0, 0, 1] measure p2g_c + p3g_c and pep_c. values, errors and
+    bias are as in LognormalMeasurement.
+    """
 
     values: Array = eqx.field(converter=jnp.asarray)
     errors: Array = eqx.field(converter=jnp.asarray)
