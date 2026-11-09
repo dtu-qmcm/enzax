@@ -4,6 +4,7 @@
       members:
         - Measurement
         - LognormalMeasurement
+        - PooledLognormalMeasurement
         - NormalMeasurement
         - pick_concs
         - pick_fluxes
