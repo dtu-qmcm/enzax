@@ -95,6 +95,54 @@ class LognormalMeasurement(Measurement):
         )
 
 
+class PooledLognormalMeasurement(Measurement):
+    """Measured values that are each the sum of several predicted ones.
+
+    The values have lognormal errors. Suits measurements that can't tell some
+    quantities apart, such as two metabolites that share a mass spectrometry
+    peak, or isoforms that share their peptides. pools[i] is the position of
+    the value that ids[i] contributes to, so ids ["p2g_c", "p3g_c", "pep_c"]
+    with pools [0, 0, 1] measure p2g_c + p3g_c and pep_c. values, errors and
+    bias are as in LognormalMeasurement.
+    """
+
+    values: Array = eqx.field(converter=jnp.asarray)
+    errors: Array = eqx.field(converter=jnp.asarray)
+    pools: tuple[int, ...] = eqx.field(static=True, converter=tuple)
+    bias: Array = eqx.field(default=0.0, converter=jnp.asarray)
+
+    def __check_init__(self):
+        check_positive(self, "values")
+        check_positive(self, "errors")
+        if len(self.pools) != len(self.ids):
+            msg = (
+                f"A PooledLognormalMeasurement in {self.experiment!r} has "
+                f"{len(self.ids)} ids but {len(self.pools)} pools."
+            )
+            raise ValueError(msg)
+        n_value = jnp.shape(self.values)[0]
+        if set(self.pools) != set(range(n_value)):
+            msg = (
+                f"The pools of a PooledLognormalMeasurement in "
+                f"{self.experiment!r} must be the numbers 0 to "
+                f"{n_value - 1}, one for each value, but are "
+                f"{sorted(set(self.pools))}."
+            )
+            raise ValueError(msg)
+
+    def log_likelihood(self, predicted: Array) -> Array:
+        pooled = jax.ops.segment_sum(
+            predicted,
+            np.array(self.pools, dtype=INDEX_DTYPE),
+            num_segments=len(self.values),
+        )
+        return norm.logpdf(
+            x=jnp.log(self.values),
+            loc=jnp.log(pooled) + self.bias,
+            scale=self.errors,
+        )
+
+
 class NormalMeasurement(Measurement):
     """Measured values that are normally distributed.
 

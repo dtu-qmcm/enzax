@@ -14,6 +14,7 @@ from enzax.measurements import (
     LognormalMeasurement,
     Measurement,
     NormalMeasurement,
+    PooledLognormalMeasurement,
     pick_algebraic_variables,
     pick_concs,
     pick_concs_by_time,
@@ -304,3 +305,69 @@ def test_picking_fluxes_by_time_chooses_reactions_and_times_by_id():
 def test_picking_by_time_rejects_unknown_ids(ids, message):
     with pytest.raises(ValueError, match=message):
         pick_concs_by_time(MODEL, CONC_BY_TIME, TIME_LABELS, ids)
+
+
+def test_a_pooled_measurement_with_one_id_per_pool_is_lognormal():
+    pooled = PooledLognormalMeasurement(
+        "e",
+        MODEL.species,
+        values=CONC_OBS,
+        errors=CONC_ERR,
+        pools=[0, 1, 2],
+        bias=0.2,
+    )
+    plain = LognormalMeasurement(
+        "e",
+        MODEL.species,
+        values=CONC_OBS,
+        errors=CONC_ERR,
+        bias=0.2,
+    )
+    assert jnp.allclose(
+        pooled.log_likelihood(CONC),
+        plain.log_likelihood(CONC),
+    )
+
+
+def test_a_pooled_measurement_compares_values_with_summed_predictions():
+    measurement = PooledLognormalMeasurement(
+        "e",
+        ["a", "c", "b", "a"],
+        values=[0.6, 0.3, 0.5],
+        errors=[0.1, 0.2, 0.3],
+        pools=[0, 0, 1, 2],
+    )
+    predicted = pick_concs(MODEL, CONC, measurement.ids)
+    expected = norm.logpdf(
+        x=jnp.log(jnp.array([0.6, 0.3, 0.5])),
+        loc=jnp.log(
+            jnp.array([CONC[0] + CONC[2], CONC[1], CONC[0]]),
+        ),
+        scale=jnp.array([0.1, 0.2, 0.3]),
+    )
+    assert jnp.allclose(measurement.log_likelihood(predicted), expected)
+
+
+@pytest.mark.parametrize(
+    ("ids", "values", "pools", "message"),
+    [
+        (["a", "b"], [0.1], [0], "has 2 ids but 1 pools"),
+        (["a", "b"], [0.1, 0.2], [0, 2], r"must be the numbers 0 to 1"),
+        (["a", "b"], [0.1, 0.2], [0, 0], r"must be the numbers 0 to 1"),
+        (["a"], [0.0], [0], "values of a PooledLognormalMeasurement"),
+    ],
+)
+def test_a_pooled_measurement_rejects_bad_pools_and_values(
+    ids,
+    values,
+    pools,
+    message,
+):
+    with pytest.raises(ValueError, match=message):
+        PooledLognormalMeasurement(
+            "e",
+            ids,
+            values=values,
+            errors=[0.1] * len(values),
+            pools=pools,
+        )

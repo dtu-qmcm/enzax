@@ -17,6 +17,7 @@ from enzax.experiments import (
 from enzax.measurements import (
     LognormalMeasurement,
     NormalMeasurement,
+    PooledLognormalMeasurement,
     pick_concs,
     pick_enzymes,
     pick_fluxes,
@@ -164,6 +165,28 @@ def test_each_measurement_is_scored_against_its_own_experiment():
         **swapped,
     )
     assert swapped_density < density(EXPANDED)
+
+
+def test_a_pooled_measurement_reaches_the_density_through_its_ids():
+    pooled = [
+        PooledLognormalMeasurement(
+            m.experiment,
+            m.ids,
+            values=m.values,
+            errors=m.errors,
+            pools=range(len(m.ids)),
+        )
+        for m in MEASUREMENTS["conc_measurements"]
+    ]
+    pooled_density = log_density(
+        EXPANDED,
+        MODEL,
+        PRIOR,
+        layout=LAYOUT,
+        guess=GUESS,
+        **MEASUREMENTS | {"conc_measurements": pooled},
+    )
+    assert jnp.isclose(pooled_density, density(EXPANDED))
 
 
 def test_the_grapevine_density_returns_a_steady_state_per_experiment():
