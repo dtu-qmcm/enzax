@@ -83,6 +83,8 @@ miemu = { git = "https://github.com/dtu-qmcm/miemu.git", branch = "emu-network-a
 [dependency-groups]
 plot = [
     "matplotlib>=3.9",
+    "h5netcdf>=1.8.2",
+    "h5py>=3.16.0",
 ]
 dev = [
     "diffrax-bdf>=0.1.0",

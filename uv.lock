@@ -727,15 +727,15 @@ benchmark = [
 ]
 dev = [
     { name = "diffrax-bdf" },
+    { name = "miemu" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
 ]
-labelling = [
-    { name = "miemu" },
-]
 plot = [
+    { name = "h5netcdf" },
+    { name = "h5py" },
     { name = "matplotlib" },
 ]
 
@@ -777,13 +777,17 @@ benchmark = [
 ]
 dev = [
     { name = "diffrax-bdf", specifier = ">=0.1.0" },
+    { name = "miemu", git = "https://github.com/dtu-qmcm/miemu.git?branch=emu-network-arrays" },
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
 ]
-labelling = [{ name = "miemu", editable = "../miemu" }]
-plot = [{ name = "matplotlib", specifier = ">=3.9" }]
+plot = [
+    { name = "h5netcdf", specifier = ">=1.8.2" },
+    { name = "h5py", specifier = ">=3.16.0" },
+    { name = "matplotlib", specifier = ">=3.9" },
+]
 
 [[package]]
 name = "equinox"
@@ -961,6 +965,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/36/e2/0f5d8ed08766bc6dcd3eebf5a6623d83cbca33a6e4c90aef57156ce745ad/griffelib-2.4.1.tar.gz", hash = "sha256:40c028dd2e623f464423f0e11e3c553158f1cf4f1368239a370534d73e1407ff", size = 245153, upload-time = "2026-10-22T11:20:03.705Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/02/1156d5f5307f573b901b14373848b84e69ca6cab09169b8cc97d16a181f9/griffelib-2.4.1-py3-none-any.whl", hash = "sha256:76bc562f936ad1ce198d2cf6d0731bd5c92a7d934b69ef828ef22ee0ffdb62ce", size = 172983, upload-time = "2026-10-22T11:19:59.843Z" },
+]
+
+[[package]]
+name = "h5netcdf"
+version = "1.8.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9e/cc/870c3642cfe900f0400d1784ac21a366b70bdb5b59c41fbe286e0c801e15/h5netcdf-1.8.3.tar.gz", hash = "sha256:95b5d1972894a28f3237aa6497fd34d365610c22880803c2640b0b49dcae85da", size = 83092, upload-time = "2026-11-11T12:31:48.967Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/4c/a784e8af8658a423335201b536f26ce2d6341e41cea15383d490089998f9/h5netcdf-1.8.3-py3-none-any.whl", hash = "sha256:767a61acaf0a2a2a99937ecd92c496c78dd54ad207b693c57211c466a975c75b", size = 65286, upload-time = "2026-11-11T12:31:47.397Z" },
 ]
 
 [[package]]
@@ -1656,7 +1673,7 @@ wheels = [
 [[package]]
 name = "miemu"
 version = "0.0.1"
-source = { editable = "../miemu" }
+source = { git = "https://github.com/dtu-qmcm/miemu.git?branch=emu-network-arrays#91b37e841cce6a83b7b3d3240500a472fcea4c13" }
 dependencies = [
     { name = "jax" },
     { name = "numpy" },
@@ -1665,21 +1682,6 @@ dependencies = [
     { name = "scipy" },
     { name = "sympy" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "black", marker = "extra == 'development'" },
-    { name = "jax" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pre-commit", marker = "extra == 'development'" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pytest", marker = "extra == 'development'" },
-    { name = "ruff", marker = "extra == 'development'" },
-    { name = "scipy" },
-    { name = "sympy" },
-]
-provides-extras = ["development"]
 
 [[package]]
 name = "mkdocs"
