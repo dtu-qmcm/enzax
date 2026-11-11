@@ -23,10 +23,12 @@ from enzax.measurements import (
     pick_enzymes,
     pick_fluxes,
     pick_fluxes_by_time,
+    get_pool_mid,
 )
 from enzax.parameter_split import ParameterSplit, combine_parameters
 from enzax.parameters import SEP
 from enzax.steady_state import get_steady_state_hybrid
+from enzax.thermodynamics import get_one_way_fluxes
 from enzax.time_course import (
     INITIAL_STATE_PARAMETER,
     get_initial_state_labelling,
@@ -186,6 +188,9 @@ _STATIC_SOLVE_ARGUMENTS = (
     "solver",
     "stepsize_controller",
 )
+_STATIC_ARGUMENTS = (*_STATIC_SOLVE_ARGUMENTS, "mid_simulator")
+
+MidSimulator = Callable[[str, Flux, Flux], Mapping[str, Array]]
 
 
 def get_measurables_single_experiment(
@@ -245,6 +250,50 @@ def get_measurables_single_experiment(
     return steady, found, conc, flux
 
 
+def get_mid_log_likelihood(
+    model: KineticModel,
+    layout: ExperimentLayout,
+    parameters_by_experiment: ParamDict,
+    conc: Float[Array, "n_experiment n_species"],
+    mid_measurements: Sequence[Measurement],
+    mid_simulator: MidSimulator | None,
+) -> Scalar:
+    """Get the log likelihood of some MID measurements.
+
+    Each experiment with a MID measurement gets its one-way fluxes from its
+    predicted concentrations, then its MIDs from mid_simulator, once. Each of
+    its measurements then scores the MID of its pool.
+
+    :param conc: every species' concentration in each experiment, with a
+        leading experiment axis in the layout's order.
+
+    :return: the total log likelihood. Raises ValueError if there are MID
+        measurements but no mid_simulator.
+    """
+    measurements = jax.tree.leaves(mid_measurements, is_leaf=match_measurement)
+    if measurements and mid_simulator is None:
+        raise ValueError("MID measurements need a mid_simulator.")
+    llik = jnp.zeros(())
+    for experiment in sorted({m.experiment for m in measurements}):
+        parameters = pick_experiment(
+            layout,
+            parameters_by_experiment,
+            experiment,
+        )
+        conc_experiment = pick_experiment(layout, conc, experiment)
+        forward, reverse = get_one_way_fluxes(
+            model,
+            conc_experiment[model.balanced_species_ix],
+            parameters,
+        )
+        mids = mid_simulator(experiment, forward, reverse)
+        for m in measurements:
+            if m.experiment == experiment:
+                predicted = get_pool_mid(model, conc_experiment, mids, m.ids)
+                llik = llik + m.log_likelihood(predicted).sum()
+    return llik
+
+
 def _log_density_and_steady_states(
     free_parameters: PyTree,
     model: KineticModel,
@@ -255,6 +304,8 @@ def _log_density_and_steady_states(
     conc_measurements: Sequence[Measurement] = (),
     enzyme_measurements: Sequence[Measurement] = (),
     flux_measurements: Sequence[Measurement] = (),
+    mid_measurements: Sequence[Measurement] = (),
+    mid_simulator: MidSimulator | None = None,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
@@ -286,6 +337,17 @@ def _log_density_and_steady_states(
     :param enzyme_measurements: measurements of enzyme concentrations.
 
     :param flux_measurements: measurements of fluxes.
+
+    :param mid_measurements: measurements of mass isotopologue distributions,
+        such as ILRNormalMeasurement. Each one's ids name a pool of EMUs,
+        which get_pool_mid combines.
+
+    :param mid_simulator: gives an experiment's MIDs, as a mapping from EMU id
+        to MID, from the experiment's id and its forward and reverse fluxes in
+        model order. Usually built with miemu, as in
+        case_studies/glycolysis/common.py. Needed when there are MID
+        measurements. Static, so pass the same function each time to avoid
+        recompiling.
 
     :param ivp_rtol: relative tolerance of the steady state solve's initial
         value problem, passed on to get_steady_state_hybrid. Static, since a
@@ -370,7 +432,19 @@ def _log_density_and_steady_states(
             (flux_measurements, flux_hat),
         )
     )
-    llik = jax.tree.reduce(operator.add, (llik_conc, llik_enz, llik_flux), 0.0)
+    llik_mid = get_mid_log_likelihood(
+        model,
+        layout,
+        parameters_by_experiment,
+        conc,
+        mid_measurements,
+        mid_simulator,
+    )
+    llik = jax.tree.reduce(
+        operator.add,
+        (llik_conc, llik_enz, llik_flux, llik_mid),
+        0.0,
+    )
     log_prior = enzax_prior_logdensity(free_parameters, prior)
     log_density = jnp.where(found.all(), log_prior + llik, jnp.nan)
     return log_density, steady
@@ -378,11 +452,11 @@ def _log_density_and_steady_states(
 
 log_density_grapevine = partial(
     jax.jit,
-    static_argnames=_STATIC_SOLVE_ARGUMENTS,
+    static_argnames=_STATIC_ARGUMENTS,
 )(_log_density_and_steady_states)
 
 
-@partial(jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS)
+@partial(jax.jit, static_argnames=_STATIC_ARGUMENTS)
 def log_density(
     free_parameters: PyTree,
     model: KineticModel,
@@ -393,6 +467,8 @@ def log_density(
     conc_measurements: Sequence[Measurement] = (),
     enzyme_measurements: Sequence[Measurement] = (),
     flux_measurements: Sequence[Measurement] = (),
+    mid_measurements: Sequence[Measurement] = (),
+    mid_simulator: MidSimulator | None = None,
     ivp_rtol: float = 1e-9,
     ivp_atol: float = 1e-9,
     steady_state_rtol: float = 1e-12,
@@ -415,6 +491,8 @@ def log_density(
         conc_measurements,
         enzyme_measurements,
         flux_measurements,
+        mid_measurements,
+        mid_simulator,
         ivp_rtol,
         ivp_atol,
         steady_state_rtol,

@@ -6,7 +6,8 @@ ids of the measured values, for example the concentrations of two species in
 one experiment.
 
 The built in classes LognormalMeasurement and NormalMeasurement cover the usual
-cases.
+cases, and ILRNormalMeasurement covers measured mass isotopologue
+distributions.
 
 The functions pick_concs, pick_fluxes, pick_enzymes and
 pick_algebraic_variables pick the predicted values that a measurement's ids
@@ -15,7 +16,7 @@ each one gets, is up to the statistical model.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import equinox as eqx
 import jax
@@ -112,6 +113,68 @@ class NormalMeasurement(Measurement):
         return norm.logpdf(x=self.values, loc=predicted, scale=self.errors)
 
 
+def get_ordered_ilr_basis(n_part: int) -> np.ndarray:
+    """Get the ordered isometric log-ratio basis for n_part parts.
+
+    Row i contrasts part i with all heavier parts, so a composition's
+    coordinates compare each isotopologue with the ones heavier than it. The
+    rows are orthonormal and each sums to zero.
+
+    :param n_part: the number of parts, e.g. 4 for the MID of a three carbon
+        EMU.
+
+    :return: an (n_part - 1, n_part) array.
+    """
+    basis = np.zeros((n_part - 1, n_part))
+    for i in range(n_part - 1):
+        n_heavier = n_part - 1 - i
+        basis[i, i] = np.sqrt(n_heavier / (n_heavier + 1))
+        basis[i, i + 1 :] = -1 / np.sqrt(n_heavier * (n_heavier + 1))
+    return basis
+
+
+def get_ordered_ilr(composition: Array) -> Array:
+    """Get a composition's coordinates in the ordered isometric log-ratio basis.
+
+    Coordinate i equals sqrt(s / (s + 1)) * log(x_i / g), where s counts the
+    parts heavier than part i and g is their geometric mean. The coordinates
+    don't depend on the composition's total, so it needn't be closed.
+
+    :param composition: positive parts along the last axis, lightest first.
+    """
+    basis = get_ordered_ilr_basis(composition.shape[-1])
+    return jnp.log(composition) @ basis.T
+
+
+class ILRNormalMeasurement(Measurement):
+    """A measured composition whose ordered isometric log-ratio coordinates
+    are normally distributed.
+
+    Suits mass isotopologue distributions (MIDs), following Carlsen et al.
+    (2026, doi:10.64898/2026.08.07.742769). values holds one or more measured
+    compositions along its last axis, lightest isotopologue first, for example
+    one row per replicate, and must be positive. errors holds the standard
+    deviations of the coordinates, either one for all of them or one per
+    coordinate, and must be positive. ids name what was measured, for example
+    the EMUs of a pool of isomers, and the prediction is a single composition.
+    The log likelihood gives one log density per measured composition.
+    """
+
+    values: Array = eqx.field(converter=jnp.asarray)
+    errors: Array = eqx.field(converter=jnp.asarray)
+
+    def __check_init__(self):
+        check_positive(self, "values")
+        check_positive(self, "errors")
+
+    def log_likelihood(self, predicted: Array) -> Array:
+        return norm.logpdf(
+            x=get_ordered_ilr(self.values),
+            loc=get_ordered_ilr(predicted),
+            scale=self.errors,
+        ).sum(axis=-1)
+
+
 def get_positions(
     ids: Sequence[str],
     known: Sequence[str],
@@ -153,6 +216,31 @@ def pick_enzymes(
     labels = model.parameter_labelling.get("log_enzyme", ())
     positions = get_positions(ids, labels, "enzymes")
     return jnp.exp(parameters["log_enzyme"][positions])
+
+
+def get_pool_mid(
+    model: KineticModel,
+    conc: Array,
+    mids: Mapping[str, Array],
+    ids: Sequence[str],
+) -> Array:
+    """Get the MID of a pool of EMUs, given every species' concentration.
+
+    The pool's MID weights each EMU's MID by its species' concentration, as
+    when a mass spectrometer measures isomers it can't separate together. A
+    pool of one EMU gets that EMU's MID.
+
+    :param conc: every species' concentration, in model order.
+
+    :param mids: MIDs keyed by EMU id, e.g. "pyr_c_123", as a mid_simulator
+        returns them.
+
+    :param ids: the pool's EMU ids, whose EMUs must have the same number of
+        atoms.
+    """
+    species = [emu_id.rpartition("_")[0] for emu_id in ids]
+    weights = pick_concs(model, conc, species)
+    return weights @ jnp.stack([mids[emu_id] for emu_id in ids]) / weights.sum()
 
 
 def pick_algebraic_variables(

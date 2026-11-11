@@ -6,20 +6,25 @@ documents them.
 
 import equinox as eqx
 import jax
+import numpy as np
 import pytest
 from jax import numpy as jnp
 from jax.scipy.stats import dirichlet, norm
 
 from enzax.measurements import (
+    ILRNormalMeasurement,
     LognormalMeasurement,
     Measurement,
     NormalMeasurement,
+    get_ordered_ilr,
+    get_ordered_ilr_basis,
     pick_algebraic_variables,
     pick_concs,
     pick_concs_by_time,
     pick_enzymes,
     pick_fluxes,
     pick_fluxes_by_time,
+    get_pool_mid,
 )
 from tests.test_algebraic_constraint import TOY
 from tests.test_parameters import CONC, SEPARATE, get_parameters
@@ -304,3 +309,65 @@ def test_picking_fluxes_by_time_chooses_reactions_and_times_by_id():
 def test_picking_by_time_rejects_unknown_ids(ids, message):
     with pytest.raises(ValueError, match=message):
         pick_concs_by_time(MODEL, CONC_BY_TIME, TIME_LABELS, ids)
+
+
+@pytest.mark.parametrize("n_part", [2, 3, 4, 7])
+def test_the_ordered_ilr_basis_is_orthonormal_and_ignores_closure(n_part):
+    basis = get_ordered_ilr_basis(n_part)
+    assert np.allclose(basis @ basis.T, np.eye(n_part - 1))
+    assert np.allclose(basis.sum(axis=1), 0.0)
+
+
+def test_the_ordered_ilr_separates_each_part_from_the_heavier_ones():
+    composition = jnp.array([0.6, 0.05, 0.32, 0.03])
+    heavier_mean = [
+        jnp.exp(jnp.log(composition[i + 1 :]).mean()) for i in range(3)
+    ]
+    expected = jnp.array(
+        [
+            jnp.sqrt(s / (s + 1)) * jnp.log(composition[i] / heavier_mean[i])
+            for i, s in enumerate([3, 2, 1])
+        ],
+    )
+    assert jnp.allclose(get_ordered_ilr(composition), expected)
+    assert jnp.allclose(get_ordered_ilr(7.0 * composition), expected)
+
+
+def test_an_ilr_normal_measurement_scores_each_replicate():
+    predicted = jnp.array([0.6, 0.05, 0.32, 0.03])
+    values = jnp.array([[0.58, 0.06, 0.33, 0.03], [0.62, 0.05, 0.30, 0.03]])
+    measurement = ILRNormalMeasurement(
+        "e",
+        ("x_123",),
+        values=values,
+        errors=0.1,
+    )
+    expected = norm.logpdf(
+        get_ordered_ilr(values),
+        get_ordered_ilr(predicted),
+        0.1,
+    ).sum(axis=-1)
+    found = measurement.log_likelihood(predicted)
+    assert found.shape == (2,)
+    assert jnp.allclose(found, expected)
+
+
+def test_closed_lognormal_intensities_give_normal_ilr_coordinates():
+    mid = jnp.array([0.6, 0.05, 0.32, 0.03])
+    sigma = 0.1
+    noise = jax.random.normal(jax.random.key(0), (100_000, 4))
+    intensity = mid * jnp.exp(sigma * noise)
+    residual = get_ordered_ilr(intensity) - get_ordered_ilr(mid)
+    assert jnp.allclose(residual.mean(axis=0), 0.0, atol=2e-3)
+    assert jnp.allclose(jnp.cov(residual.T), sigma**2 * jnp.eye(3), atol=2e-4)
+
+
+def test_a_pool_mid_weights_each_emu_by_concentration():
+    mids = {"a_1": jnp.array([0.9, 0.1]), "c_1": jnp.array([0.5, 0.5])}
+    weights = CONC[jnp.array([0, 2])]
+    expected = (weights[0] * mids["a_1"] + weights[1] * mids["c_1"]) / (
+        weights.sum()
+    )
+    found = get_pool_mid(MODEL, CONC, mids, ["a_1", "c_1"])
+    assert jnp.allclose(found, expected)
+    assert jnp.allclose(get_pool_mid(MODEL, CONC, mids, ["a_1"]), mids["a_1"])
