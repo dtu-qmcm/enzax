@@ -1,4 +1,11 @@
-"""TODO."""
+"""Screen candidate second conditions for the glycolysis case study.
+
+Scales one boundary concentration at a time and estimates how much a second
+experiment at that condition would narrow the posterior of the saturation
+and transfer constants. The estimate uses the Fisher information of the
+predicted measurements at the prior mean, and the screen rejects any
+condition in which lactate flows into the cell.
+"""
 
 import jax
 import numpy as np

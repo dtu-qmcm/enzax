@@ -1,4 +1,10 @@
-"""TODO."""
+"""Simulate measurements for the glycolysis labelling case study.
+
+Draws true parameters from the prior, finds each experiment's steady state,
+and adds noise to its concentrations, enzyme levels, boundary fluxes and
+MIDs. Writes the measurements to data/measurements.csv and the true values
+to data/truth.json, then checks the log density at the truth.
+"""
 
 import csv
 import json

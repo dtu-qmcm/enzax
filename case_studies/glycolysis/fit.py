@@ -1,4 +1,10 @@
-"""TODO."""
+"""Sample the posterior with NUTS, one chain per core.
+
+Launches each chain as its own process pinned to one core, sampling in
+coordinates whitened by the Laplace approximation from mode.py. Then
+gathers the draws and sampler statistics into an arviz netCDF file and
+prints convergence diagnostics.
+"""
 
 import os
 import subprocess
