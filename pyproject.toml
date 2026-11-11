@@ -81,6 +81,8 @@ mcmc = [
     "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git ; python_version >= '3.13'",
     "blackjax[progress]>=1.6.2",
     "matplotlib>=3.9",
+    "h5netcdf>=1.8.2",
+    "h5py>=3.16.0",
 ]
 dev = [
     "diffrax-bdf @ git+https://github.com/dtu-qmcm/diffrax-bdf.git ; python_version >= '3.13'",
