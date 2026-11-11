@@ -1,4 +1,10 @@
-"""TODO."""
+"""Shared setup for the glycolysis labelling case study.
+
+Builds a version of the example glycolysis model in which glucose transport
+sets cytosolic glucose, a reference parameter set that keeps the example's
+fluxes, and the conditions of the two experiments. Also provides the prior,
+the measurement loader and the MID simulator that the other scripts use.
+"""
 
 import csv
 import json
