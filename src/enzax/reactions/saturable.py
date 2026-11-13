@@ -8,7 +8,7 @@ Every rate law enzax knows about has the same shape:
 can be in; see `enzax.binding`. The last two factors are optional: `reversible`
 says whether there is a driving force, and whether there is an allosteric
 factor follows from whether the rate law declares an effector or a state --
-see `MichaelisMenten.is_allosteric`.
+see `SaturableReaction.is_allosteric`.
 
 The module holds two classes, differing only in where `Z` comes from.
 `MichaelisMenten` derives it from the stoichiometry; `SaturableReaction`
@@ -158,7 +158,7 @@ def get_allosteric_species(
 
 
 @dataclass(frozen=True)
-class MichaelisMentenLabels(ReactionLabels):
+class SaturableLabels(ReactionLabels):
     """The labels a Michaelis Menten rate equation refers to.
 
     Every group but `kcat`, `enzyme` and `tc` is gathered from
@@ -213,7 +213,7 @@ class AllostericIx(eqx.Module):
     relaxed_state: BindingPolynomial
 
 
-class MichaelisMentenIx(eqx.Module):
+class SaturableIx(eqx.Module):
     """Where a saturable rate equation reads its parameters.
 
     Built once, when the model is constructed. `ix_kcat`, `ix_enzyme` and
@@ -240,7 +240,7 @@ class AllostericInput(eqx.Module):
     relaxed_state: BindingPolynomial
 
 
-class MichaelisMentenInput(eqx.Module):
+class SaturableInput(eqx.Module):
     kcat: Scalar
     enzyme: Scalar
     substrate_kms: SubstrateArr
@@ -293,7 +293,7 @@ def generalised_mwc_effect(
     return 1.0 / (1 + tc * ratio**subunits)
 
 
-class MichaelisMentenBatchIx(BatchIndexes):
+class SaturableBatchIx(BatchIndexes):
     """Where a batch of saturable reactions reads its inputs.
 
     Slot arrays index the columns of the local concentration block, padded
@@ -318,10 +318,10 @@ class MichaelisMentenBatchIx(BatchIndexes):
     subunits: Int[np.ndarray, " n_batch"]
 
 
-def get_michaelis_menten_batch_indexes(
-    reactions: Sequence["MichaelisMenten"],
-    ixs: Sequence[MichaelisMentenIx],
-) -> MichaelisMentenBatchIx:
+def get_saturable_batch_indexes(
+    reactions: Sequence["SaturableReaction"],
+    ixs: Sequence[SaturableIx],
+) -> SaturableBatchIx:
     """Combine saturable reactions' index bundles into one batch bundle."""
     polynomials = [ix.binding_polynomial for ix in ixs]
     polynomial_row = list(range(len(ixs)))
@@ -342,7 +342,7 @@ def get_michaelis_menten_batch_indexes(
         local[row] += get_polynomial_species(polynomial)
     local_species = get_local_species(local)
     n_slot = local_species.shape[1]
-    return MichaelisMentenBatchIx(
+    return SaturableBatchIx(
         local_species=local_species,
         ix_kcat=np.array([ix.ix_kcat for ix in ixs], dtype=int),
         ix_enzyme=np.array([ix.ix_enzyme for ix in ixs], dtype=int),
@@ -380,14 +380,14 @@ def get_michaelis_menten_batch_indexes(
     )
 
 
-def get_michaelis_menten_fluxes(
+def get_saturable_fluxes(
     conc: LocalConcArr,
     parameters: ParamDict,
-    ix: MichaelisMentenBatchIx,
+    ix: SaturableBatchIx,
 ) -> BatchFlux:
     """Get the fluxes of a batch of saturable reactions.
 
-    Each step does what `MichaelisMenten.__call__` does for one reaction, in
+    Each step does what `SaturableReaction.__call__` does for one reaction, in
     the same order, so that the fluxes are equal to the last bit.
     """
     conc = with_ones_column(conc)
@@ -417,19 +417,21 @@ def get_michaelis_menten_fluxes(
     return jnp.where(ix.allosteric, rate * (1.0 / (1 + tc * powered)), rate)
 
 
-MICHAELIS_MENTEN_BATCH_RULE = BatchRule(
-    get_batch_indexes=get_michaelis_menten_batch_indexes,
-    get_fluxes=get_michaelis_menten_fluxes,
+HAND_WRITTEN_EXPRESSION_FIELDS = (
+    "dead_end_states_expression",
+    "binding_polynomial_expression",
+    "tense_state_expression",
+    "relaxed_state_expression",
+)
+
+SATURABLE_BATCH_RULE = BatchRule(
+    get_batch_indexes=get_saturable_batch_indexes,
+    get_fluxes=get_saturable_fluxes,
 )
 
 
-class MichaelisMenten(Reaction):
+class SaturableReaction(Reaction):
     """A reaction whose rate saturates as its enzyme's sites fill up.
-
-    The binding polynomial follows from the stoichiometry: substrates bind in
-    one random-order complex, products in another, and each competitive
-    inhibitor forms a dead end. `SaturableReaction` is the same rate law
-    with that polynomial written out by hand.
 
     Fields, all optional:
 
@@ -462,6 +464,24 @@ class MichaelisMenten(Reaction):
       declared the same way.
     * `subunits`: number of subunits in the enzyme, which matters only to an
       allosteric rate law.
+    * `dead_end_states_expression`: dead ends to add to the binding polynomial
+      the stoichiometry implies, as HEX1's `glc*g6p` and FBA's
+      `fdp*g3p*dhap`. Build them with `dead_end`, and add several with `+`.
+      Only a dead end belongs here: the derived polynomial already counts the
+      empty state once, so a term with a constant in it -- a `site`, say --
+      would count it twice. A dead end with one species bound is a competitive
+      inhibitor, which `competitive_inhibitors` declares more briefly.
+    * `binding_polynomial_expression`: the whole binding polynomial, for a
+      rate law that the stoichiometry does not imply.
+    * `tense_state_expression`: the tense state's binding polynomial. Defaults
+      to one state per allosteric inhibitor.
+    * `relaxed_state_expression`: the relaxed state's binding polynomial.
+      Defaults to the catalytic polynomial times one state per allosteric
+      activator, which is what puts the free enzyme ratio in the Monod Wyman
+      Changeux factor.
+
+    Declaring a tense or relaxed state makes the rate law allosteric, which is
+    how a Monod Wyman Changeux factor with no effectors gets declared.
     """
 
     kcat: str | None = None
@@ -474,7 +494,11 @@ class MichaelisMenten(Reaction):
     allosteric_inhibitors: list[str] | dict[str, str] | None = None
     allosteric_activators: list[str] | dict[str, str] | None = None
     subunits: int = 1
-    batch_rule: ClassVar[BatchRule | None] = MICHAELIS_MENTEN_BATCH_RULE
+    dead_end_states_expression: BindingPolynomialExpression | None = None
+    binding_polynomial_expression: BindingPolynomialExpression | None = None
+    tense_state_expression: BindingPolynomialExpression | None = None
+    relaxed_state_expression: BindingPolynomialExpression | None = None
+    batch_rule: ClassVar[BatchRule | None] = SATURABLE_BATCH_RULE
 
     def __check_init__(self):
         if self.subunits != 1 and not self.is_allosteric():
@@ -486,41 +510,12 @@ class MichaelisMenten(Reaction):
             )
             raise ValueError(msg)
 
-    # The four polynomials a rate law can write out by hand. This one writes
-    # none, so they are all absent; `SaturableReaction` has them as fields
-    # and overrides these. They are methods rather than fields because a
-    # dataclass subclass can add a field but never remove one, which is why
-    # the general class extends the specific one and not the other way round.
-    def get_dead_end_states_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        """Get the dead ends to add to the derived binding polynomial."""
-        return None
-
-    def get_binding_polynomial_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        """Get the whole binding polynomial, replacing the derived one."""
-        return None
-
-    def get_tense_state_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        """Get the tense state's binding polynomial."""
-        return None
-
-    def get_relaxed_state_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        """Get the relaxed state's binding polynomial."""
-        return None
-
     def is_allosteric(self) -> bool:
         """Whether the rate law has a Monod Wyman Changeux factor.
 
         It has one exactly when something says what the enzyme's two states
-        are: an allosteric effector, a transfer constant label, or -- in
-        `SaturableReaction` -- a tense or relaxed state polynomial.
+        are: an allosteric effector, a transfer constant label, or a tense or
+        relaxed state polynomial.
         `subunits` cannot say so, since `subunits=1` is indistinguishable from
         the default.
         """
@@ -529,8 +524,8 @@ class MichaelisMenten(Reaction):
                 bool(self.allosteric_inhibitors),
                 bool(self.allosteric_activators),
                 self.tc is not None,
-                self.get_tense_state_expression() is not None,
-                self.get_relaxed_state_expression() is not None,
+                self.tense_state_expression is not None,
+                self.relaxed_state_expression is not None,
             ),
         )
 
@@ -547,14 +542,14 @@ class MichaelisMenten(Reaction):
             declared_species_ids(self.competitive_inhibitors),
         ]
         expressions = [
-            self.get_dead_end_states_expression(),
-            self.get_binding_polynomial_expression(),
+            self.dead_end_states_expression,
+            self.binding_polynomial_expression,
         ]
         if self.is_allosteric():
             declared.append(declared_species_ids(self.allosteric_inhibitors))
             declared.append(declared_species_ids(self.allosteric_activators))
-            expressions.append(self.get_tense_state_expression())
-            expressions.append(self.get_relaxed_state_expression())
+            expressions.append(self.tense_state_expression)
+            expressions.append(self.relaxed_state_expression)
         for expression in expressions:
             if expression is not None:
                 declared.append(get_expression_species(expression))
@@ -579,7 +574,7 @@ class MichaelisMenten(Reaction):
             "competitive_inhibitors",
         )
 
-    def get_labels(self, scope: ReactionScope) -> MichaelisMentenLabels:
+    def get_labels(self, scope: ReactionScope) -> SaturableLabels:
         """Get the labels this reaction refers to.
 
         Which of a reversible reaction's Michaelis constants count as
@@ -608,7 +603,7 @@ class MichaelisMenten(Reaction):
                 f"and allosteric activators of reaction {scope.reaction_id}."
             )
             raise ValueError(msg)
-        return MichaelisMentenLabels(
+        return SaturableLabels(
             kcat=get_reaction_label(self.kcat, scope.reaction_id),
             enzyme=get_reaction_label(self.enzyme, scope.reaction_id),
             substrate_k=tuple(k_map[s] for s in substrates),
@@ -648,7 +643,7 @@ class MichaelisMenten(Reaction):
         that way says so with `tense_state_expression` and
         `relaxed_state_expression`.
         """
-        tense = self.get_tense_state_expression()
+        tense = self.tense_state_expression
         if tense is None:
             tense = ONE
             for species_id, label in self.get_allosteric_labels(
@@ -656,7 +651,7 @@ class MichaelisMenten(Reaction):
                 "allosteric_inhibitors",
             ).items():
                 tense = tense + dead_end({species_id: label})
-        relaxed = self.get_relaxed_state_expression()
+        relaxed = self.relaxed_state_expression
         if relaxed is None:
             relaxed = ONE
             for species_id, label in self.get_allosteric_labels(
@@ -707,7 +702,7 @@ class MichaelisMenten(Reaction):
             "reactants" if self.reversible else "substrates",
         )
         ki_map = self.get_competitive_inhibitor_labels(scope)
-        expression = self.get_binding_polynomial_expression()
+        expression = self.binding_polynomial_expression
         if expression is None:
             expression = get_default_expression(
                 scope,
@@ -715,7 +710,7 @@ class MichaelisMenten(Reaction):
                 ki_map,
                 self.reversible,
             )
-        dead_end_states = self.get_dead_end_states_expression()
+        dead_end_states = self.dead_end_states_expression
         if dead_end_states is not None:
             if get_value_at_zero_concentration(dead_end_states) != 0.0:
                 msg = (
@@ -742,10 +737,10 @@ class MichaelisMenten(Reaction):
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
-    ) -> MichaelisMentenIx:
+    ) -> SaturableIx:
         lab = self.get_labels(scope)
         ix_reactant = get_species_positions(scope, get_reactants(scope))
-        return MichaelisMentenIx(
+        return SaturableIx(
             ix_kcat=get_parameter_position(labelling, "log_kcat", lab.kcat),
             ix_enzyme=get_parameter_position(
                 labelling,
@@ -806,7 +801,7 @@ class MichaelisMenten(Reaction):
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
-        lab: MichaelisMentenLabels,
+        lab: SaturableLabels,
     ) -> AllostericIx | None:
         """Get where the reaction reads its allosteric parameters, if any."""
         if lab.tc is None:
@@ -826,8 +821,8 @@ class MichaelisMenten(Reaction):
     def get_input(
         self,
         parameters: ParamDict,
-        ix: MichaelisMentenIx,
-    ) -> MichaelisMentenInput:
+        ix: SaturableIx,
+    ) -> SaturableInput:
         allostery = None
         if ix.allostery is not None:
             allostery = AllostericInput(
@@ -835,7 +830,7 @@ class MichaelisMenten(Reaction):
                 tense_state=ix.allostery.tense_state,
                 relaxed_state=ix.allostery.relaxed_state,
             )
-        return MichaelisMentenInput(
+        return SaturableInput(
             kcat=jnp.exp(parameters["log_kcat"][ix.ix_kcat]),
             enzyme=jnp.exp(parameters["log_enzyme"][ix.ix_enzyme]),
             substrate_kms=jnp.exp(
@@ -856,7 +851,7 @@ class MichaelisMenten(Reaction):
     def __call__(
         self,
         conc: ConcArray,
-        rate_input: MichaelisMentenInput,
+        rate_input: SaturableInput,
     ) -> Scalar:
         """Get the reaction's flux.
 
@@ -899,55 +894,24 @@ class MichaelisMenten(Reaction):
         return rate
 
 
-class SaturableReaction(MichaelisMenten):
-    """Michaelis Menten kinetics with a binding polynomial written by hand.
+class MichaelisMenten(SaturableReaction):
+    """A reaction whose rate saturates as its enzyme's sites fill up.
 
-    Everything `MichaelisMenten` takes, plus the four polynomials below. Each
-    defaults to `None`, meaning "derive this one", so a rate law that writes
-    out only its tense and relaxed states still gets its catalytic polynomial
-    from the stoichiometry.
-
-    * `dead_end_states_expression`: dead ends to add to the binding polynomial
-      the stoichiometry implies, as HEX1's `glc*g6p` and FBA's
-      `fdp*g3p*dhap`. Build them with `dead_end`, and add several with `+`.
-      Only a dead end belongs here: the derived polynomial already counts the
-      empty state once, so a term with a constant in it -- a `site`, say --
-      would count it twice. A dead end with one species bound is a competitive
-      inhibitor, which `competitive_inhibitors` declares more briefly.
-    * `binding_polynomial_expression`: the whole binding polynomial, for a
-      rate law that the stoichiometry does not imply.
-    * `tense_state_expression`: the tense state's binding polynomial. Defaults
-      to one state per allosteric inhibitor.
-    * `relaxed_state_expression`: the relaxed state's binding polynomial.
-      Defaults to the catalytic polynomial times one state per allosteric
-      activator, which is what puts the free enzyme ratio in the Monod Wyman
-      Changeux factor.
-
-    Declaring a tense or relaxed state makes the rate law allosteric, which is
-    how a Monod Wyman Changeux factor with no effectors gets declared.
+    The binding polynomial follows from the stoichiometry: substrates bind in
+    one random-order complex, products in another, and each competitive
+    inhibitor forms a dead end. `SaturableReaction` is the same rate law
+    with that polynomial written out by hand.
     """
 
-    dead_end_states_expression: BindingPolynomialExpression | None = None
-    binding_polynomial_expression: BindingPolynomialExpression | None = None
-    tense_state_expression: BindingPolynomialExpression | None = None
-    relaxed_state_expression: BindingPolynomialExpression | None = None
-
-    def get_dead_end_states_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        return self.dead_end_states_expression
-
-    def get_binding_polynomial_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        return self.binding_polynomial_expression
-
-    def get_tense_state_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        return self.tense_state_expression
-
-    def get_relaxed_state_expression(
-        self,
-    ) -> BindingPolynomialExpression | None:
-        return self.relaxed_state_expression
+    def __check_init__(self):
+        written = [
+            name
+            for name in HAND_WRITTEN_EXPRESSION_FIELDS
+            if getattr(self, name) is not None
+        ]
+        if written:
+            msg = (
+                f"MichaelisMenten derives its binding polynomials, but got "
+                f"{written}. Use SaturableReaction to write them by hand."
+            )
+            raise ValueError(msg)
