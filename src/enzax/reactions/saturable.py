@@ -158,7 +158,7 @@ def get_allosteric_species(
 
 
 @dataclass(frozen=True)
-class MichaelisMentenLabels(ReactionLabels):
+class SaturableLabels(ReactionLabels):
     """The labels a Michaelis Menten rate equation refers to.
 
     Every group but `kcat`, `enzyme` and `tc` is gathered from
@@ -213,7 +213,7 @@ class AllostericIx(eqx.Module):
     relaxed_state: BindingPolynomial
 
 
-class MichaelisMentenIx(eqx.Module):
+class SaturableIx(eqx.Module):
     """Where a saturable rate equation reads its parameters.
 
     Built once, when the model is constructed. `ix_kcat`, `ix_enzyme` and
@@ -240,7 +240,7 @@ class AllostericInput(eqx.Module):
     relaxed_state: BindingPolynomial
 
 
-class MichaelisMentenInput(eqx.Module):
+class SaturableInput(eqx.Module):
     kcat: Scalar
     enzyme: Scalar
     substrate_kms: SubstrateArr
@@ -293,7 +293,7 @@ def generalised_mwc_effect(
     return 1.0 / (1 + tc * ratio**subunits)
 
 
-class MichaelisMentenBatchIx(BatchIndexes):
+class SaturableBatchIx(BatchIndexes):
     """Where a batch of saturable reactions reads its inputs.
 
     Slot arrays index the columns of the local concentration block, padded
@@ -318,10 +318,10 @@ class MichaelisMentenBatchIx(BatchIndexes):
     subunits: Int[np.ndarray, " n_batch"]
 
 
-def get_michaelis_menten_batch_indexes(
+def get_saturable_batch_indexes(
     reactions: Sequence["SaturableReaction"],
-    ixs: Sequence[MichaelisMentenIx],
-) -> MichaelisMentenBatchIx:
+    ixs: Sequence[SaturableIx],
+) -> SaturableBatchIx:
     """Combine saturable reactions' index bundles into one batch bundle."""
     polynomials = [ix.binding_polynomial for ix in ixs]
     polynomial_row = list(range(len(ixs)))
@@ -342,7 +342,7 @@ def get_michaelis_menten_batch_indexes(
         local[row] += get_polynomial_species(polynomial)
     local_species = get_local_species(local)
     n_slot = local_species.shape[1]
-    return MichaelisMentenBatchIx(
+    return SaturableBatchIx(
         local_species=local_species,
         ix_kcat=np.array([ix.ix_kcat for ix in ixs], dtype=int),
         ix_enzyme=np.array([ix.ix_enzyme for ix in ixs], dtype=int),
@@ -380,10 +380,10 @@ def get_michaelis_menten_batch_indexes(
     )
 
 
-def get_michaelis_menten_fluxes(
+def get_saturable_fluxes(
     conc: LocalConcArr,
     parameters: ParamDict,
-    ix: MichaelisMentenBatchIx,
+    ix: SaturableBatchIx,
 ) -> BatchFlux:
     """Get the fluxes of a batch of saturable reactions.
 
@@ -424,9 +424,9 @@ HAND_WRITTEN_EXPRESSION_FIELDS = (
     "relaxed_state_expression",
 )
 
-MICHAELIS_MENTEN_BATCH_RULE = BatchRule(
-    get_batch_indexes=get_michaelis_menten_batch_indexes,
-    get_fluxes=get_michaelis_menten_fluxes,
+SATURABLE_BATCH_RULE = BatchRule(
+    get_batch_indexes=get_saturable_batch_indexes,
+    get_fluxes=get_saturable_fluxes,
 )
 
 
@@ -498,7 +498,7 @@ class SaturableReaction(Reaction):
     binding_polynomial_expression: BindingPolynomialExpression | None = None
     tense_state_expression: BindingPolynomialExpression | None = None
     relaxed_state_expression: BindingPolynomialExpression | None = None
-    batch_rule: ClassVar[BatchRule | None] = MICHAELIS_MENTEN_BATCH_RULE
+    batch_rule: ClassVar[BatchRule | None] = SATURABLE_BATCH_RULE
 
     def __check_init__(self):
         if self.subunits != 1 and not self.is_allosteric():
@@ -574,7 +574,7 @@ class SaturableReaction(Reaction):
             "competitive_inhibitors",
         )
 
-    def get_labels(self, scope: ReactionScope) -> MichaelisMentenLabels:
+    def get_labels(self, scope: ReactionScope) -> SaturableLabels:
         """Get the labels this reaction refers to.
 
         Which of a reversible reaction's Michaelis constants count as
@@ -603,7 +603,7 @@ class SaturableReaction(Reaction):
                 f"and allosteric activators of reaction {scope.reaction_id}."
             )
             raise ValueError(msg)
-        return MichaelisMentenLabels(
+        return SaturableLabels(
             kcat=get_reaction_label(self.kcat, scope.reaction_id),
             enzyme=get_reaction_label(self.enzyme, scope.reaction_id),
             substrate_k=tuple(k_map[s] for s in substrates),
@@ -737,10 +737,10 @@ class SaturableReaction(Reaction):
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
-    ) -> MichaelisMentenIx:
+    ) -> SaturableIx:
         lab = self.get_labels(scope)
         ix_reactant = get_species_positions(scope, get_reactants(scope))
-        return MichaelisMentenIx(
+        return SaturableIx(
             ix_kcat=get_parameter_position(labelling, "log_kcat", lab.kcat),
             ix_enzyme=get_parameter_position(
                 labelling,
@@ -801,7 +801,7 @@ class SaturableReaction(Reaction):
         self,
         scope: ReactionScope,
         labelling: ParamLabelling,
-        lab: MichaelisMentenLabels,
+        lab: SaturableLabels,
     ) -> AllostericIx | None:
         """Get where the reaction reads its allosteric parameters, if any."""
         if lab.tc is None:
@@ -821,8 +821,8 @@ class SaturableReaction(Reaction):
     def get_input(
         self,
         parameters: ParamDict,
-        ix: MichaelisMentenIx,
-    ) -> MichaelisMentenInput:
+        ix: SaturableIx,
+    ) -> SaturableInput:
         allostery = None
         if ix.allostery is not None:
             allostery = AllostericInput(
@@ -830,7 +830,7 @@ class SaturableReaction(Reaction):
                 tense_state=ix.allostery.tense_state,
                 relaxed_state=ix.allostery.relaxed_state,
             )
-        return MichaelisMentenInput(
+        return SaturableInput(
             kcat=jnp.exp(parameters["log_kcat"][ix.ix_kcat]),
             enzyme=jnp.exp(parameters["log_enzyme"][ix.ix_enzyme]),
             substrate_kms=jnp.exp(
@@ -851,7 +851,7 @@ class SaturableReaction(Reaction):
     def __call__(
         self,
         conc: ConcArray,
-        rate_input: MichaelisMentenInput,
+        rate_input: SaturableInput,
     ) -> Scalar:
         """Get the reaction's flux.
 

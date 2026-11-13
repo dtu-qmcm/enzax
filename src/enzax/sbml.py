@@ -32,7 +32,7 @@ from enzax.reactions import (
 )
 from enzax.reactions.drain import DrainIx
 from enzax.reactions.mass_action import MassActionIx
-from enzax.reactions.saturable import MichaelisMentenIx
+from enzax.reactions.saturable import SaturableIx
 from enzax.reactions.symbolic import SymbolicIx
 from enzax.thermodynamics import GAS_CONSTANT
 from enzax.time_course import get_initial_ode_state
@@ -595,11 +595,11 @@ def get_species_symbol(
     return sympy.Symbol(get_sbml_id(model.species[int(position)]))
 
 
-def get_michaelis_menten_law(
+def get_saturable_law(
     model: KineticModel,
     ids: Mapping[tuple[str, str], str],
     reaction: SaturableReaction,
-    ix: MichaelisMentenIx,
+    ix: SaturableIx,
 ) -> sympy.Expr:
     """Get a Michaelis-Menten reaction's flux as an expression, as
     `SaturableReaction.__call__` gets its value."""
@@ -743,7 +743,7 @@ def get_kinetic_law(
     ix = model.reaction_ix[position]
     match reaction:
         case SaturableReaction():
-            return get_michaelis_menten_law(model, ids, reaction, ix)
+            return get_saturable_law(model, ids, reaction, ix)
         case MassAction():
             return get_mass_action_law(model, ids, reaction, ix)
         case Drain():
