@@ -217,9 +217,10 @@ progress = [
 [[package]]
 name = "blackjax-utils"
 version = "0.2.1"
-source = { git = "https://github.com/teddygroves/blackjax-utils.git#1d79d00a84cf78cc34fb92f9a387fded0b4908b7" }
+source = { git = "https://github.com/teddygroves/blackjax-utils.git#2c6f9426ce4e5ca39b53888b1031ae148b543595" }
 dependencies = [
     { name = "blackjax" },
+    { name = "jax" },
     { name = "jaxtyping" },
 ]
 
@@ -738,8 +739,8 @@ dev = [
 mcmc = [
     { name = "arviz" },
     { name = "blackjax", extra = ["progress"] },
-    { name = "blackjax-utils", marker = "python_full_version >= '3.13'" },
-    { name = "grapevine-mcmc", marker = "python_full_version >= '3.13'" },
+    { name = "blackjax-utils" },
+    { name = "grapevine-mcmc" },
     { name = "matplotlib" },
 ]
 
@@ -785,8 +786,8 @@ dev = [
 mcmc = [
     { name = "arviz", specifier = ">=0.19.0" },
     { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },
-    { name = "blackjax-utils", marker = "python_full_version >= '3.13'", git = "https://github.com/teddygroves/blackjax-utils.git" },
-    { name = "grapevine-mcmc", marker = "python_full_version >= '3.13'", git = "https://github.com/dtu-qmcm/grapevine.git" },
+    { name = "blackjax-utils", git = "https://github.com/teddygroves/blackjax-utils.git" },
+    { name = "grapevine-mcmc", git = "https://github.com/dtu-qmcm/grapevine.git" },
     { name = "matplotlib", specifier = ">=3.9" },
 ]
 
@@ -949,7 +950,7 @@ wheels = [
 [[package]]
 name = "grapevine-mcmc"
 version = "0.3.0"
-source = { git = "https://github.com/dtu-qmcm/grapevine.git#d6a3aaf44b29faf3b3c919be9974b7ab812b9232" }
+source = { git = "https://github.com/dtu-qmcm/grapevine.git#c405c45bc2dc9a2f790ee08897d7e792a046d756" }
 dependencies = [
     { name = "blackjax" },
     { name = "jax" },

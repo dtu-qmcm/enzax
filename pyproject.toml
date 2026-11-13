@@ -73,8 +73,8 @@ known-first-party = ["enzax"]
 
 [dependency-groups]
 mcmc = [
-    "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
-    "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git ; python_version >= '3.13'",
+    "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git",
+    "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git",
     "arviz>=0.19.0",
     "blackjax[progress]>=1.6.2",
     "matplotlib>=3.9",
