@@ -73,7 +73,7 @@ known-first-party = ["enzax"]
 
 [dependency-groups]
 mcmc = [
-    "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git",
+    "teddys-blackjax-utils>=0.2.1",
     "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git",
     "arviz>=0.19.0",
     "blackjax[progress]>=1.6.2",

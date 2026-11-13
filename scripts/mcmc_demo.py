@@ -13,7 +13,7 @@ import functools
 
 import blackjax
 import jax
-from blackjax_utils import patch_for_shard_map, run_sampler
+from teddys_blackjax_utils import patch_for_shard_map, run_sampler
 from grapevine import grapenuts, guess_implicit
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree

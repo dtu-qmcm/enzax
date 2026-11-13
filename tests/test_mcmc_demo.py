@@ -14,7 +14,7 @@ SCRIPT = Path(__file__).parent.parent / "scripts" / "mcmc_demo.py"
 )
 def test_mcmc_demo_runs(monkeypatch, capsys):
     pytest.importorskip("grapevine")
-    patch = pytest.importorskip("blackjax_utils.shard_map_patch")
+    patch = pytest.importorskip("teddys_blackjax_utils.shard_map_patch")
     for module, function_name in patch.get_patched_functions():
         monkeypatch.setattr(
             module,

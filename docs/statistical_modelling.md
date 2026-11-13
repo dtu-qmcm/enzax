@@ -267,12 +267,12 @@ library.
 
 The samplers in [blackjax](https://blackjax-devs.github.io/blackjax/) are a
 good fit, since they accept arbitrary differentiable log densities.
-[blackjax-utils](https://github.com/teddygroves/blackjax-utils) wraps blackjax's
+[teddys-blackjax-utils](https://github.com/teddygroves/teddys-blackjax-utils) wraps blackjax's
 NUTS sampler behind a single function that handles warmup, multiple chains and
-the sampling loop. It is not on PyPI, so install it from GitHub:
+the sampling loop. Install it from PyPI:
 
 ```bash
-uv add git+https://github.com/teddygroves/blackjax-utils.git
+uv add teddys-blackjax-utils
 ```
 
 Sampling then looks like this:
@@ -280,7 +280,7 @@ Sampling then looks like this:
 ```python
 import blackjax
 import jax
-from blackjax_utils import run_nuts
+from teddys_blackjax_utils import run_nuts
 
 with blackjax.progress_bar("enzax NUTS"):
     states, info = run_nuts(
@@ -345,7 +345,7 @@ uv add git+https://github.com/dtu-qmcm/grapevine.git
 The solution needs a way out of the log density, so `log_density_grapevine` takes the same arguments as `log_density` and returns `(log_density, steady_states)`. Do not bind its `guess` argument, since the sampler supplies it. The default guess has one row per experiment:
 
 ```python
-from blackjax_utils import run_sampler
+from teddys_blackjax_utils import run_sampler
 from grapevine import grapenuts
 
 from enzax.statistical_modelling import log_density_grapevine
@@ -402,7 +402,7 @@ sampler = grapenuts(default_guess, guess_fn=guess_fn)
 ```
 
 The position a `guess_fn` receives is the sampler's, which under
-blackjax-utils' default `flatten=True` is `init_params` ravelled into a single
+teddys-blackjax-utils' default `flatten=True` is `init_params` ravelled into a single
 array; `unflatten` above is the second return value of
 `jax.flatten_util.ravel_pytree(free_parameters)`.
 

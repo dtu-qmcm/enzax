@@ -215,16 +215,6 @@ progress = [
 ]
 
 [[package]]
-name = "blackjax-utils"
-version = "0.2.1"
-source = { git = "https://github.com/teddygroves/blackjax-utils.git#2c6f9426ce4e5ca39b53888b1031ae148b543595" }
-dependencies = [
-    { name = "blackjax" },
-    { name = "jax" },
-    { name = "jaxtyping" },
-]
-
-[[package]]
 name = "cachetools"
 version = "6.2.6"
 source = { registry = "https://pypi.org/simple" }
@@ -739,9 +729,9 @@ dev = [
 mcmc = [
     { name = "arviz" },
     { name = "blackjax", extra = ["progress"] },
-    { name = "blackjax-utils" },
     { name = "grapevine-mcmc" },
     { name = "matplotlib" },
+    { name = "teddys-blackjax-utils" },
 ]
 
 [package.metadata]
@@ -786,9 +776,9 @@ dev = [
 mcmc = [
     { name = "arviz", specifier = ">=0.19.0" },
     { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },
-    { name = "blackjax-utils", git = "https://github.com/teddygroves/blackjax-utils.git" },
     { name = "grapevine-mcmc", git = "https://github.com/dtu-qmcm/grapevine.git" },
     { name = "matplotlib", specifier = ">=3.9" },
+    { name = "teddys-blackjax-utils", specifier = ">=0.2.1" },
 ]
 
 [[package]]
@@ -2963,6 +2953,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/46/58/8c37dea7bbf769b20d58e7ace7e5edfe65b849442b00ffcdd56be88697c6/tabulate-0.10.0.tar.gz", hash = "sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d", size = 91754, upload-time = "2026-03-04T18:55:34.402Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl", hash = "sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3", size = 39814, upload-time = "2026-03-04T18:55:31.284Z" },
+]
+
+[[package]]
+name = "teddys-blackjax-utils"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "blackjax" },
+    { name = "jax" },
+    { name = "jaxtyping" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c1/40/5b74281fd50913131e7fd984ccffc9c9b880faaa499f096b346bf4fbbafb/teddys_blackjax_utils-0.2.1.tar.gz", hash = "sha256:73223191ab7a413df14e08d9c11d8881c5985b0c4e3d987dd0d2069a17b90c2d", size = 12563, upload-time = "2026-11-13T12:59:46.506Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/b1/71c05cb3327184707161a56209535eb1185eeaf904c98c7588726f1e5ac7/teddys_blackjax_utils-0.2.1-py3-none-any.whl", hash = "sha256:f839fdc1bc0ddb962e17bc72015d4759b69bcf9711e563314bccd278fbd0136c", size = 13410, upload-time = "2026-11-13T12:59:45.217Z" },
 ]
 
 [[package]]
