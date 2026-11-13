@@ -10,10 +10,10 @@ dependencies = [
     "optimistix>=0.1.0",
     "lineax>=0.1.1",
     "jaxtyping>=0.2.38",
-    "arviz>=0.19.0",
     "equinox>=0.11.12",
     "python-libsbml>=5.20.4",
     "sbmlmath>=0.2.0",
+    "sympy>=1.13",
     "jax>=0.9.0",
     "beartype>=0.22.9",
     "requests>=2.32.5",
@@ -33,9 +33,6 @@ docs = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.pdm]
-distribution = true
 
 [tool.pytest.ini_options]
 addopts = "-n auto --maxprocesses=16"
@@ -78,6 +75,7 @@ diffrax-bdf = { git = "https://github.com/dtu-qmcm/diffrax-bdf.git" }
 mcmc = [
     "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
     "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git ; python_version >= '3.13'",
+    "arviz>=0.19.0",
     "blackjax[progress]>=1.6.2",
     "matplotlib>=3.9",
 ]

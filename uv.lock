@@ -689,7 +689,6 @@ name = "enzax"
 version = "0.8.1"
 source = { editable = "." }
 dependencies = [
-    { name = "arviz" },
     { name = "beartype" },
     { name = "diffrax" },
     { name = "equinox" },
@@ -700,6 +699,7 @@ dependencies = [
     { name = "python-libsbml" },
     { name = "requests" },
     { name = "sbmlmath" },
+    { name = "sympy" },
 ]
 
 [package.optional-dependencies]
@@ -729,6 +729,7 @@ dev = [
     { name = "pytest-xdist" },
 ]
 mcmc = [
+    { name = "arviz" },
     { name = "blackjax", extra = ["progress"] },
     { name = "blackjax-utils", marker = "python_full_version >= '3.13'" },
     { name = "grapevine-mcmc", marker = "python_full_version >= '3.13'" },
@@ -737,7 +738,6 @@ mcmc = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arviz", specifier = ">=0.19.0" },
     { name = "beartype", specifier = ">=0.22.9" },
     { name = "diffrax", specifier = ">=0.7.0" },
     { name = "equinox", specifier = ">=0.11.12" },
@@ -753,6 +753,7 @@ requires-dist = [
     { name = "python-libsbml", specifier = ">=5.20.4" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "sbmlmath", specifier = ">=0.2.0" },
+    { name = "sympy", specifier = ">=1.13" },
 ]
 provides-extras = ["docs"]
 
@@ -774,6 +775,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
 ]
 mcmc = [
+    { name = "arviz", specifier = ">=0.19.0" },
     { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },
     { name = "blackjax-utils", marker = "python_full_version >= '3.13'", git = "https://github.com/teddygroves/blackjax-utils.git" },
     { name = "grapevine-mcmc", marker = "python_full_version >= '3.13'", git = "https://github.com/dtu-qmcm/grapevine.git" },

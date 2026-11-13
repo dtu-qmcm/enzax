@@ -15,12 +15,17 @@ jobs:
     strategy:
         matrix:
             os: [ubuntu-latest, windows-latest]
-            python-version: [3.13]
+            python-version: ["3.13"]
+            pytest-args: [""]
+            include:
+              - os: ubuntu-latest
+                python-version: "3.12"
+                pytest-args: "-m 'not slow'"
 
     steps:
 
     - name: checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Install uv
       uses: astral-sh/setup-uv@v4
@@ -38,7 +43,4 @@ jobs:
     - name: Run tests
       env:
         JAX_NUM_CPU_DEVICES: 2
-      run: uv run pytest tests
-
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
+      run: uv run pytest tests ${{ matrix.pytest-args }}
