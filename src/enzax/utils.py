@@ -1,10 +1,23 @@
 """General-purpose helpers that do not belong to any one part of enzax."""
 
+import importlib
 from collections.abc import Sequence
+from types import ModuleType
 
 import numpy as np
 
 from enzax.array_types import FrozenArray
+
+
+def import_diffrax_bdf() -> ModuleType:
+    try:
+        return importlib.import_module("diffrax_bdf")
+    except ModuleNotFoundError as err:
+        msg = (
+            "The DAE solver needs the diffrax-bdf package. Install it with "
+            "`pip install enzax[dae]`."
+        )
+        raise ModuleNotFoundError(msg) from err
 
 
 def pad_rows(
