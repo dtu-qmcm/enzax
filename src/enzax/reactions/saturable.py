@@ -54,6 +54,7 @@ from enzax.binding import (
     get_default_expression,
     get_expression_labels,
     get_expression_species,
+    get_value_at_zero_concentration,
     get_polynomial_indexes,
     get_polynomial_species,
     get_polynomial_table,
@@ -103,6 +104,13 @@ def get_michaelis_constant_labels(
     has a Michaelis constant for -- every reactant of a reversible reaction,
     but only the substrates of an irreversible one.
     """
+    if declared is not None and not isinstance(declared, Mapping):
+        msg = (
+            f"Reaction {reaction_id}'s michaelis_constants declaration is "
+            f"{declared!r}. Use a mapping from species id to parameter label; "
+            "a species it does not mention gets a default label."
+        )
+        raise ValueError(msg)
     given = dict(declared) if declared is not None else {}
     unexpected = [s for s in given if s not in species_ids]
     if unexpected:
@@ -468,6 +476,16 @@ class MichaelisMenten(Reaction):
     subunits: int = 1
     batch_rule: ClassVar[BatchRule | None] = MICHAELIS_MENTEN_BATCH_RULE
 
+    def __check_init__(self):
+        if self.subunits != 1 and not self.is_allosteric():
+            msg = (
+                f"subunits={self.subunits} has no effect on a rate law that "
+                "is not allosteric. Declare an allosteric inhibitor or "
+                "activator, a tc label, or a tense or relaxed state "
+                "expression, or leave subunits at 1."
+            )
+            raise ValueError(msg)
+
     # The four polynomials a rate law can write out by hand. This one writes
     # none, so they are all absent; `SaturableReaction` has them as fields
     # and overrides these. They are methods rather than fields because a
@@ -699,7 +717,25 @@ class MichaelisMenten(Reaction):
             )
         dead_end_states = self.get_dead_end_states_expression()
         if dead_end_states is not None:
+            if get_value_at_zero_concentration(dead_end_states) != 0.0:
+                msg = (
+                    f"Reaction {scope.reaction_id}'s "
+                    "dead_end_states_expression has a term with no dead_end "
+                    "factor, which counts the free enzyme a second time. "
+                    "Build it from dead_end terms only."
+                )
+                raise ValueError(msg)
             expression = expression + dead_end_states
+        at_zero = get_value_at_zero_concentration(expression)
+        if not np.isclose(at_zero, 1.0):
+            msg = (
+                f"Reaction {scope.reaction_id}'s binding polynomial evaluates "
+                f"to {at_zero:g} with nothing bound, and the rate law needs "
+                "1 there. Two factors that each contain the empty state "
+                "need a correction term, e.g. "
+                '-1.0 * ONE + site("a") + site("p").'
+            )
+            raise ValueError(msg)
         return expression
 
     def get_input_indexes(

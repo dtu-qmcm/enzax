@@ -270,6 +270,9 @@ def site(
     `{species: label}` mapping to name its constant, which is how a site
     borrows a constant from elsewhere.
     """
+    if not species:
+        msg = "site() needs at least one species. Use ONE for the empty state."
+        raise ValueError(msg)
     factor = NamedSite(get_declared_species(species), exponent)
     return BindingPolynomialExpression((NamedTerm(1.0, (factor,)),))
 
@@ -280,8 +283,31 @@ def dead_end(*species: SpeciesDeclaration) -> BindingPolynomialExpression:
     One species is a competitive inhibitor; more than one is an abortive
     complex. Species are named as they are for `site`.
     """
+    if not species:
+        msg = (
+            "dead_end() needs at least one species. Use ONE for the empty "
+            "state."
+        )
+        raise ValueError(msg)
     factor = NamedBound(get_declared_species(species))
     return BindingPolynomialExpression((NamedTerm(1.0, (factor,)),))
+
+
+def get_value_at_zero_concentration(
+    expression: BindingPolynomialExpression,
+) -> float:
+    """Get an expression's value when every concentration is zero.
+
+    A `site` factor gives 1 there and a `dead_end` factor gives 0, so the value
+    equals the summed coefficients of the terms with no `dead_end` factor.
+    """
+    return float(
+        sum(
+            term.coefficient
+            for term in expression.terms
+            if not any(isinstance(f, NamedBound) for f in term.factors)
+        ),
+    )
 
 
 def get_default_expression(

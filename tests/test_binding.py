@@ -6,6 +6,8 @@ FBA's ternary abortive complex. Each is checked against the formula written
 out in the spec, evaluated by hand at one concentration vector.
 """
 
+import os
+
 import numpy as np
 import pytest
 from jax import numpy as jnp
@@ -298,7 +300,7 @@ def test_a_non_positive_polynomial_is_an_error():
         [
             SaturableReaction(
                 stoichiometry=FBA_STOICHIOMETRY["FBA"],
-                binding_polynomial_expression=-1.0 * ONE,
+                binding_polynomial_expression=ONE + -1000.0 * dead_end("fdp_c"),
             ),
         ],
     )
@@ -312,6 +314,64 @@ def test_a_non_positive_polynomial_is_an_error():
     )
     with pytest.raises(Exception, match="Binding polynomial is not positive"):
         model.flux(FBA_CONC, parameters)
+
+
+def test_a_binding_polynomial_must_count_the_free_enzyme_once():
+    with pytest.raises(ValueError, match="evaluates to 2 with nothing bound"):
+        get_model(
+            FBA_SPECIES,
+            ["FBA"],
+            [
+                SaturableReaction(
+                    stoichiometry=FBA_STOICHIOMETRY["FBA"],
+                    binding_polynomial_expression=site("fdp_c")
+                    + site("g3p_c", "dhap_c"),
+                ),
+            ],
+        )
+
+
+def test_dead_end_states_cannot_contain_a_site():
+    with pytest.raises(ValueError, match="counts the free enzyme a second"):
+        get_model(
+            FBA_SPECIES,
+            ["FBA"],
+            [
+                SaturableReaction(
+                    stoichiometry=FBA_STOICHIOMETRY["FBA"],
+                    dead_end_states_expression=site("fdp_c"),
+                ),
+            ],
+        )
+
+
+@pytest.mark.parametrize("factor", [site, dead_end])
+def test_a_factor_needs_a_species(factor):
+    with pytest.raises(ValueError, match="needs at least one species"):
+        factor()
+
+
+def test_subunits_need_an_allosteric_rate_law():
+    with pytest.raises(ValueError, match="subunits=4 has no effect"):
+        MichaelisMenten(stoichiometry=FBA_STOICHIOMETRY["FBA"], subunits=4)
+
+
+@pytest.mark.skipif(
+    os.environ.get("ENZAX_TYPECHECK", "1") == "1",
+    reason="the type checker rejects the list first",
+)
+def test_michaelis_constants_must_be_a_mapping():
+    with pytest.raises(ValueError, match="Use a mapping from species id"):
+        get_model(
+            FBA_SPECIES,
+            ["FBA"],
+            [
+                MichaelisMenten(
+                    stoichiometry=FBA_STOICHIOMETRY["FBA"],
+                    michaelis_constants=["fdp_c", "g3p_c"],
+                ),
+            ],
+        )
 
 
 PFK_SPECIES = ["f6p_c", "atp_c", "fdp_c", "adp_c", "lac_c", "f26bp_c"]
