@@ -12,7 +12,7 @@ import numpy as np
 import optimistix as optx
 import sympy
 from equinox import Module, field
-from jaxtyping import Array, Float, Scalar
+from jaxtyping import Array, Float, Scalar, ScalarLike
 
 from enzax.array_types import (
     BalancedConcArr,
@@ -26,6 +26,20 @@ from enzax.array_types import (
 )
 from enzax.utils import freeze_array, unfreeze_array
 from enzax.thermodynamics import GAS_CONSTANT
+
+SubnetworkStoichiometricMatrix = Float[
+    np.ndarray,
+    " n_subnetwork_species n_subnetwork_reaction",
+]
+SubnetworkUnbalancedStoichiometricMatrix = Float[
+    np.ndarray,
+    " n_unbalanced n_subnetwork_reaction",
+]
+SubnetworkFastMoietyMatrix = Float[
+    np.ndarray,
+    " n_subnetwork_fast_moiety n_subnetwork_species",
+]
+SubnetworkFastMoietyTotalsArr = Float[Array, " n_subnetwork_fast_moiety"]
 
 
 class RapidEquilibriumReaction(Module):
@@ -407,7 +421,7 @@ def solve_rapid_equilibria(
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     dgf: Float[Array, " n_species"],
-    temperature: Scalar,
+    temperature: ScalarLike,
     water_dgf: float,
     rtol: float = 1e-10,
     atol: float = 1e-10,
@@ -453,7 +467,7 @@ def solve_rapid_equilibria(
 def get_log_keq(
     fast_moieties: FastMoieties,
     dgf: Float[Array, " n_species"],
-    temperature: Scalar,
+    temperature: ScalarLike,
     water_dgf: float,
 ) -> Float[Array, " n_rapid_equilibrium_reaction"]:
     """Get the rapid equilibrium reactions' log equilibrium constants from the
@@ -467,9 +481,9 @@ def get_subnetwork_blocks(
     fast_moieties: FastMoieties,
     subnetwork: FastSubnetwork,
 ) -> tuple[
-    StoichiometricMatrix,
-    StoichiometricMatrix,
-    FastMoietyMatrix,
+    SubnetworkStoichiometricMatrix,
+    SubnetworkUnbalancedStoichiometricMatrix,
+    SubnetworkFastMoietyMatrix,
     np.ndarray,
 ]:
     """Get one fast subnetwork's blocks of the rapid equilibrium stoichiometric
@@ -515,7 +529,7 @@ def get_rapid_equilibrium_residual(
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     dgf: Float[Array, " n_species"],
-    temperature: Scalar,
+    temperature: ScalarLike,
     water_dgf: float,
 ) -> Float[Array, " n_subnetwork_species"]:
     """Get the residuals of every fast subnetwork's rapid equilibrium
@@ -547,10 +561,10 @@ def get_rapid_equilibrium_residual(
 
 def get_fast_subnetwork_residual(
     log_conc: Float[Array, " n_subnetwork_species"],
-    S_balanced: StoichiometricMatrix,
-    S_unbalanced: StoichiometricMatrix,
-    P: FastMoietyMatrix,
-    totals: FastMoietyTotalsArr,
+    S_balanced: SubnetworkStoichiometricMatrix,
+    S_unbalanced: SubnetworkUnbalancedStoichiometricMatrix,
+    P: SubnetworkFastMoietyMatrix,
+    totals: SubnetworkFastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     log_keq: Float[Array, " n_subnetwork_reaction"],
 ) -> Float[Array, " n_subnetwork_species"]:
@@ -569,8 +583,8 @@ def get_fast_subnetwork_residual(
 
 
 def get_fast_subnetwork_guess(
-    P: FastMoietyMatrix,
-    totals: FastMoietyTotalsArr,
+    P: SubnetworkFastMoietyMatrix,
+    totals: SubnetworkFastMoietyTotalsArr,
 ) -> Float[Array, " n_subnetwork_species"]:
     """Get a starting point for solving one fast subnetwork: the log of half
     of the largest concentration each species could have given the totals."""
@@ -606,10 +620,10 @@ def get_rapid_equilibrium_guess(
 
 
 def solve_fast_subnetwork(
-    S_balanced: StoichiometricMatrix,
-    S_unbalanced: StoichiometricMatrix,
-    P: FastMoietyMatrix,
-    totals: FastMoietyTotalsArr,
+    S_balanced: SubnetworkStoichiometricMatrix,
+    S_unbalanced: SubnetworkUnbalancedStoichiometricMatrix,
+    P: SubnetworkFastMoietyMatrix,
+    totals: SubnetworkFastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     log_keq: Float[Array, " n_subnetwork_reaction"],
     rtol: float,
@@ -721,11 +735,11 @@ def get_root_in_interval(
 
 
 def solve_single_reaction_subnetwork(
-    S_balanced: StoichiometricMatrix,
-    S_unbalanced: StoichiometricMatrix,
-    P: FastMoietyMatrix,
+    S_balanced: SubnetworkStoichiometricMatrix,
+    S_unbalanced: SubnetworkUnbalancedStoichiometricMatrix,
+    P: SubnetworkFastMoietyMatrix,
     volumes: np.ndarray,
-    totals: FastMoietyTotalsArr,
+    totals: SubnetworkFastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     log_keq: Float[Array, " 1"],
 ) -> Float[Array, " n_subnetwork_species"]:
@@ -795,7 +809,7 @@ def solve_rapid_equilibria_exactly(
     fast_moiety_totals: FastMoietyTotalsArr,
     log_conc_unbalanced: UnbalancedConcArr,
     dgf: Float[Array, " n_species"],
-    temperature: Scalar,
+    temperature: ScalarLike,
     water_dgf: float,
 ) -> Float[Array, " n_subnetwork_species"]:
     """Solve every fast subnetwork exactly, for models where
