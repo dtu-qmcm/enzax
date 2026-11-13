@@ -267,12 +267,12 @@ library.
 
 The samplers in [blackjax](https://blackjax-devs.github.io/blackjax/) are a
 good fit, since they accept arbitrary differentiable log densities.
-[blackjax-utils](https://github.com/teddygroves/blackjax-utils) wraps blackjax's
+[teddys-blackjax-utils](https://github.com/teddygroves/teddys-blackjax-utils) wraps blackjax's
 NUTS sampler behind a single function that handles warmup, multiple chains and
-the sampling loop. It is not on PyPI, so install it from GitHub:
+the sampling loop. Install it from PyPI:
 
 ```bash
-uv add git+https://github.com/teddygroves/blackjax-utils.git
+uv add teddys-blackjax-utils
 ```
 
 Sampling then looks like this:
@@ -280,7 +280,7 @@ Sampling then looks like this:
 ```python
 import blackjax
 import jax
-from blackjax_utils import run_nuts
+from teddys_blackjax_utils import run_nuts
 
 with blackjax.progress_bar("enzax NUTS"):
     states, info = run_nuts(
@@ -323,7 +323,7 @@ The progress bar needs blackjax's `progress` optional extra, which you can insta
 
 `scripts/mcmc_demo.py` in the enzax repository is a complete worked example: it simulates measurements from three methionine experiments that differ in their enzyme levels, then samples the shared turnover numbers with grapevine (see below). Run it with
 ```bash
-uv run --group mcmc python scripts/mcmc_demo.py
+uv run --extra mcmc python scripts/mcmc_demo.py
 ```
 
 ## Optimised Hamiltonian Monte Carlo with grapevine
@@ -333,19 +333,20 @@ starts from the same fixed guess. The
 [grapevine](https://github.com/dtu-qmcm/grapevine) method instead starts each
 solve from the steady state found at the previous point on the same Hamiltonian
 trajectory. Adjacent points have nearly identical steady states, so the solver
-starts essentially converged. The guess resets to the default at the end of
-every MCMC iteration, so the reuse is within a trajectory only.
+starts essentially converged. The first solve of a trajectory starts from the
+steady state found at the previous draw, and falls back on the default guess
+if that solve failed.
 
-grapevine is not on PyPI, so install it from GitHub:
+Install grapevine from PyPI:
 
 ```bash
-uv add git+https://github.com/dtu-qmcm/grapevine.git
+uv add grapevine-mcmc
 ```
 
 The solution needs a way out of the log density, so `log_density_grapevine` takes the same arguments as `log_density` and returns `(log_density, steady_states)`. Do not bind its `guess` argument, since the sampler supplies it. The default guess has one row per experiment:
 
 ```python
-from blackjax_utils import run_sampler
+from teddys_blackjax_utils import run_sampler
 from grapevine import grapenuts
 
 from enzax.statistical_modelling import log_density_grapevine
@@ -402,7 +403,7 @@ sampler = grapenuts(default_guess, guess_fn=guess_fn)
 ```
 
 The position a `guess_fn` receives is the sampler's, which under
-blackjax-utils' default `flatten=True` is `init_params` ravelled into a single
+teddys-blackjax-utils' default `flatten=True` is `init_params` ravelled into a single
 array; `unflatten` above is the second return value of
 `jax.flatten_util.ravel_pytree(free_parameters)`.
 

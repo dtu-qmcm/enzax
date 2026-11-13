@@ -13,7 +13,7 @@ import functools
 
 import blackjax
 import jax
-from blackjax_utils import run_sampler
+from teddys_blackjax_utils import patch_for_shard_map, run_sampler
 from grapevine import grapenuts, guess_implicit
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
@@ -32,7 +32,7 @@ from enzax.parameter_split import (
     get_free_parameters,
     split_parameters_by_freeing,
 )
-from enzax.shard_map_patch import patch_for_shard_map
+
 from enzax.statistical_modelling import (
     get_measurables_single_experiment,
     log_density_grapevine,

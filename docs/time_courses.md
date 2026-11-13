@@ -184,7 +184,7 @@ The figures below compare experiment FE13's measurements with its time course at
     --8<-- "scripts/cascade_demo.py:plots"
     ```
 
-    `scripts/cascade_demo.py` calls `plot_fit` with the prior mean and the MAP after fitting, and saves the figures: `uv run --group mcmc python scripts/cascade_demo.py`.
+    `scripts/cascade_demo.py` calls `plot_fit` with the prior mean and the MAP after fitting, and saves the figures: `uv run --group plot python scripts/cascade_demo.py`.
 
 ![FE13's measured GMP, ATP, GTP and GDP-fucose against the model's time courses at the prior mean](img/time_course_prior_mean.png)
 

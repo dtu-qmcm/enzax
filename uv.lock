@@ -215,15 +215,6 @@ progress = [
 ]
 
 [[package]]
-name = "blackjax-utils"
-version = "0.2.1"
-source = { git = "https://github.com/teddygroves/blackjax-utils.git#1d79d00a84cf78cc34fb92f9a387fded0b4908b7" }
-dependencies = [
-    { name = "blackjax" },
-    { name = "jaxtyping" },
-]
-
-[[package]]
 name = "cachetools"
 version = "6.2.6"
 source = { registry = "https://pypi.org/simple" }
@@ -670,9 +661,13 @@ wheels = [
 [[package]]
 name = "diffrax-bdf"
 version = "0.1.0"
-source = { git = "https://github.com/dtu-qmcm/diffrax-bdf.git#103734cfeab1730a24c7228f36d001608f025041" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diffrax" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/31/c6f45a4da150a98d1138969e6c5f1dedf27129b25b29658653fc59d5daa1/diffrax_bdf-0.1.0.tar.gz", hash = "sha256:a87bbaec99b0adcf4db84a5362edf89c876dd835a65c1d7ac676827686859e31", size = 19100, upload-time = "2026-11-13T12:15:11.422Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/20/ad5de55c18c0cffbfecdbc7ba53b8a6413222435630c6f1bd6527ba3f8ac/diffrax_bdf-0.1.0-py3-none-any.whl", hash = "sha256:c6ed2be84c4817131c33c887160261ac6b34c55b7de8b1132615a144e54a7cfa", size = 21605, upload-time = "2026-11-13T12:15:10.168Z" },
 ]
 
 [[package]]
@@ -689,7 +684,6 @@ name = "enzax"
 version = "0.8.1"
 source = { editable = "." }
 dependencies = [
-    { name = "arviz" },
     { name = "beartype" },
     { name = "diffrax" },
     { name = "equinox" },
@@ -700,9 +694,13 @@ dependencies = [
     { name = "python-libsbml" },
     { name = "requests" },
     { name = "sbmlmath" },
+    { name = "sympy" },
 ]
 
 [package.optional-dependencies]
+dae = [
+    { name = "diffrax-bdf" },
+]
 docs = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
@@ -710,11 +708,17 @@ docs = [
     { name = "mkdocstrings-python" },
     { name = "pymdown-extensions" },
 ]
+mcmc = [
+    { name = "arviz" },
+    { name = "blackjax", extra = ["progress"] },
+    { name = "grapevine-mcmc" },
+    { name = "teddys-blackjax-utils" },
+]
 
 [package.dev-dependencies]
 benchmark = [
     { name = "amici", extra = ["jax", "petab"] },
-    { name = "diffrax-bdf", marker = "python_full_version >= '3.13'" },
+    { name = "diffrax-bdf" },
     { name = "matplotlib" },
     { name = "pandas" },
     { name = "pymc" },
@@ -722,25 +726,25 @@ benchmark = [
     { name = "pyyaml" },
 ]
 dev = [
-    { name = "diffrax-bdf", marker = "python_full_version >= '3.13'" },
+    { name = "diffrax-bdf" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
 ]
-mcmc = [
-    { name = "blackjax", extra = ["progress"] },
-    { name = "blackjax-utils", marker = "python_full_version >= '3.13'" },
-    { name = "grapevine-mcmc", marker = "python_full_version >= '3.13'" },
+plot = [
     { name = "matplotlib" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "arviz", specifier = ">=0.19.0" },
+    { name = "arviz", marker = "extra == 'mcmc'", specifier = ">=0.19.0" },
     { name = "beartype", specifier = ">=0.22.9" },
+    { name = "blackjax", extras = ["progress"], marker = "extra == 'mcmc'", specifier = ">=1.6.2" },
     { name = "diffrax", specifier = ">=0.7.0" },
+    { name = "diffrax-bdf", marker = "extra == 'dae'", specifier = ">=0.1.0" },
     { name = "equinox", specifier = ">=0.11.12" },
+    { name = "grapevine-mcmc", marker = "extra == 'mcmc'", specifier = ">=0.3.0" },
     { name = "jax", specifier = ">=0.9.0" },
     { name = "jaxtyping", specifier = ">=0.2.38" },
     { name = "lineax", specifier = ">=0.1.1" },
@@ -753,13 +757,15 @@ requires-dist = [
     { name = "python-libsbml", specifier = ">=5.20.4" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "sbmlmath", specifier = ">=0.2.0" },
+    { name = "sympy", specifier = ">=1.13" },
+    { name = "teddys-blackjax-utils", marker = "extra == 'mcmc'", specifier = ">=0.2.1" },
 ]
-provides-extras = ["docs"]
+provides-extras = ["dae", "mcmc", "docs"]
 
 [package.metadata.requires-dev]
 benchmark = [
     { name = "amici", extras = ["jax", "petab"], specifier = "==1.2.0" },
-    { name = "diffrax-bdf", marker = "python_full_version >= '3.13'", git = "https://github.com/dtu-qmcm/diffrax-bdf.git" },
+    { name = "diffrax-bdf", specifier = ">=0.1.0" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "pandas", specifier = ">=3.1.0" },
     { name = "pymc", specifier = ">=6.4.0" },
@@ -767,18 +773,13 @@ benchmark = [
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 dev = [
-    { name = "diffrax-bdf", marker = "python_full_version >= '3.13'", git = "https://github.com/dtu-qmcm/diffrax-bdf.git" },
+    { name = "diffrax-bdf", specifier = ">=0.1.0" },
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
 ]
-mcmc = [
-    { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },
-    { name = "blackjax-utils", marker = "python_full_version >= '3.13'", git = "https://github.com/teddygroves/blackjax-utils.git" },
-    { name = "grapevine-mcmc", marker = "python_full_version >= '3.13'", git = "https://github.com/dtu-qmcm/grapevine.git" },
-    { name = "matplotlib", specifier = ">=3.9" },
-]
+plot = [{ name = "matplotlib", specifier = ">=3.9" }]
 
 [[package]]
 name = "equinox"
@@ -939,10 +940,14 @@ wheels = [
 [[package]]
 name = "grapevine-mcmc"
 version = "0.3.0"
-source = { git = "https://github.com/dtu-qmcm/grapevine.git#d6a3aaf44b29faf3b3c919be9974b7ab812b9232" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blackjax" },
     { name = "jax" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/88/68/876ef4cf58a7e2e550095cf0c9101120dc9b51abc9e51cef3167979a66a7/grapevine_mcmc-0.3.0.tar.gz", hash = "sha256:e8e5a715414c1cd34c6810c3e75c585a00caaf265a5aa7380116a6f2cddcf5cf", size = 2637555, upload-time = "2026-11-13T12:43:24.62Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/4a/169262f4341e9be303a34ae8efdd59edf99e57c87d314699192d53984359/grapevine_mcmc-0.3.0-py3-none-any.whl", hash = "sha256:390c3f7b6b279fb622f91f4c890e6ff8ee7d6917f89fd515cf6e7eb65f1fa6ad", size = 10586, upload-time = "2026-11-13T12:43:22.783Z" },
 ]
 
 [[package]]
@@ -2952,6 +2957,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/46/58/8c37dea7bbf769b20d58e7ace7e5edfe65b849442b00ffcdd56be88697c6/tabulate-0.10.0.tar.gz", hash = "sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d", size = 91754, upload-time = "2026-03-04T18:55:34.402Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl", hash = "sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3", size = 39814, upload-time = "2026-03-04T18:55:31.284Z" },
+]
+
+[[package]]
+name = "teddys-blackjax-utils"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "blackjax" },
+    { name = "jax" },
+    { name = "jaxtyping" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c1/40/5b74281fd50913131e7fd984ccffc9c9b880faaa499f096b346bf4fbbafb/teddys_blackjax_utils-0.2.1.tar.gz", hash = "sha256:73223191ab7a413df14e08d9c11d8881c5985b0c4e3d987dd0d2069a17b90c2d", size = 12563, upload-time = "2026-11-13T12:59:46.506Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/b1/71c05cb3327184707161a56209535eb1185eeaf904c98c7588726f1e5ac7/teddys_blackjax_utils-0.2.1-py3-none-any.whl", hash = "sha256:f839fdc1bc0ddb962e17bc72015d4759b69bcf9711e563314bccd278fbd0136c", size = 13410, upload-time = "2026-11-13T12:59:45.217Z" },
 ]
 
 [[package]]

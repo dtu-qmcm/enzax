@@ -10,10 +10,10 @@ dependencies = [
     "optimistix>=0.1.0",
     "lineax>=0.1.1",
     "jaxtyping>=0.2.38",
-    "arviz>=0.19.0",
     "equinox>=0.11.12",
     "python-libsbml>=5.20.4",
     "sbmlmath>=0.2.0",
+    "sympy>=1.13",
     "jax>=0.9.0",
     "beartype>=0.22.9",
     "requests>=2.32.5",
@@ -23,6 +23,15 @@ readme = "README.md"
 license = {text = "MIT"}
 
 [project.optional-dependencies]
+dae = [
+    "diffrax-bdf>=0.1.0",
+]
+mcmc = [
+    "arviz>=0.19.0",
+    "blackjax[progress]>=1.6.2",
+    "grapevine-mcmc>=0.3.0",
+    "teddys-blackjax-utils>=0.2.1",
+]
 docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.32",
@@ -33,9 +42,6 @@ docs = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.pdm]
-distribution = true
 
 [tool.pytest.ini_options]
 addopts = "-n auto --maxprocesses=16"
@@ -71,18 +77,12 @@ extend-select = ["E501", "COM812"]  # line length is checked
 [tool.ruff.lint.isort]
 known-first-party = ["enzax"]
 
-[tool.uv.sources]
-diffrax-bdf = { git = "https://github.com/dtu-qmcm/diffrax-bdf.git" }
-
 [dependency-groups]
-mcmc = [
-    "blackjax-utils @ git+https://github.com/teddygroves/blackjax-utils.git ; python_version >= '3.13'",
-    "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git ; python_version >= '3.13'",
-    "blackjax[progress]>=1.6.2",
+plot = [
     "matplotlib>=3.9",
 ]
 dev = [
-    "diffrax-bdf @ git+https://github.com/dtu-qmcm/diffrax-bdf.git ; python_version >= '3.13'",
+    "diffrax-bdf>=0.1.0",
     "pytest-cov>=5.0.0",
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
@@ -90,7 +90,7 @@ dev = [
 ]
 benchmark = [
     "amici[jax,petab]==1.2.0",
-    "diffrax-bdf ; python_full_version >= '3.13'",
+    "diffrax-bdf>=0.1.0",
     "matplotlib>=3.9",
     "pandas>=3.1.0",
     "pymc>=6.4.0",

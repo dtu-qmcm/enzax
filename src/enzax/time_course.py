@@ -37,6 +37,7 @@ from enzax.non_negative import (
     get_dae_balanced_conc,
 )
 from enzax.steady_state import DEFAULT_MAX_STEPS
+from enzax.utils import import_diffrax_bdf
 
 INITIAL_STATE_PARAMETER = "log_amount_initial"
 DEFAULT_CHECKPOINTS = 1000
@@ -250,7 +251,7 @@ def get_measurables_time_course_single_experiment_dae(
     :param suppress_algebraic_error: whether to leave the log concentrations
         out of the integrator's error estimate.
     """
-    from diffrax_bdf import BDF, BDFController, SemiExplicitDAETerm
+    diffrax_bdf = import_diffrax_bdf()
 
     ode_state_initial, moiety_totals = get_initial_ode_state(
         model,
@@ -259,12 +260,12 @@ def get_measurables_time_course_single_experiment_dae(
     parameters = with_moiety_totals(model, parameters, moiety_totals)
     y0 = model.get_dae_state(ode_state_initial, parameters)
     sol = diffrax.diffeqsolve(
-        terms=SemiExplicitDAETerm(
+        terms=diffrax_bdf.SemiExplicitDAETerm(
             lambda t, y, args: clamp_dae_rate(model, t, y, args),
             (False, jax.tree.map(lambda _: True, y0[1])),
         ),
         solver=NonNegativeSolver(
-            BDF(suppress_algebraic_error=suppress_algebraic_error),
+            diffrax_bdf.BDF(suppress_algebraic_error=suppress_algebraic_error),
             get_conc=lambda y, args: get_dae_balanced_conc(model, y, args),
             tolerance=negative_tolerance,
         ),
@@ -273,7 +274,7 @@ def get_measurables_time_course_single_experiment_dae(
         dt0=1e-6,
         y0=y0,
         saveat=diffrax.SaveAt(ts=ts),
-        stepsize_controller=BDFController(rtol=rtol, atol=atol),
+        stepsize_controller=diffrax_bdf.BDFController(rtol=rtol, atol=atol),
         adjoint=adjoint
         or diffrax.RecursiveCheckpointAdjoint(
             checkpoints=min(DEFAULT_CHECKPOINTS, max_steps),

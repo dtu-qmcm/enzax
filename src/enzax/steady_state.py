@@ -27,6 +27,7 @@ from enzax.non_negative import (
     clamp_dae_rate,
     get_dae_balanced_conc,
 )
+from enzax.utils import import_diffrax_bdf
 
 # The step count a steady state solve is allowed before it is called a
 # failure. See `get_steady_state`.
@@ -284,18 +285,18 @@ def get_steady_state_dae(
     out of the integrator's error estimate. Their accuracy follows from the ODE
     state's, and leaving them out saves steps.
     """
-    from diffrax_bdf import BDF, BDFController, SemiExplicitDAETerm
+    diffrax_bdf = import_diffrax_bdf()
 
     y0 = jax.lax.stop_gradient(model.get_dae_state(guess, parameters))
     if adjoint is None:
         adjoint = diffrax.ImplicitAdjoint()
     sol = diffrax.diffeqsolve(
-        terms=SemiExplicitDAETerm(
+        terms=diffrax_bdf.SemiExplicitDAETerm(
             lambda t, y, args: clamp_dae_rate(model, t, y, args),
             (False, jax.tree.map(lambda _: True, y0[1])),
         ),
         solver=NonNegativeSolver(
-            BDF(suppress_algebraic_error=suppress_algebraic_error),
+            diffrax_bdf.BDF(suppress_algebraic_error=suppress_algebraic_error),
             get_conc=lambda y, args: get_dae_balanced_conc(model, y, args),
             tolerance=negative_tolerance,
         ),
@@ -304,7 +305,7 @@ def get_steady_state_dae(
         dt0=jnp.array(0.000001),
         y0=y0,
         max_steps=max_steps,
-        stepsize_controller=BDFController(
+        stepsize_controller=diffrax_bdf.BDFController(
             rtol=ivp_rtol,
             atol=ivp_atol,
             dtmax=1e6,
