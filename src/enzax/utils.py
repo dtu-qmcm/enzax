@@ -10,6 +10,7 @@ from enzax.array_types import FrozenArray
 
 
 def import_diffrax_bdf() -> ModuleType:
+    """Import diffrax-bdf, or raise an error that says how to install it."""
     try:
         return importlib.import_module("diffrax_bdf")
     except ModuleNotFoundError as err:
