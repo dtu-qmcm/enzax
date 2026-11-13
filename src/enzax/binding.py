@@ -296,6 +296,11 @@ def dead_end(*species: SpeciesDeclaration) -> BindingPolynomialExpression:
 def get_value_at_zero_concentration(
     expression: BindingPolynomialExpression,
 ) -> float:
+    """Get an expression's value when every concentration is zero.
+
+    A `site` factor gives 1 there and a `dead_end` factor gives 0, so the value
+    equals the summed coefficients of the terms with no `dead_end` factor.
+    """
     return float(
         sum(
             term.coefficient
