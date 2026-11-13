@@ -34,13 +34,13 @@ With all four optimisations, one NUTS iteration of 63 leapfrog steps took 754 ms
 
     The extrapolation depends on details of the model and sampling. In particular, we have observed some variation in how big an advantage the BDF solver achieves compared with Kvaerno5, depending on the target model. In addition, the benefit from the grapevine method may be different in the post-warmup phase where we measured compared with the warmup phase: this means that our experiment may be overly optimistic (or pessimistic) about the benefit from both grapevine and the hybrid solver.
 
-To regenerate the figure, run this command from the root of the enzax repository, using Python 3.13 or later:
+To rerun the measurement, run this command from the root of the enzax repository:
 
 ```sh
-uv run --group mcmc python scripts/optimisation_benchmark.py
+uv run --group benchmark --extra mcmc python benchmarks/optimisation_ladder.py
 ```
 
-This writes the figure to `docs/img/optimisation_benchmark.png` and, alongside it, a csv file with one row per timed leapfrog step.
+This writes a figure to `benchmarks/results/optimisation_ladder.png` and, alongside it, a csv file with one row per timed leapfrog step and a summary csv file. The script also times AMICI, pyPESTO and PyMC, so it needs the `benchmark` dependency group, which builds AMICI from source.
 
 ## Comparison with other frameworks
 

@@ -333,8 +333,9 @@ starts from the same fixed guess. The
 [grapevine](https://github.com/dtu-qmcm/grapevine) method instead starts each
 solve from the steady state found at the previous point on the same Hamiltonian
 trajectory. Adjacent points have nearly identical steady states, so the solver
-starts essentially converged. The guess resets to the default at the end of
-every MCMC iteration, so the reuse is within a trajectory only.
+starts essentially converged. The first solve of a trajectory starts from the
+steady state found at the previous draw, and falls back on the default guess
+if that solve failed.
 
 Install grapevine from PyPI:
 
