@@ -356,6 +356,32 @@ def test_subunits_need_an_allosteric_rate_law():
         MichaelisMenten(stoichiometry=FBA_STOICHIOMETRY["FBA"], subunits=4)
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "dead_end_states_expression",
+        "binding_polynomial_expression",
+        "tense_state_expression",
+        "relaxed_state_expression",
+    ],
+)
+def test_michaelis_menten_refuses_a_hand_written_polynomial(field):
+    expression = ONE + dead_end("fdp_c")
+    with pytest.raises(ValueError, match="Use SaturableReaction"):
+        MichaelisMenten(
+            stoichiometry=FBA_STOICHIOMETRY["FBA"],
+            **{field: expression},
+        )
+    SaturableReaction(
+        stoichiometry=FBA_STOICHIOMETRY["FBA"],
+        **{field: expression},
+    )
+
+
+def test_both_saturable_classes_share_one_batch():
+    assert MichaelisMenten.batch_rule is SaturableReaction.batch_rule
+
+
 @pytest.mark.skipif(
     os.environ.get("ENZAX_TYPECHECK", "1") == "1",
     reason="the type checker rejects the list first",
@@ -543,8 +569,8 @@ def test_a_michaelis_menten_reaction_declares_no_polynomial():
     """The two classes differ by whether the polynomial can be written out."""
     stoichiometry = FBA_STOICHIOMETRY["FBA"]
     assert not MichaelisMenten(stoichiometry=stoichiometry).is_allosteric()
-    with pytest.raises(TypeError, match="unexpected keyword argument"):
-        MichaelisMenten(  # pyright: ignore
+    with pytest.raises(ValueError, match="Use SaturableReaction"):
+        MichaelisMenten(
             stoichiometry=stoichiometry,
             dead_end_states_expression=dead_end("fdp_c", "g3p_c"),
         )

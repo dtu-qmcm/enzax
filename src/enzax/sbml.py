@@ -27,7 +27,7 @@ from enzax.parameters import (
 from enzax.reactions import (
     Drain,
     MassAction,
-    MichaelisMenten,
+    SaturableReaction,
     SymbolicReaction,
 )
 from enzax.reactions.drain import DrainIx
@@ -598,11 +598,11 @@ def get_species_symbol(
 def get_michaelis_menten_law(
     model: KineticModel,
     ids: Mapping[tuple[str, str], str],
-    reaction: MichaelisMenten,
+    reaction: SaturableReaction,
     ix: MichaelisMentenIx,
 ) -> sympy.Expr:
     """Get a Michaelis-Menten reaction's flux as an expression, as
-    `MichaelisMenten.__call__` gets its value."""
+    `SaturableReaction.__call__` gets its value."""
     kms = [
         get_parameter_symbol(model, ids, "log_saturation_constant", int(k))
         for k in ix.ix_substrate_k
@@ -742,7 +742,7 @@ def get_kinetic_law(
     reaction = model.reactions[reaction_id]
     ix = model.reaction_ix[position]
     match reaction:
-        case MichaelisMenten():
+        case SaturableReaction():
             return get_michaelis_menten_law(model, ids, reaction, ix)
         case MassAction():
             return get_mass_action_law(model, ids, reaction, ix)
