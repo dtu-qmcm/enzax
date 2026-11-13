@@ -219,7 +219,7 @@ def get_local_species(
 def get_slots(
     local_species: LocalSpeciesIx,
     row: int,
-    species: Iterable[int],
+    species: Iterable[int | np.integer],
 ) -> list[int]:
     """Get the columns of a local block's row that hold some species."""
     positions = local_species[row].tolist()

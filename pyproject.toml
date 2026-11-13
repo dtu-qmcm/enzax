@@ -58,7 +58,7 @@ filterwarnings = [
   # Toy models in the tests often have conserved moieties they don't declare,
   # because they only test rate laws. The tests of the warning itself
   # override this filter.
-  'ignore::enzax.kinetic_model.UndeclaredMoietyWarning',
+  'ignore:The balanced species form:UserWarning',
 ]
 
 [tool.ruff]
