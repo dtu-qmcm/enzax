@@ -30,7 +30,7 @@ Plots of one experiment's time courses at the prior mean and at the MAP are
 saved to docs/img, for the time courses docs page. Making them needs
 matplotlib, from the mcmc dependency group:
 
-    uv run --group mcmc python scripts/cascade_demo.py
+    uv run --group plot python scripts/cascade_demo.py
 """
 
 # ruff: noqa: E402

@@ -26,6 +26,12 @@ license = {text = "MIT"}
 dae = [
     "diffrax-bdf>=0.1.0",
 ]
+mcmc = [
+    "arviz>=0.19.0",
+    "blackjax[progress]>=1.6.2",
+    "grapevine-mcmc>=0.3.0",
+    "teddys-blackjax-utils>=0.2.1",
+]
 docs = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.32",
@@ -72,11 +78,7 @@ extend-select = ["E501", "COM812"]  # line length is checked
 known-first-party = ["enzax"]
 
 [dependency-groups]
-mcmc = [
-    "teddys-blackjax-utils>=0.2.1",
-    "grapevine-mcmc @ git+https://github.com/dtu-qmcm/grapevine.git",
-    "arviz>=0.19.0",
-    "blackjax[progress]>=1.6.2",
+plot = [
     "matplotlib>=3.9",
 ]
 dev = [

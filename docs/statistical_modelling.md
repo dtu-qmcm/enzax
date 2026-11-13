@@ -323,7 +323,7 @@ The progress bar needs blackjax's `progress` optional extra, which you can insta
 
 `scripts/mcmc_demo.py` in the enzax repository is a complete worked example: it simulates measurements from three methionine experiments that differ in their enzyme levels, then samples the shared turnover numbers with grapevine (see below). Run it with
 ```bash
-uv run --group mcmc python scripts/mcmc_demo.py
+uv run --extra mcmc python scripts/mcmc_demo.py
 ```
 
 ## Optimised Hamiltonian Monte Carlo with grapevine
@@ -336,10 +336,10 @@ trajectory. Adjacent points have nearly identical steady states, so the solver
 starts essentially converged. The guess resets to the default at the end of
 every MCMC iteration, so the reuse is within a trajectory only.
 
-grapevine is not on PyPI, so install it from GitHub:
+Install grapevine from PyPI:
 
 ```bash
-uv add git+https://github.com/dtu-qmcm/grapevine.git
+uv add grapevine-mcmc
 ```
 
 The solution needs a way out of the log density, so `log_density_grapevine` takes the same arguments as `log_density` and returns `(log_density, steady_states)`. Do not bind its `guess` argument, since the sampler supplies it. The default guess has one row per experiment:

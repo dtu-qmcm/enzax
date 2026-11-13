@@ -708,6 +708,12 @@ docs = [
     { name = "mkdocstrings-python" },
     { name = "pymdown-extensions" },
 ]
+mcmc = [
+    { name = "arviz" },
+    { name = "blackjax", extra = ["progress"] },
+    { name = "grapevine-mcmc" },
+    { name = "teddys-blackjax-utils" },
+]
 
 [package.dev-dependencies]
 benchmark = [
@@ -726,20 +732,19 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
 ]
-mcmc = [
-    { name = "arviz" },
-    { name = "blackjax", extra = ["progress"] },
-    { name = "grapevine-mcmc" },
+plot = [
     { name = "matplotlib" },
-    { name = "teddys-blackjax-utils" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "arviz", marker = "extra == 'mcmc'", specifier = ">=0.19.0" },
     { name = "beartype", specifier = ">=0.22.9" },
+    { name = "blackjax", extras = ["progress"], marker = "extra == 'mcmc'", specifier = ">=1.6.2" },
     { name = "diffrax", specifier = ">=0.7.0" },
     { name = "diffrax-bdf", marker = "extra == 'dae'", specifier = ">=0.1.0" },
     { name = "equinox", specifier = ">=0.11.12" },
+    { name = "grapevine-mcmc", marker = "extra == 'mcmc'", specifier = ">=0.3.0" },
     { name = "jax", specifier = ">=0.9.0" },
     { name = "jaxtyping", specifier = ">=0.2.38" },
     { name = "lineax", specifier = ">=0.1.1" },
@@ -753,8 +758,9 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.5" },
     { name = "sbmlmath", specifier = ">=0.2.0" },
     { name = "sympy", specifier = ">=1.13" },
+    { name = "teddys-blackjax-utils", marker = "extra == 'mcmc'", specifier = ">=0.2.1" },
 ]
-provides-extras = ["dae", "docs"]
+provides-extras = ["dae", "mcmc", "docs"]
 
 [package.metadata.requires-dev]
 benchmark = [
@@ -773,13 +779,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
 ]
-mcmc = [
-    { name = "arviz", specifier = ">=0.19.0" },
-    { name = "blackjax", extras = ["progress"], specifier = ">=1.6.2" },
-    { name = "grapevine-mcmc", git = "https://github.com/dtu-qmcm/grapevine.git" },
-    { name = "matplotlib", specifier = ">=3.9" },
-    { name = "teddys-blackjax-utils", specifier = ">=0.2.1" },
-]
+plot = [{ name = "matplotlib", specifier = ">=3.9" }]
 
 [[package]]
 name = "equinox"
@@ -940,10 +940,14 @@ wheels = [
 [[package]]
 name = "grapevine-mcmc"
 version = "0.3.0"
-source = { git = "https://github.com/dtu-qmcm/grapevine.git#c405c45bc2dc9a2f790ee08897d7e792a046d756" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blackjax" },
     { name = "jax" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/88/68/876ef4cf58a7e2e550095cf0c9101120dc9b51abc9e51cef3167979a66a7/grapevine_mcmc-0.3.0.tar.gz", hash = "sha256:e8e5a715414c1cd34c6810c3e75c585a00caaf265a5aa7380116a6f2cddcf5cf", size = 2637555, upload-time = "2026-11-13T12:43:24.62Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/4a/169262f4341e9be303a34ae8efdd59edf99e57c87d314699192d53984359/grapevine_mcmc-0.3.0-py3-none-any.whl", hash = "sha256:390c3f7b6b279fb622f91f4c890e6ff8ee7d6917f89fd515cf6e7eb65f1fa6ad", size = 10586, upload-time = "2026-11-13T12:43:22.783Z" },
 ]
 
 [[package]]
