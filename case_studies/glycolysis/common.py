@@ -1,9 +1,15 @@
 """Shared setup for the glycolysis labelling case study.
 
 Builds a version of the example glycolysis model in which glucose transport
-sets cytosolic glucose, a reference parameter set that keeps the example's
-fluxes, and the conditions of the two experiments. Also provides the prior,
-the measurement loader and the MID simulator that the other scripts use.
+sets cytosolic glucose, and a reference parameter set adapted from the
+example's: lactate leaves the cell down a tenfold concentration gradient, the
+pyruvate drain stays far from saturation, and enolase and glucose transport
+have five times the capacity. PFKM gains a tense-state site for
+phosphoenolpyruvate, binds lactate thirty times more weakly and favours its
+tense state more, and pyruvate inhibits PKM1 twenty times more strongly.
+Defines the two experiments, a wild type and a ZeLa-like LDH knockdown with
+low external lactate. Also provides the prior, the measurement loader and the
+MID simulator that the other scripts use.
 """
 
 import csv
@@ -17,6 +23,7 @@ import numpy as np
 from jax import numpy as jnp
 from miemu.mid import NATURAL_13C, positional_mid
 
+from enzax.binding import site
 from enzax.examples import glycolysis
 from enzax.kinetic_model import KineticModel
 from enzax.measurements import (
@@ -33,7 +40,8 @@ from enzax.parameter_split import (
     get_free_parameters,
     split_parameters_by_fixing,
 )
-from enzax.parameters import pack_parameters
+from enzax.parameters import SEP, pack_parameters
+from enzax.reactions import SaturableReaction
 from enzax.statistical_modelling import (
     get_measurables_single_experiment,
     log_density_grapevine,
@@ -46,24 +54,61 @@ HERE = Path(__file__).parent
 MEASUREMENTS_FILE = HERE / "data" / "measurements.csv"
 TRUTH_FILE = HERE / "data" / "truth.json"
 RESULTS_DIR = HERE / "results"
+PFKM = SaturableReaction(
+    stoichiometry={
+        "atp_c": -1.0,
+        "f6p_c": -1.0,
+        "adp_c": 1.0,
+        "fdp_c": 1.0,
+    },
+    subunits=4,
+    tense_state_expression=(
+        18.0 * site({"atp_c": "km|PFKM|atp_c"}) * site("lac_c") * site("pep_c")
+    ),
+    relaxed_state_expression=(
+        site({"f6p_c": "km|PFKM|f6p_c", "fdp_c": "km|PFKM|fdp_c"})
+        * site("f26bp_c")
+    ),
+)
 MODEL = KineticModel(
     balanced_species=[*glycolysis.balanced_species, "glc_c"],
     compound_to_species=glycolysis.compound_to_species,
-    reactions=glycolysis.reactions,
+    reactions=glycolysis.reactions | {"PFKM": PFKM},
     water_dgf=glycolysis.model.water_dgf,
 )
+NEW_SATURATION_CONSTANTS = {"dc|PFKM|pep_c": 2e-6}
 CYTOSOLIC_GLUCOSE = 1e-3
 REFERENCE_STEADY_STATE = jnp.append(glycolysis.steady_state, CYTOSOLIC_GLUCOSE)
 ATOM_MAPPINGS = glycolysis.atom_mappings | {
     "GLUT4": "glc_e(abcdef) <-> glc_c(abcdef)",
 }
-EXPERIMENTS = ("high_glucose", "low_glucose")
-DESIGN = {"high_glucose": {}, "low_glucose": {"glc_e": 0.2}}
+EXPERIMENTS = ("wild_type", "zela")
+DESIGN = {"wild_type": {}, "zela": {"lac_e": 0.1}}
+KNOCKDOWNS = {"zela": {"LDHA": 0.001}}
 BOUNDARY_REACTIONS = ("GLUT4", "r5p_drain", "pyr_drain", "lac_transport")
+BOUNDARY_KM_FACTORS = {"pyr_drain": 10.0}
+REFERENCE_CONC_FACTORS = {"lac_e": 0.1}
+REFERENCE_FACTORS = {
+    "log_saturation_constant": {"dc|PFKM|lac_c": 30.0, "km|PKM1|pyr_c": 0.05},
+    "log_tc": {"PFKM": float(np.exp(7.5))},
+}
+FLUX_HOLDING_REACTIONS = (*BOUNDARY_REACTIONS, "HEX1", "HEX2", "PFKM", "PKM1")
+CAPACITY_FACTORS = {"ENO": 5.0, "GLUT4": 5.0}
+EXPERIMENT_SPECIFIC = {
+    "log_conc_unbalanced": None,
+    "log_enzyme": sorted({e for k in KNOCKDOWNS.values() for e in k}),
+}
 FIXED_PARAMETERS = {
     "dgf": None,
     "temperature": None,
-    "log_enzyme": list(BOUNDARY_REACTIONS),
+    "log_enzyme": [
+        *BOUNDARY_REACTIONS,
+        *(
+            f"{enzyme}{SEP}{experiment}"
+            for experiment, knockdown in KNOCKDOWNS.items()
+            for enzyme in knockdown
+        ),
+    ],
 }
 PRIOR_SD = 0.3
 MIN_PRECISION = 1.0
@@ -114,11 +159,26 @@ def get_example_parameters():
     example_labels = list(
         glycolysis.model.parameter_labelling["log_conc_unbalanced"],
     )
+    example_km_labels = list(
+        glycolysis.model.parameter_labelling["log_saturation_constant"],
+    )
     return example | {
         "log_conc_unbalanced": jnp.array(
             [
                 example["log_conc_unbalanced"][example_labels.index(s)]
                 for s in MODEL.parameter_labelling["log_conc_unbalanced"]
+            ],
+        ),
+        "log_saturation_constant": jnp.array(
+            [
+                jnp.log(NEW_SATURATION_CONSTANTS[label])
+                if label in NEW_SATURATION_CONSTANTS
+                else example["log_saturation_constant"][
+                    example_km_labels.index(label)
+                ]
+                for label in MODEL.parameter_labelling[
+                    "log_saturation_constant"
+                ]
             ],
         ),
     }
@@ -147,34 +207,56 @@ def get_reference():
         _, reaction, species = label.split("|")
         if reaction in BOUNDARY_REACTIONS:
             species_conc = conc[MODEL.species.index(species)]
-            log_km = log_km.at[position].set(jnp.log(species_conc))
-    adjusted = parameters | {"log_saturation_constant": log_km}
+            factor = BOUNDARY_KM_FACTORS.get(reaction, 1.0)
+            log_km = log_km.at[position].set(jnp.log(factor * species_conc))
+    adjusted = get_condition(
+        parameters | {"log_saturation_constant": log_km},
+        REFERENCE_CONC_FACTORS,
+    )
+    for kind, factors in REFERENCE_FACTORS.items():
+        adjusted = scale_values(adjusted, kind, factors)
     flux_ratio = get_example_flux() / MODEL.flux(
         REFERENCE_STEADY_STATE,
         adjusted,
     )
     kcat_labels = list(MODEL.parameter_labelling["log_kcat"])
     log_kcat = adjusted["log_kcat"]
-    for reaction in (*BOUNDARY_REACTIONS, "HEX1", "HEX2"):
+    for reaction in FLUX_HOLDING_REACTIONS:
         log_kcat = log_kcat.at[kcat_labels.index(reaction)].add(
             jnp.log(flux_ratio[MODEL.reaction_ids.index(reaction)]),
         )
-    return adjusted | {"log_kcat": log_kcat}
+    return scale_values(
+        adjusted | {"log_kcat": log_kcat},
+        "log_kcat",
+        CAPACITY_FACTORS,
+    )
+
+
+def scale_values(parameters, kind, factors):
+    labels = list(MODEL.parameter_labelling[kind])
+    log_values = parameters[kind]
+    for label, factor in factors.items():
+        log_values = log_values.at[labels.index(label)].add(jnp.log(factor))
+    return parameters | {kind: log_values}
 
 
 def get_condition(reference, factors):
-    labels = list(MODEL.parameter_labelling["log_conc_unbalanced"])
-    log_conc = reference["log_conc_unbalanced"]
-    for species, factor in factors.items():
-        log_conc = log_conc.at[labels.index(species)].add(jnp.log(factor))
-    return reference | {"log_conc_unbalanced": log_conc}
+    return scale_values(reference, "log_conc_unbalanced", factors)
+
+
+def get_experiment_parameters(reference, experiment):
+    return scale_values(
+        get_condition(reference, DESIGN[experiment]),
+        "log_enzyme",
+        KNOCKDOWNS.get(experiment, {}),
+    )
 
 
 def get_layout():
     return get_experiment_layout(
         MODEL.parameter_labelling,
         EXPERIMENTS,
-        {"log_conc_unbalanced": None},
+        EXPERIMENT_SPECIFIC,
     )
 
 
@@ -182,7 +264,7 @@ def get_expanded_reference(layout):
     reference = get_reference()
     return merge_experiment_parameters(
         layout,
-        [get_condition(reference, DESIGN[e]) for e in layout.experiments],
+        [get_experiment_parameters(reference, e) for e in layout.experiments],
     )
 
 
@@ -215,7 +297,7 @@ def get_initial_guess():
     for experiment in EXPERIMENTS:
         steady, found, _, _ = get_measurables_single_experiment(
             MODEL,
-            get_condition(reference, DESIGN[experiment]),
+            get_experiment_parameters(reference, experiment),
             REFERENCE_STEADY_STATE,
         )
         if not found:

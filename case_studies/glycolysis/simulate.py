@@ -1,9 +1,11 @@
 """Simulate measurements for the glycolysis labelling case study.
 
-Draws true parameters from the prior, finds each experiment's steady state,
-and adds noise to its concentrations, enzyme levels, boundary fluxes and
-MIDs. Writes the measurements to data/measurements.csv and the true values
-to data/truth.json, then checks the log density at the truth.
+Draws true parameters from the prior, then gives every experiment the wild
+type's offsets in clamped concentrations, so that the experiments differ only
+by design. Finds each experiment's steady state and adds noise to its
+concentrations, enzyme levels, boundary fluxes and MIDs. Writes the
+measurements to data/measurements.csv and the true values to data/truth.json,
+then checks the log density at the truth.
 """
 
 import csv
@@ -17,6 +19,7 @@ from common import (
     CSV_COLUMNS,
     ENZYME_ERROR,
     FLUX_ERROR,
+    KNOCKDOWNS,
     MEASURED_ENZYMES,
     MEASURED_FLUXES,
     MEASURED_POOLS,
@@ -37,7 +40,10 @@ from common import (
     load_measurements,
     load_true_parameters,
 )
-from enzax.experiments import gather_parameters_by_experiment
+from enzax.experiments import (
+    gather_parameters_by_experiment,
+    merge_experiment_parameters,
+)
 from enzax.measurements import get_pool_mid, pick_enzymes
 from enzax.parameter_split import combine_parameters, get_free_parameters
 from enzax.statistical_modelling import (
@@ -46,7 +52,8 @@ from enzax.statistical_modelling import (
 )
 from enzax.thermodynamics import get_one_way_fluxes
 
-SEED = 1234
+TRUTH_SEED = 1234
+DATA_SEED = 1235
 
 
 def draw_true_parameters(key, layout, split):
@@ -60,7 +67,25 @@ def draw_true_parameters(key, layout, split):
         + scale[kind] * jax.random.normal(keys[kind], jnp.shape(leaf))
         for kind, leaf in free_reference.items()
     }
-    return combine_parameters(split, free_true)
+    return share_clamp_offsets(layout, combine_parameters(split, free_true))
+
+
+def share_clamp_offsets(layout, parameters):
+    kind = "log_conc_unbalanced"
+    reference, drawn = (
+        gather_parameters_by_experiment(layout, p)
+        for p in (get_expanded_reference(layout), parameters)
+    )
+    shared = drawn | {
+        kind: reference[kind] + drawn[kind][0] - reference[kind][0],
+    }
+    return merge_experiment_parameters(
+        layout,
+        [
+            jax.tree.map(lambda leaf, i=i: leaf[i], shared)
+            for i in range(len(layout.experiments))
+        ],
+    )
 
 
 def get_rows(
@@ -128,11 +153,14 @@ def simulate_experiment(key, experiment, parameters, guess, mid_simulator):
         * jnp.exp(CONC_ERROR * jax.random.normal(key_conc, true_conc.shape)),
         jnp.full_like(true_conc, CONC_ERROR),
     )
-    true_enzyme = pick_enzymes(MODEL, parameters, MEASURED_ENZYMES)
+    enzymes = [
+        e for e in MEASURED_ENZYMES if e not in KNOCKDOWNS.get(experiment, {})
+    ]
+    true_enzyme = pick_enzymes(MODEL, parameters, enzymes)
     rows += get_rows(
         experiment,
         "enzyme",
-        MEASURED_ENZYMES,
+        enzymes,
         true_enzyme
         * jnp.exp(
             ENZYME_ERROR * jax.random.normal(key_enzyme, true_enzyme.shape),
@@ -176,16 +204,21 @@ def simulate_experiment(key, experiment, parameters, guess, mid_simulator):
     return rows, truth
 
 
-def simulate(seed):
+def simulate(truth_seed, data_seed):
     layout = get_layout()
-    key_truth, key_data = jax.random.split(jax.random.key(seed))
-    true_parameters = draw_true_parameters(key_truth, layout, get_split(layout))
+    key_data = jax.random.key(data_seed)
+    true_parameters = draw_true_parameters(
+        jax.random.key(truth_seed),
+        layout,
+        get_split(layout),
+    )
     by_experiment = gather_parameters_by_experiment(layout, true_parameters)
     guess = get_initial_guess()
     mid_simulator = get_mid_simulator()
     rows = []
     truth = {
-        "seed": seed,
+        "truth_seed": truth_seed,
+        "data_seed": data_seed,
         "parameters": get_labelled_values(layout.labelling, true_parameters),
     }
     for i, experiment in enumerate(layout.experiments):
@@ -245,7 +278,7 @@ def check():
 
 
 def main():
-    rows, truth = simulate(SEED)
+    rows, truth = simulate(TRUTH_SEED, DATA_SEED)
     write(rows, truth)
     print(f"Wrote {len(rows)} measurements to {MEASUREMENTS_FILE}")
     check()
