@@ -5,6 +5,7 @@ second has more of MAT1.
 """
 
 import jax
+import numpy as np
 import pytest
 from jax import numpy as jnp
 
@@ -25,6 +26,7 @@ from enzax.measurements import (
 from enzax.statistical_modelling import (
     enzax_prior_logdensity,
     get_measurables_single_experiment,
+    get_stability_penalty,
     log_density,
     log_density_grapevine,
     prior_from_truth,
@@ -201,6 +203,43 @@ def test_the_grapevine_density_returns_a_steady_state_per_experiment():
     assert jnp.isclose(value, density(EXPANDED))
     assert steady.shape == GUESS.shape
     assert not jnp.allclose(steady[0], steady[1])
+
+
+def test_the_stability_penalty_charges_each_growth_rate():
+    scale = 10.0
+    expected = 0.0
+    for parameters in PER_EXPERIMENT:
+        steady, _, _, _ = get_measurables_single_experiment(
+            MODEL,
+            parameters,
+            methionine.steady_state,
+        )
+        jacobian = jax.jacfwd(MODEL.dndt)(steady, parameters)
+        growth_rates = np.linalg.eigvals(np.asarray(jacobian)).real
+        expected -= np.logaddexp(0.0, growth_rates / scale).sum()
+    arguments = (EXPANDED, MODEL, PRIOR)
+    keywords = {"layout": LAYOUT, "guess": GUESS, **get_measurements()}
+    plain, steady = log_density_grapevine(*arguments, **keywords)
+    penalised = log_density(
+        *arguments,
+        **keywords,
+        stability_penalty_scale=scale,
+    )
+    penalty = get_stability_penalty(
+        MODEL,
+        steady,
+        gather_parameters_by_experiment(LAYOUT, EXPANDED),
+        scale,
+    )
+    assert expected < -1e-3
+    assert penalised - plain == pytest.approx(expected, rel=1e-6)
+    assert penalty == pytest.approx(expected, rel=1e-6)
+    gradient = jax.grad(log_density)(
+        *arguments,
+        **keywords,
+        stability_penalty_scale=scale,
+    )
+    assert all(jnp.isfinite(leaf).all() for leaf in jax.tree.leaves(gradient))
 
 
 def test_one_failed_solve_gives_a_nan_density():

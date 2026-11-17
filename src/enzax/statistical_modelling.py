@@ -186,6 +186,7 @@ _STATIC_SOLVE_ARGUMENTS = (
     "solver",
     "stepsize_controller",
 )
+_STATIC_ARGUMENTS = (*_STATIC_SOLVE_ARGUMENTS, "stability_penalty_scale")
 
 
 def get_measurables_single_experiment(
@@ -245,6 +246,38 @@ def get_measurables_single_experiment(
     return steady, found, conc, flux
 
 
+def get_stability_penalty(
+    model: KineticModel,
+    steady: Float[Array, "n_experiment n_state"],
+    parameters_by_experiment: ParamDict,
+    scale: float,
+) -> Scalar:
+    """Get a penalty on unstable steady states.
+
+    Each eigenvalue of each experiment's Jacobian at its steady state
+    contributes -softplus(real part / scale). Summing over every eigenvalue,
+    rather than taking the largest real part, keeps the penalty smooth where
+    two eigenvalues swap order.
+
+    :param steady: each experiment's steady state, as ODE states, with a
+        leading experiment axis in the layout's order.
+
+    :param scale: how sharply to penalise unstable steady states. A smaller
+        scale gives a steeper wall at zero. Choose a scale below the decay
+        rate of the model's slowest stable mode, so that stable states pay
+        almost nothing.
+
+    :return: the penalty, which is never positive.
+    """
+
+    def penalise_experiment(ode_state, parameters):
+        jacobian = jax.jacfwd(model.dndt)(ode_state, parameters)
+        growth_rates = jnp.linalg.eigvals(jacobian).real
+        return -jax.nn.softplus(growth_rates / scale).sum()
+
+    return jax.vmap(penalise_experiment)(steady, parameters_by_experiment).sum()
+
+
 def _log_density_and_steady_states(
     free_parameters: PyTree,
     model: KineticModel,
@@ -261,6 +294,7 @@ def _log_density_and_steady_states(
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    stability_penalty_scale: float | None = None,
 ) -> tuple[Scalar, Float[Array, "n_experiment n_state"]]:
     """Get the log posterior density of the parameters, and the steady states.
 
@@ -301,6 +335,14 @@ def _log_density_and_steady_states(
 
     :param stepsize_controller: a diffrax step size controller for the ODE
         solver to use.
+
+    :param stability_penalty_scale: how sharply to penalise unstable steady
+        states. Each eigenvalue of each experiment's Jacobian at its steady
+        state subtracts softplus(real part / scale) from the log density, so a
+        smaller scale gives a steeper wall at zero. Choose a scale below the
+        decay rate of the model's slowest stable mode, so that stable states
+        pay almost nothing. Leave it out for no penalty. Static, so changing it
+        triggers recompilation.
 
     :return: the log density, which is NaN if any experiment's steady state
         was not found, and every experiment's steady state. A sampler reads a
@@ -372,17 +414,30 @@ def _log_density_and_steady_states(
     )
     llik = jax.tree.reduce(operator.add, (llik_conc, llik_enz, llik_flux), 0.0)
     log_prior = enzax_prior_logdensity(free_parameters, prior)
-    log_density = jnp.where(found.all(), log_prior + llik, jnp.nan)
+    if stability_penalty_scale is None:
+        penalty = 0.0
+    else:
+        penalty = get_stability_penalty(
+            model,
+            steady,
+            parameters_by_experiment,
+            stability_penalty_scale,
+        )
+    log_density = jnp.where(
+        found.all(),
+        log_prior + llik + penalty,
+        jnp.nan,
+    )
     return log_density, steady
 
 
 log_density_grapevine = partial(
     jax.jit,
-    static_argnames=_STATIC_SOLVE_ARGUMENTS,
+    static_argnames=_STATIC_ARGUMENTS,
 )(_log_density_and_steady_states)
 
 
-@partial(jax.jit, static_argnames=_STATIC_SOLVE_ARGUMENTS)
+@partial(jax.jit, static_argnames=_STATIC_ARGUMENTS)
 def log_density(
     free_parameters: PyTree,
     model: KineticModel,
@@ -399,6 +454,7 @@ def log_density(
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    stability_penalty_scale: float | None = None,
 ) -> Scalar:
     """Get the log posterior density of a kinetic model's parameters.
 
@@ -421,6 +477,7 @@ def log_density(
         steady_state_atol,
         solver,
         stepsize_controller,
+        stability_penalty_scale,
     )
     return density
 
