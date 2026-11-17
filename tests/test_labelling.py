@@ -1,9 +1,7 @@
 import jax
-import miemu
 import numpy as np
 import pytest
 from jax import numpy as jnp
-from miemu.mid import NATURAL_13C, natural_mid, positional_mid
 
 from enzax.examples import glycolysis
 from enzax.measurements import ILRNormalMeasurement, get_pool_mid
@@ -18,6 +16,9 @@ from enzax.statistical_modelling import (
 )
 from enzax.steady_state import get_steady_state
 from enzax.thermodynamics import get_one_way_fluxes
+
+miemu = pytest.importorskip("miemu")
+mid = pytest.importorskip("miemu.mid")
 
 jax.config.update("jax_enable_x64", True)
 
@@ -37,10 +38,10 @@ def build_emu_network(input_mid):
 
 def labelled_glucose(compound, atoms):
     enrichments = [
-        1.0 if compound == "glc_c" and atom in (1, 2) else NATURAL_13C
+        1.0 if compound == "glc_c" and atom in (1, 2) else mid.NATURAL_13C
         for atom in atoms
     ]
-    return positional_mid(enrichments)
+    return mid.positional_mid(enrichments)
 
 
 def get_miemu_fluxes(emu_network, conc_balanced, parameters):
@@ -67,7 +68,7 @@ def test_atom_mappings_match_the_model():
 def test_uniform_labelling_spreads_everywhere():
     p = 0.3
     emu_network = build_emu_network(
-        lambda compound, atoms: positional_mid([p] * len(atoms)),
+        lambda compound, atoms: mid.positional_mid([p] * len(atoms)),
     )
     fluxes = get_miemu_fluxes(
         emu_network,
@@ -76,7 +77,7 @@ def test_uniform_labelling_spreads_everywhere():
     )
     mids = miemu.simulate_stationary(emu_network, fluxes)
     for block in emu_network.blocks:
-        expected = positional_mid([p] * block.size)
+        expected = mid.positional_mid([p] * block.size)
         found = mids[emu_network.blocks.index(block)]
         assert np.allclose(found, expected, atol=1e-10), block.size
 
@@ -93,7 +94,7 @@ def test_labelled_glucose_labels_pyruvate():
     assert jnp.isclose(pyruvate.sum(), 1.0)
     assert jnp.all(pyruvate >= 0)
     assert pyruvate[2] > pyruvate[3]
-    assert pyruvate[1] > natural_mid(3)[1]
+    assert pyruvate[1] > mid.natural_mid(3)[1]
 
 
 def test_labelling_is_differentiable_through_the_steady_state():

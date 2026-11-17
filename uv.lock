@@ -727,11 +727,13 @@ benchmark = [
 ]
 dev = [
     { name = "diffrax-bdf" },
-    { name = "miemu" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
+]
+labelling = [
+    { name = "miemu" },
 ]
 plot = [
     { name = "h5netcdf" },
@@ -777,12 +779,12 @@ benchmark = [
 ]
 dev = [
     { name = "diffrax-bdf", specifier = ">=0.1.0" },
-    { name = "miemu", git = "https://github.com/dtu-qmcm/miemu.git?branch=emu-network-arrays" },
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6" },
 ]
+labelling = [{ name = "miemu", git = "https://github.com/dtu-qmcm/miemu.git?branch=emu-network-arrays" }]
 plot = [
     { name = "h5netcdf", specifier = ">=1.8.2" },
     { name = "h5py", specifier = ">=3.16.0" },
