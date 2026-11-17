@@ -111,6 +111,7 @@ FIXED_PARAMETERS = {
     ],
 }
 PRIOR_SD = 0.3
+STABILITY_PENALTY_SCALE = 3e-4
 MIN_PRECISION = 1.0
 CONC_ERROR = 0.03
 ENZYME_ERROR = 0.03
@@ -438,6 +439,7 @@ def get_z_posterior():
             guess=guess,
             **measurements,
             mid_simulator=mid_simulator,
+            stability_penalty_scale=STABILITY_PENALTY_SCALE,
         )
 
     z_zero = jax.tree.map(jnp.zeros_like, loc)

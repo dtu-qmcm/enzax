@@ -16,7 +16,7 @@ import blackjax
 import jax
 import numpy as np
 from blackjax.adaptation.base import get_filter_adapt_info_fn
-from blackjax_utils import inference_loop
+from teddys_blackjax_utils import inference_loop
 from grapevine import grapenuts, guess_implicit
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
@@ -38,7 +38,7 @@ N_SAMPLE = 1000
 MAX_TREEDEPTH = 10
 INIT_SD = 0.3
 INITIAL_STEP_SIZE = 0.5
-TARGET_ACCEPTANCE = 0.95
+TARGET_ACCEPTANCE = 0.99
 IMM_PSEUDO_COUNT = 200.0
 SINGLE_THREADED_XLA = (
     "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
