@@ -19,12 +19,60 @@ from enzax.thermodynamics import get_one_way_fluxes
 
 miemu = pytest.importorskip("miemu")
 mid = pytest.importorskip("miemu.mid")
+Compound = pytest.importorskip("miemu.fluxomics_data.compound").Compound
 
 jax.config.update("jax_enable_x64", True)
 
 MODEL = glycolysis.model
 TARGETS = ["pyr_c_123", "r5p_c_12345"]
-NETWORK = miemu.build_reaction_network(glycolysis.atom_mappings, "glycolysis")
+
+
+def build_reaction_network(atom_mappings):
+    reactions = set()
+    for reaction_id, patterns in atom_mappings.items():
+        column = MODEL.S[:, MODEL.reaction_ids.index(reaction_id)]
+        coefficients = {
+            species_id: float(column[MODEL.species.index(species_id)])
+            for species_id in patterns
+        }
+        missing = [
+            species_id
+            for species_id, coefficient in coefficients.items()
+            if coefficient == 0
+        ]
+        if missing:
+            msg = f"{reaction_id} has no stoichiometry for {missing}."
+            raise ValueError(msg)
+        reversible = MODEL.reactions[reaction_id].reversible
+        directions = {reaction_id: 1.0}
+        if reversible:
+            directions[f"{reaction_id}_rev"] = -1.0
+        for direction_id, sign in directions.items():
+            stoichiometry = {
+                species_id: {patterns[species_id]: sign * coefficient}
+                for species_id, coefficient in coefficients.items()
+            }
+            reactions.add(
+                miemu.Reaction(
+                    id=direction_id,
+                    name=direction_id,
+                    stoichiometry_input=stoichiometry,
+                    reversible=reversible and sign > 0,
+                ),
+            )
+    compounds = {
+        Compound(id=species_id)
+        for patterns in atom_mappings.values()
+        for species_id in patterns
+    }
+    return miemu.ReactionNetwork(
+        id="glycolysis",
+        reactions=reactions,
+        compounds=compounds,
+    )
+
+
+NETWORK = build_reaction_network(glycolysis.atom_mappings)
 
 
 def build_emu_network(input_mid):
@@ -53,16 +101,22 @@ def get_miemu_fluxes(emu_network, conc_balanced, parameters):
     return jnp.stack([one_way[r] for r in emu_network.reactions])
 
 
-def test_atom_mappings_match_the_model():
-    for reaction_id, equation in glycolysis.atom_mappings.items():
-        reaction = MODEL.reactions[reaction_id]
-        assert ("<->" in equation) == reaction.reversible
-        forward = next(r for r in NETWORK.reactions if r.id == reaction_id)
-        position = MODEL.reaction_ids.index(reaction_id)
-        for species_id, patterns in forward.stoichiometry.items():
-            species_position = MODEL.species.index(species_id)
-            expected = MODEL.S[species_position, position]
-            assert sum(patterns.values()) == expected, (reaction_id, species_id)
+def test_the_network_matches_one_parsed_from_an_equation():
+    equation = "e4p_c(defg) + f6p_c(abchij) <-> s7p_c(abcdefg) + g3p_c(hij)"
+    parsed = miemu.build_reaction_network({"TALA": equation}, "glycolysis")
+    built = build_reaction_network({"TALA": glycolysis.atom_mappings["TALA"]})
+    for reaction_id in ("TALA", "TALA_rev"):
+        expected, found = (
+            next(r for r in network.reactions if r.id == reaction_id)
+            for network in (parsed, built)
+        )
+        assert found.stoichiometry_input == expected.stoichiometry_input
+        assert found.reversible == expected.reversible
+
+
+def test_a_species_outside_the_reaction_is_rejected():
+    with pytest.raises(ValueError, match="TPI"):
+        build_reaction_network({"TPI": {"dhap_c": "abc", "pyr_c": "abc"}})
 
 
 def test_uniform_labelling_spreads_everywhere():

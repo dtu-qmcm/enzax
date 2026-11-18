@@ -21,6 +21,7 @@ import jax
 import miemu
 import numpy as np
 from jax import numpy as jnp
+from miemu.fluxomics_data.compound import Compound
 from miemu.mid import NATURAL_13C, positional_mid
 
 from enzax.binding import site
@@ -80,7 +81,7 @@ NEW_SATURATION_CONSTANTS = {"dc|PFKM|pep_c": 2e-6}
 CYTOSOLIC_GLUCOSE = 1e-3
 REFERENCE_STEADY_STATE = jnp.append(glycolysis.steady_state, CYTOSOLIC_GLUCOSE)
 ATOM_MAPPINGS = glycolysis.atom_mappings | {
-    "GLUT4": "glc_e(abcdef) <-> glc_c(abcdef)",
+    "GLUT4": {"glc_e": "abcdef", "glc_c": "abcdef"},
 }
 EXPERIMENTS = ("wild_type", "zela")
 DESIGN = {"wild_type": {}, "zela": {"lac_e": 0.1}}
@@ -318,10 +319,55 @@ def get_input_mid(compound, atoms):
     return positional_mid(enrichments)
 
 
+def build_reaction_network(atom_mappings):
+    reactions = set()
+    for reaction_id, patterns in atom_mappings.items():
+        column = MODEL.S[:, MODEL.reaction_ids.index(reaction_id)]
+        coefficients = {
+            species_id: float(column[MODEL.species.index(species_id)])
+            for species_id in patterns
+        }
+        missing = [
+            species_id
+            for species_id, coefficient in coefficients.items()
+            if coefficient == 0
+        ]
+        if missing:
+            msg = f"{reaction_id} has no stoichiometry for {missing}."
+            raise ValueError(msg)
+        reversible = MODEL.reactions[reaction_id].reversible
+        directions = {reaction_id: 1.0}
+        if reversible:
+            directions[f"{reaction_id}_rev"] = -1.0
+        for direction_id, sign in directions.items():
+            stoichiometry = {
+                species_id: {patterns[species_id]: sign * coefficient}
+                for species_id, coefficient in coefficients.items()
+            }
+            reactions.add(
+                miemu.Reaction(
+                    id=direction_id,
+                    name=direction_id,
+                    stoichiometry_input=stoichiometry,
+                    reversible=reversible and sign > 0,
+                ),
+            )
+    compounds = {
+        Compound(id=species_id)
+        for patterns in atom_mappings.values()
+        for species_id in patterns
+    }
+    return miemu.ReactionNetwork(
+        id="glycolysis",
+        reactions=reactions,
+        compounds=compounds,
+    )
+
+
 def get_mid_simulator():
     targets = [emu_id for pool in MEASURED_POOLS for emu_id in pool]
     emu_network = miemu.build_emu_network(
-        miemu.build_reaction_network(ATOM_MAPPINGS, "glycolysis"),
+        build_reaction_network(ATOM_MAPPINGS),
         targets,
         get_input_mid,
         inputs=MODEL.unbalanced_species,
