@@ -7,9 +7,10 @@ pyruvate drain stays far from saturation, and enolase and glucose transport
 have five times the capacity. PFKM gains a tense-state site for
 phosphoenolpyruvate, binds lactate thirty times more weakly and favours its
 tense state more, and pyruvate inhibits PKM1 twenty times more strongly.
-Defines the two experiments, a wild type and a ZeLa-like LDH knockdown with
-low external lactate. Also provides the prior, the measurement loader and the
-MID simulator that the other scripts use.
+Defines three experiments: a wild type, a ZeLa-like LDH knockdown with low
+external lactate, and the wild type at high external lactate. Also provides
+the prior, the measurement loader and the MID simulator that the other
+scripts use.
 """
 
 import csv
@@ -83,8 +84,12 @@ REFERENCE_STEADY_STATE = jnp.append(glycolysis.steady_state, CYTOSOLIC_GLUCOSE)
 ATOM_MAPPINGS = glycolysis.atom_mappings | {
     "GLUT4": {"glc_e": "abcdef", "glc_c": "abcdef"},
 }
-EXPERIMENTS = ("wild_type", "zela")
-DESIGN = {"wild_type": {}, "zela": {"lac_e": 0.1}}
+EXPERIMENTS = ("wild_type", "zela", "high_lactate")
+DESIGN = {
+    "wild_type": {},
+    "zela": {"lac_e": 0.1},
+    "high_lactate": {"lac_e": 10.0},
+}
 KNOCKDOWNS = {"zela": {"LDHA": 0.001}}
 BOUNDARY_REACTIONS = ("GLUT4", "r5p_drain", "pyr_drain", "lac_transport")
 BOUNDARY_KM_FACTORS = {"pyr_drain": 10.0}

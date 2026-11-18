@@ -1,8 +1,10 @@
 """Simulate measurements for the glycolysis labelling case study.
 
-Draws true parameters from the prior, then gives every experiment the wild
-type's offsets in clamped concentrations, so that the experiments differ only
-by design. Finds each experiment's steady state and adds noise to its
+Draws true parameters from the prior for the wild type and ZeLa, then gives
+every experiment the wild type's offsets in clamped concentrations, so that
+the experiments differ only by design. The high-lactate experiment copies the
+wild type's parameters, so adding it leaves the other experiments' truths
+unchanged. Finds each experiment's steady state and adds noise to its
 concentrations, enzyme levels, boundary fluxes and MIDs. Writes the
 measurements to data/measurements.csv and the true values to data/truth.json,
 then checks the log density at the truth.
@@ -17,7 +19,9 @@ from jax import numpy as jnp
 from common import (
     CONC_ERROR,
     CSV_COLUMNS,
+    DESIGN,
     ENZYME_ERROR,
+    EXPERIMENT_SPECIFIC,
     FLUX_ERROR,
     KNOCKDOWNS,
     MEASURED_ENZYMES,
@@ -29,6 +33,7 @@ from common import (
     N_REPLICATE,
     POOL_SEPARATOR,
     TRUTH_FILE,
+    get_condition,
     get_expanded_reference,
     get_initial_guess,
     get_labelled_values,
@@ -42,6 +47,7 @@ from common import (
 )
 from enzax.experiments import (
     gather_parameters_by_experiment,
+    get_experiment_layout,
     merge_experiment_parameters,
 )
 from enzax.measurements import get_pool_mid, pick_enzymes
@@ -54,6 +60,8 @@ from enzax.thermodynamics import get_one_way_fluxes
 
 TRUTH_SEED = 1234
 DATA_SEED = 1235
+DRAWN_EXPERIMENTS = ("wild_type", "zela")
+SAME_CELLS = {"high_lactate": "wild_type"}
 
 
 def draw_true_parameters(key, layout, split):
@@ -85,6 +93,24 @@ def share_clamp_offsets(layout, parameters):
             jax.tree.map(lambda leaf, i=i: leaf[i], shared)
             for i in range(len(layout.experiments))
         ],
+    )
+
+
+def extend_to_experiments(drawn_layout, drawn, layout):
+    by_experiment = gather_parameters_by_experiment(drawn_layout, drawn)
+    parameters = {
+        experiment: jax.tree.map(lambda leaf, i=i: leaf[i], by_experiment)
+        for i, experiment in enumerate(drawn_layout.experiments)
+    }
+    for experiment in layout.experiments:
+        if experiment not in parameters:
+            parameters[experiment] = get_condition(
+                parameters[SAME_CELLS[experiment]],
+                DESIGN[experiment],
+            )
+    return merge_experiment_parameters(
+        layout,
+        [parameters[experiment] for experiment in layout.experiments],
     )
 
 
@@ -207,10 +233,19 @@ def simulate_experiment(key, experiment, parameters, guess, mid_simulator):
 def simulate(truth_seed, data_seed):
     layout = get_layout()
     key_data = jax.random.key(data_seed)
-    true_parameters = draw_true_parameters(
-        jax.random.key(truth_seed),
+    drawn_layout = get_experiment_layout(
+        MODEL.parameter_labelling,
+        DRAWN_EXPERIMENTS,
+        EXPERIMENT_SPECIFIC,
+    )
+    true_parameters = extend_to_experiments(
+        drawn_layout,
+        draw_true_parameters(
+            jax.random.key(truth_seed),
+            drawn_layout,
+            get_split(drawn_layout),
+        ),
         layout,
-        get_split(layout),
     )
     by_experiment = gather_parameters_by_experiment(layout, true_parameters)
     guess = get_initial_guess()
