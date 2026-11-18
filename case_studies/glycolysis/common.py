@@ -85,6 +85,10 @@ ATOM_MAPPINGS = glycolysis.atom_mappings | {
     "GLUT4": {"glc_e": "abcdef", "glc_c": "abcdef"},
 }
 EXPERIMENTS = ("wild_type", "zela", "high_lactate")
+FITS = {
+    "all_experiments": EXPERIMENTS,
+    "without_high_lactate": ("wild_type", "zela"),
+}
 DESIGN = {
     "wild_type": {},
     "zela": {"lac_e": 0.1},
@@ -259,10 +263,14 @@ def get_experiment_parameters(reference, experiment):
     )
 
 
-def get_layout():
+def get_results_dir(fit):
+    return RESULTS_DIR / fit
+
+
+def get_layout(experiments):
     return get_experiment_layout(
         MODEL.parameter_labelling,
-        EXPERIMENTS,
+        experiments,
         EXPERIMENT_SPECIFIC,
     )
 
@@ -298,10 +306,10 @@ def get_prior(layout, split):
     )
 
 
-def get_initial_guess():
+def get_initial_guess(experiments):
     reference = get_reference()
     guesses = []
-    for experiment in EXPERIMENTS:
+    for experiment in experiments:
         steady, found, _, _ = get_measurables_single_experiment(
             MODEL,
             get_experiment_parameters(reference, experiment),
@@ -407,14 +415,26 @@ def get_labelled_values(labelling, parameters):
     }
 
 
-def load_true_parameters():
-    truth = json.loads(TRUTH_FILE.read_text())
-    return pack_parameters(get_layout().labelling, truth["parameters"])
+def load_true_parameters(layout):
+    truth = json.loads(TRUTH_FILE.read_text())["parameters"]
+    return pack_parameters(
+        layout.labelling,
+        {
+            kind: (
+                values
+                if not isinstance(values, dict)
+                else {label: values[label] for label in layout.labelling[kind]}
+            )
+            for kind, values in truth.items()
+        },
+    )
 
 
-def load_measurements():
+def load_measurements(experiments):
     with MEASUREMENTS_FILE.open() as f:
-        rows = list(csv.DictReader(f))
+        rows = [
+            row for row in csv.DictReader(f) if row["experiment"] in experiments
+        ]
     grouped = defaultdict(list)
     for row in rows:
         pool = row["id"] if row["kind"] == "mid" else None
@@ -468,13 +488,13 @@ def get_labels(split, free_parameters):
     ]
 
 
-def get_z_posterior():
-    layout = get_layout()
+def get_z_posterior(experiments):
+    layout = get_layout(experiments)
     split = get_split(layout)
     prior = get_prior(layout, split)
     loc = {kind: leaf[0] for kind, leaf in prior.items()}
     scale = {kind: leaf[1] for kind, leaf in prior.items()}
-    measurements = load_measurements()
+    measurements = load_measurements(experiments)
     mid_simulator = get_mid_simulator()
 
     def from_z_scores(z):

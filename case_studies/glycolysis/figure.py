@@ -5,11 +5,12 @@ is drawn separately. B shows each measurement's standardised residual, as
 the posterior median and interquartile range, on the scale of its
 measurement model: log for concentrations, linear for fluxes, and ordered
 isometric log-ratio coordinates for MIDs, averaged over replicates. C shows
-how much the data narrow each free parameter's prior, as one minus the ratio
-of posterior to prior variance. D compares the prior and posterior of
-ZeLa's glucose uptake relative to the wild type, as simulated and in
-analyse.py's two counterfactual states, against the truth. Saves
-results/figure.png and results/figure.pdf.
+how much each fit's data narrow each free parameter's prior, as one minus
+the ratio of posterior to prior variance. D shows ZeLa's glucose uptake
+relative to the wild type, as simulated and in analyse.py's two
+counterfactual states: the prior, the posterior from the wild type and ZeLa
+alone, the posterior with the high-lactate experiment added, and the truth.
+Saves results/figure.png and results/figure.pdf.
 """
 
 import jax
@@ -18,9 +19,10 @@ import numpy as np
 from jax.flatten_util import ravel_pytree
 from matplotlib.ticker import NullFormatter
 
-from analyse import DERIVED_FILE
+from analyse import get_derived_file
 from common import (
     EXPERIMENTS,
+    FITS,
     MODEL,
     POOL_SEPARATOR,
     RESULTS_DIR,
@@ -39,8 +41,15 @@ EXPERIMENT_NAMES = {
     "zela": "ZeLa",
     "high_lactate": "Wild type, high lactate",
 }
+MAIN_FIT = "all_experiments"
 PRIOR_COLOUR = "#b5b3ad"
 POSTERIOR_COLOUR = "#2a78d6"
+POSTERIORS = {
+    "without_high_lactate": ("Posterior, wild type and ZeLa", "#9cc0ec"),
+    "all_experiments": ("Posterior, all experiments", POSTERIOR_COLOUR),
+}
+ROW_SPACING = 0.22
+LEGEND_HEADROOM = 1.6
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
@@ -60,7 +69,7 @@ PARAMETER_KINDS = {
     "log_tc": "Transfer constants",
     "log_conc_unbalanced": "Clamped concentrations",
 }
-JITTER = 0.15
+JITTER = 0.08
 JITTER_SEED = 0
 UPTAKE_TICKS = (0.33, 0.5, 0.67, 1, 1.5, 2, 3)
 COUNTERFACTUALS = {
@@ -74,8 +83,8 @@ COUNTERFACTUALS = {
 }
 
 
-def load_derived():
-    derived = np.load(DERIVED_FILE)
+def load_derived(fit):
+    derived = np.load(get_derived_file(fit))
     return {
         source: {
             key.split("|", 1)[1]: derived[key]
@@ -86,19 +95,19 @@ def load_derived():
     }
 
 
-def is_stable(derived):
+def is_stable(derived, experiments):
     return np.all(
         [
             (derived[f"found|{experiment}"] == 1)
             & (derived[f"growth_rate|{experiment}"] < 0)
-            for experiment in EXPERIMENTS
+            for experiment in experiments
         ],
         axis=0,
     )
 
 
 def get_residuals(posterior):
-    measurements = load_measurements()
+    measurements = load_measurements(FITS[MAIN_FIT])
     residuals = []
     for kind in RESIDUAL_KINDS:
         for m in measurements[kind]:
@@ -126,8 +135,8 @@ def get_residuals(posterior):
     return residuals
 
 
-def get_contraction():
-    layout = get_layout()
+def get_contraction(fit):
+    layout = get_layout(FITS[fit])
     split = get_split(layout)
     prior = get_prior(layout, split)
     loc = {kind: leaf[0] for kind, leaf in prior.items()}
@@ -135,7 +144,10 @@ def get_contraction():
         ravel_pytree({kind: leaf[1] for kind, leaf in prior.items()})[0],
     )
     draws = np.concatenate(
-        [np.load(get_chain_file(chain))["draws"] for chain in range(N_CHAIN)],
+        [
+            np.load(get_chain_file(fit, chain))["draws"]
+            for chain in range(N_CHAIN)
+        ],
     )
     contraction = 1 - (draws.std(axis=0) / scale) ** 2
     kinds = [label.split("[")[0] for label in get_labels(split, loc)]
@@ -209,33 +221,42 @@ def plot_residuals(ax, residuals):
 
 def plot_contraction(ax, contraction):
     rng = np.random.default_rng(JITTER_SEED)
-    positions = np.arange(len(contraction))[::-1]
-    for position, values in zip(positions, contraction.values(), strict=True):
-        ax.scatter(
-            values,
-            position + rng.uniform(-JITTER, JITTER, len(values)),
-            s=10,
-            color=POSTERIOR_COLOUR,
-            edgecolor="white",
-            linewidth=0.5,
-        )
-    ax.set_yticks(positions, [PARAMETER_KINDS[kind] for kind in contraction])
+    positions = np.arange(len(PARAMETER_KINDS))[::-1]
+    for row, (fit, (_, colour)) in enumerate(POSTERIORS.items()):
+        offset = ROW_SPACING * (0.5 - row)
+        for position, kind in zip(positions, PARAMETER_KINDS, strict=True):
+            values = contraction[fit][kind]
+            ax.scatter(
+                values,
+                position + offset + rng.uniform(-JITTER, JITTER, len(values)),
+                s=10,
+                color=colour,
+                edgecolor="white",
+                linewidth=0.5,
+            )
+    ax.set_yticks(positions, list(PARAMETER_KINDS.values()))
     ax.tick_params(axis="y", length=0)
-    ax.set_xlim(-0.1, 1.05)
+    ax.set_xlim(-0.2, 1.05)
     ax.set_xlabel("Posterior contraction")
     style(ax)
     ax.grid(axis="y", visible=False)
 
 
 def plot_counterfactuals(ax, derived):
+    prior = derived[MAIN_FIT]["prior"]
+    prior = {
+        key: values[is_stable(prior, FITS[MAIN_FIT])]
+        for key, values in prior.items()
+    }
+    rows = [(prior, PRIOR_COLOUR)] + [
+        (derived[fit]["posterior"], colour)
+        for fit, (_, colour) in POSTERIORS.items()
+    ]
     positions = np.arange(len(COUNTERFACTUALS))[::-1]
     for position, key in zip(positions, COUNTERFACTUALS, strict=True):
-        prior = derived["prior"][key][is_stable(derived["prior"])]
-        posterior = derived["posterior"][key]
-        for draws, offset, colour in (
-            (prior, 0.15, PRIOR_COLOUR),
-            (posterior, -0.15, POSTERIOR_COLOUR),
-        ):
+        for row, (source, colour) in enumerate(rows):
+            draws = source[key]
+            offset = ROW_SPACING * (1 - row)
             low, high = np.quantile(draws, INTERVAL)
             inner_low, inner_high = np.quantile(draws, INNER_INTERVAL)
             ax.plot(
@@ -253,12 +274,13 @@ def plot_counterfactuals(ax, derived):
                 solid_capstyle="round",
             )
         ax.plot(
-            derived["truth"][key],
+            derived[MAIN_FIT]["truth"][key],
             position,
             marker="|",
-            markersize=14,
-            markeredgewidth=1.5,
+            markersize=18,
+            markeredgewidth=1.0,
             color=TEXT,
+            zorder=1,
         )
     ax.axvline(1, color=MUTED, linewidth=0.6, zorder=0)
     ax.set_xscale("log")
@@ -269,7 +291,8 @@ def plot_counterfactuals(ax, derived):
     ax.tick_params(axis="y", length=0)
     ax.set_xlabel("ZeLa / wild-type glucose uptake (log scale)")
     ax.plot([], [], color=PRIOR_COLOUR, linewidth=4, label="Prior")
-    ax.plot([], [], color=POSTERIOR_COLOUR, linewidth=4, label="Posterior")
+    for label, colour in POSTERIORS.values():
+        ax.plot([], [], color=colour, linewidth=4, label=label)
     ax.plot(
         [],
         [],
@@ -279,12 +302,8 @@ def plot_counterfactuals(ax, derived):
         markersize=10,
         label="Truth",
     )
-    ax.legend(
-        frameon=False,
-        loc="lower right",
-        bbox_to_anchor=(1, 1),
-        ncols=3,
-    )
+    ax.set_ylim(-2 * ROW_SPACING, positions[0] + LEGEND_HEADROOM)
+    ax.legend(frameon=False, loc="upper right")
     style(ax)
     ax.grid(axis="y", visible=False)
 
@@ -300,7 +319,7 @@ def main():
             "legend.fontsize": 7,
         },
     )
-    derived = load_derived()
+    derived = {fit: load_derived(fit) for fit in FITS}
     fig = plt.figure(figsize=(7.5, 5.5), layout="constrained")
     top, bottom = fig.subfigures(2, 1, height_ratios=[1, 1.1])
     residual_ax = top.subplots()
@@ -309,8 +328,11 @@ def main():
         2,
         width_ratios=[1, 1.3],
     )
-    plot_residuals(residual_ax, get_residuals(derived["posterior"]))
-    plot_contraction(contraction_ax, get_contraction())
+    plot_residuals(residual_ax, get_residuals(derived[MAIN_FIT]["posterior"]))
+    plot_contraction(
+        contraction_ax,
+        {fit: get_contraction(fit) for fit in POSTERIORS},
+    )
     plot_counterfactuals(counterfactual_ax, derived)
     for ax, letter in zip(
         [residual_ax, contraction_ax, counterfactual_ax],

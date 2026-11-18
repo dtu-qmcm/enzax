@@ -22,6 +22,7 @@ from common import (
     DESIGN,
     ENZYME_ERROR,
     EXPERIMENT_SPECIFIC,
+    EXPERIMENTS,
     FLUX_ERROR,
     KNOCKDOWNS,
     MEASURED_ENZYMES,
@@ -231,7 +232,7 @@ def simulate_experiment(key, experiment, parameters, guess, mid_simulator):
 
 
 def simulate(truth_seed, data_seed):
-    layout = get_layout()
+    layout = get_layout(EXPERIMENTS)
     key_data = jax.random.key(data_seed)
     drawn_layout = get_experiment_layout(
         MODEL.parameter_labelling,
@@ -248,7 +249,7 @@ def simulate(truth_seed, data_seed):
         layout,
     )
     by_experiment = gather_parameters_by_experiment(layout, true_parameters)
-    guess = get_initial_guess()
+    guess = get_initial_guess(EXPERIMENTS)
     mid_simulator = get_mid_simulator()
     rows = []
     truth = {
@@ -278,13 +279,13 @@ def write(rows, truth):
 
 
 def check():
-    layout = get_layout()
+    layout = get_layout(EXPERIMENTS)
     split = get_split(layout)
     prior = get_prior(layout, split)
-    measurements = load_measurements()
-    free_true = get_free_parameters(split, load_true_parameters())
+    measurements = load_measurements(EXPERIMENTS)
+    free_true = get_free_parameters(split, load_true_parameters(layout))
     mid_simulator = get_mid_simulator()
-    guess = get_initial_guess()
+    guess = get_initial_guess(EXPERIMENTS)
 
     def density(free_parameters, with_mids=True):
         return log_density(

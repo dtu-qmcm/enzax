@@ -14,8 +14,8 @@ multiplies PFKM's transfer constant by the fourth power of the factor
 inhibitor's wild-type concentration and K its dissociation constant. The
 inhibitor then acts on PFKM in ZeLa exactly as it did in the wild type,
 while every other effect of the knockdown remains. Records each
-counterfactual's glucose uptake relative to the wild type. Writes
-everything to results/derived.npz.
+counterfactual's glucose uptake relative to the wild type. Runs once for
+each fit in common.FITS, saving to results/<fit>/derived.npz.
 """
 
 import time
@@ -26,12 +26,12 @@ from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 from common import (
-    EXPERIMENTS,
+    FITS,
     MEASURED_POOLS,
     MODEL,
     POOL_SEPARATOR,
-    RESULTS_DIR,
     get_mid_simulator,
+    get_results_dir,
     get_z_posterior,
     load_true_parameters,
 )
@@ -47,7 +47,10 @@ PRIOR_SEED = 4321
 TENSE_REACTION = "PFKM"
 INHIBITORS = {"pep": "pep_c", "lac": "lac_c"}
 FROZEN_LOG_DC = 50.0
-DERIVED_FILE = RESULTS_DIR / "derived.npz"
+
+
+def get_derived_file(fit):
+    return get_results_dir(fit) / "derived.npz"
 
 
 def get_tense_fraction(parameters, steady):
@@ -86,7 +89,7 @@ def derive(layout, mid_simulator, parameters, guess):
     uptake = MODEL.reaction_ids.index("GLUT4")
     derived = {}
     solutions = {}
-    for i, experiment in enumerate(EXPERIMENTS):
+    for i, experiment in enumerate(layout.experiments):
         experiment_parameters = jax.tree.map(
             lambda leaf, i=i: leaf[i],
             by_experiment,
@@ -146,10 +149,10 @@ def derive_all(derive_one, positions):
     return {key: np.array([row[key] for row in rows]) for key in rows[0]}
 
 
-def main():
-    split, layout, from_z_scores, _, z_zero = get_z_posterior()
+def main(fit):
+    split, layout, from_z_scores, _, z_zero = get_z_posterior(FITS[fit])
     _, unflatten = ravel_pytree(z_zero)
-    guess = jnp.asarray(np.load(RESULTS_DIR / "mode.npz")["guess"])
+    guess = jnp.asarray(np.load(get_results_dir(fit) / "mode.npz")["guess"])
     mid_simulator = get_mid_simulator()
 
     @jax.jit
@@ -162,12 +165,17 @@ def main():
         )
 
     start = time.perf_counter()
-    truth = derive(layout, mid_simulator, load_true_parameters(), guess)
+    truth = derive(
+        layout,
+        mid_simulator,
+        load_true_parameters(layout),
+        guess,
+    )
     posterior = derive_all(
         lambda x: derive_parameters(unflatten(x)),
         np.concatenate(
             [
-                np.load(get_chain_file(chain))["draws"]
+                np.load(get_chain_file(fit, chain))["draws"]
                 for chain in range(N_CHAIN)
             ],
         ),
@@ -180,15 +188,17 @@ def main():
         lambda z: derive_parameters(from_z_scores(unflatten(z))),
         z_prior,
     )
+    derived_file = get_derived_file(fit)
     np.savez(
-        DERIVED_FILE,
+        derived_file,
         **{f"truth|{k}": np.asarray(v) for k, v in truth.items()},
         **{f"posterior|{k}": v for k, v in posterior.items()},
         **{f"prior|{k}": v for k, v in prior.items()},
     )
     minutes = (time.perf_counter() - start) / 60
-    print(f"Saved derived quantities to {DERIVED_FILE} in {minutes:.1f} min")
+    print(f"Saved derived quantities to {derived_file} in {minutes:.1f} min")
 
 
 if __name__ == "__main__":
-    main()
+    for fit in FITS:
+        main(fit)
