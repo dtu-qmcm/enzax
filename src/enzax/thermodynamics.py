@@ -19,8 +19,10 @@ from jax import numpy as jnp
 from jaxtyping import Array, Float, Int, Scalar
 
 from enzax.array_types import (
+    BalancedConcArr,
     BatchFlux,
     ConcArray,
+    Flux,
     LocalSpeciesIx,
     ParamDict,
     ReactantArr,
@@ -171,6 +173,42 @@ def get_flux_at_equilibrium(
     )
     conc_eq = conc.at[ix_product].set(conc_product)
     return rate_equation(conc_eq, rate_equation.get_input(parameters, ix))
+
+
+def get_one_way_fluxes(
+    model: "KineticModel",
+    conc_balanced: BalancedConcArr,
+    parameters: ParamDict,
+) -> tuple[Flux, Flux]:
+    """Get each reaction's forward and reverse fluxes.
+
+    A reaction's one-way fluxes satisfy `reverse / forward = Q/K`, the
+    flux-force relation, so `forward = v / (1 - Q/K)` for net flux `v`. An
+    irreversible reaction has no reverse flux. At exactly `Q = K` the net flux
+    says nothing about the one-way fluxes, and the result is NaN.
+
+    :param conc_balanced: the balanced species' concentrations, as
+        `KineticModel.flux` takes them.
+    """
+    flux = model.flux(conc_balanced, parameters)
+    conc = model.get_conc(
+        conc_balanced,
+        model.get_log_conc_unbalanced(parameters),
+    )
+    reactions = [model.reactions[r] for r in model.reaction_ids]
+    if not all(hasattr(r, "reversible") for r in reactions):
+        msg = "Every reaction must say whether it is reversible."
+        raise NotImplementedError(msg)
+    reversible = np.array([r.reversible for r in reactions])
+    water_stoichiometry = np.array([r.water_stoichiometry for r in reactions])
+    S = np.asarray(model.S)
+    dgf = parameters["dgf"][model.species_to_dgf_ix]
+    dgr_std = S.T @ dgf + water_stoichiometry * model.water_dgf
+    RT = parameters["temperature"] * GAS_CONSTANT
+    log_q = S.T @ jnp.log(jnp.clip(conc, min=1e-12))
+    log_qk = jnp.where(reversible, dgr_std / RT + log_q, -jnp.inf)
+    forward = flux / -jnp.expm1(log_qk)
+    return forward, forward - flux
 
 
 class ReverseTermIx(eqx.Module):

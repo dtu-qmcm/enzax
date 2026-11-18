@@ -77,9 +77,14 @@ extend-select = ["E501", "COM812"]  # line length is checked
 [tool.ruff.lint.isort]
 known-first-party = ["enzax"]
 
+[tool.uv.sources]
+miemu = { git = "https://github.com/dtu-qmcm/miemu.git", branch = "emu-network-arrays" }
+
 [dependency-groups]
 plot = [
     "matplotlib>=3.9",
+    "h5netcdf>=1.8.2",
+    "h5py>=3.16.0",
 ]
 dev = [
     "diffrax-bdf>=0.1.0",
@@ -87,6 +92,9 @@ dev = [
     "pre-commit>=3.8.0",
     "pytest>=9.0.3",
     "pytest-xdist>=3.6",
+]
+labelling = [
+    "miemu",
 ]
 benchmark = [
     "amici[jax,petab]==1.2.0",
