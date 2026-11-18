@@ -3,7 +3,8 @@
 Launches each chain as its own process pinned to one core, sampling in
 coordinates whitened by the Laplace approximation from mode.py. Then
 gathers the draws and sampler statistics into an arviz netCDF file and
-prints convergence diagnostics.
+prints convergence diagnostics. Runs once for each fit in common.FITS,
+saving to results/<fit>/.
 """
 
 import os
@@ -22,10 +23,11 @@ from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 from common import (
+    FITS,
     MODEL,
     get_floored_precision,
     get_labels,
-    RESULTS_DIR,
+    get_results_dir,
     get_z_posterior,
 )
 from enzax.experiments import gather_parameters_by_experiment
@@ -52,8 +54,8 @@ INFO_FIELDS = (
 )
 
 
-def get_chain_file(chain):
-    return RESULTS_DIR / f"chain_{chain}.npz"
+def get_chain_file(fit, chain):
+    return get_results_dir(fit) / f"chain_{chain}.npz"
 
 
 def get_guess_fn(layout, split, to_parameters):
@@ -76,9 +78,11 @@ def get_guess_fn(layout, split, to_parameters):
     return guess_fn
 
 
-def run_chain(chain):
-    split, layout, from_z_scores, log_posterior, z_zero = get_z_posterior()
-    saved = np.load(RESULTS_DIR / "mode.npz")
+def run_chain(fit, chain):
+    split, layout, from_z_scores, log_posterior, z_zero = get_z_posterior(
+        FITS[fit],
+    )
+    saved = np.load(get_results_dir(fit) / "mode.npz")
     _, unflatten = ravel_pytree(z_zero)
     mode = jnp.asarray(saved["mode"])
     eigenvectors, precision = get_floored_precision(saved["hessian"])
@@ -144,7 +148,7 @@ def run_chain(chain):
             jax.random.fold_in(jax.random.key(SEED), chain),
         )
     np.savez(
-        get_chain_file(chain),
+        get_chain_file(fit, chain),
         draws=np.asarray(draws),
         logdensity=np.asarray(logdensity),
         **{field: np.asarray(getattr(info, field)) for field in INFO_FIELDS},
@@ -161,12 +165,13 @@ def run_chain(chain):
     )
 
 
-def launch_chains():
+def launch_chains(fit):
     cores = sorted(os.sched_getaffinity(0))
     if len(cores) < N_CHAIN:
         msg = f"{N_CHAIN} chains need as many cores, not {len(cores)}."
         raise RuntimeError(msg)
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    results_dir = get_results_dir(fit)
+    results_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ | {
         "XLA_FLAGS": SINGLE_THREADED_XLA,
         "EQX_ON_ERROR": "nan",
@@ -179,9 +184,10 @@ def launch_chains():
             str(core),
             sys.executable,
             __file__,
+            fit,
             str(chain),
         ]
-        log = (RESULTS_DIR / f"chain_{chain}.log").open("w")
+        log = (results_dir / f"chain_{chain}.log").open("w")
         processes.append(
             subprocess.Popen(
                 command,
@@ -193,12 +199,12 @@ def launch_chains():
         print(f"Chain {chain} on core {core}, logging to {log.name}")
     failed = [chain for chain, p in enumerate(processes) if p.wait() != 0]
     if failed:
-        msg = f"Chains {failed} failed; see their logs in {RESULTS_DIR}."
+        msg = f"Chains {failed} failed; see their logs in {results_dir}."
         raise RuntimeError(msg)
 
 
-def combine_chains():
-    chains = [np.load(get_chain_file(chain)) for chain in range(N_CHAIN)]
+def combine_chains(fit):
+    chains = [np.load(get_chain_file(fit, chain)) for chain in range(N_CHAIN)]
 
     def stack(field):
         return np.stack([c[field] for c in chains])
@@ -235,18 +241,19 @@ def combine_chains():
     print(f"Share of draws at the maximum tree depth: {at_limit:.3f}")
     print(f"Largest r_hat: {summary['r_hat'].max():.3f}")
     print(f"Smallest bulk ESS: {summary['ess_bulk'].min():.0f}")
-    draws_file = RESULTS_DIR / "draws.nc"
+    draws_file = get_results_dir(fit) / "draws.nc"
     idata.to_netcdf(draws_file)
     print(f"Saved the draws to {draws_file}")
 
 
-def main():
-    if len(sys.argv) > 1:
-        run_chain(int(sys.argv[1]))
-        return
-    launch_chains()
-    combine_chains()
+def main(fit):
+    launch_chains(fit)
+    combine_chains(fit)
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        run_chain(sys.argv[1], int(sys.argv[2]))
+    else:
+        for fit in FITS:
+            main(fit)

@@ -2,7 +2,8 @@
 
 Climbs from the prior mean with adam, then polishes with Newton steps, and
 saves the mode, its steady states and the Hessian. fit.py uses these to
-whiten the sampler's coordinates.
+whiten the sampler's coordinates. Runs once for each fit in common.FITS,
+saving to results/<fit>/.
 """
 
 import jax
@@ -12,10 +13,11 @@ from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 from common import (
+    FITS,
     get_floored_precision,
     get_initial_guess,
     get_labels,
-    RESULTS_DIR,
+    get_results_dir,
     get_z_posterior,
 )
 
@@ -142,18 +144,20 @@ def report_laplace(hessian, labels):
         )
 
 
-def main():
-    split, _, _, log_posterior, z_zero = get_z_posterior()
+def main(fit):
+    experiments = FITS[fit]
+    split, _, _, log_posterior, z_zero = get_z_posterior(experiments)
     mode, guess = find_mode(
         log_posterior,
         z_zero,
-        get_initial_guess(),
+        get_initial_guess(experiments),
     )
     mode, guess, hessian = polish_mode(log_posterior, mode, guess)
     labels = get_labels(split, z_zero)
     report_laplace(hessian, labels)
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    mode_file = RESULTS_DIR / "mode.npz"
+    results_dir = get_results_dir(fit)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    mode_file = results_dir / "mode.npz"
     np.savez(
         mode_file,
         mode=np.asarray(ravel_pytree(mode)[0]),
@@ -165,4 +169,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    for fit in FITS:
+        main(fit)
