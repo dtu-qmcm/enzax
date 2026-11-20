@@ -1,4 +1,18 @@
-"""TODO(TG): module docstring for the regulator-finding design."""
+"""Shared setup for the glycolysis regulator-finding case study.
+
+Builds one version of the example glycolysis model for each hypothesis about
+which metabolites inhibit PFKM by binding its tense state: none,
+phosphoenolpyruvate, lactate, or both. The truth is phosphoenolpyruvate alone.
+Each hypothesis gets a reference parameter set adapted from the example's. The
+true model drops the example's lactate site and multiplies PFKM's transfer
+constant thirtyfold, and every other model adjusts the transfer constant so
+that it reproduces the true model's reference steady state. Defines five
+experiments: four external glucose levels (30, 4.5, 1.5 and 0.45 mM), and DCA
+at 30 mM, which triples the pyruvate drain. Also defines the three rounds that
+fit them in turn: high glucose, the glucose series, and the series with DCA.
+Also provides the prior, the measurement loader and the MID simulator that the
+other scripts use.
+"""
 
 import csv
 import dataclasses

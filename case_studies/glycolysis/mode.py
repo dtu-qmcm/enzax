@@ -1,4 +1,11 @@
-"""TODO(TG): module docstring for the regulator-finding design."""
+"""Find the posterior mode and the Hessian of the log density there.
+
+Climbs from the prior mean with adam, then polishes with Newton steps, and
+tries again with a smaller learning rate if the gradient is still large. Saves
+the mode, its steady states and the Hessian. fit.py uses these to whiten the
+sampler's coordinates. Runs once for each fit in common.FITS, saving to
+results/<fit>/.
+"""
 
 import sys
 

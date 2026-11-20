@@ -1,4 +1,17 @@
-"""TODO(TG): module docstring for the regulator-finding design."""
+"""Plot panels B to E of the glycolysis regulator-finding figure.
+
+Panel A, a map of the pathway showing its reactions and PFKM's regulation, is
+drawn separately. B shows sedoheptulose 7-phosphate against external glucose,
+as predicted by the round-one fits of the PEP and lactate hypotheses, with the
+measurements from rounds one and two. C shows the design screens after rounds
+one and two, for the pair of hypotheses each round leaves open. D shows each
+hypothesis's cumulative log predictive density of each new round's data, from
+the previous round's fits, relative to the best hypothesis. E shows how five
+concentrations change under DCA, comparing the PEP and PEP-plus-lactate
+hypotheses' predictions from the round-two fits and estimates from the
+round-three fits with the measurements. Saves results/figure.png and
+results/figure.pdf.
+"""
 
 import csv
 

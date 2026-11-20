@@ -1,4 +1,12 @@
-"""TODO(TG): module docstring for the regulator-finding design."""
+"""Simulate measurements for the glycolysis regulator-finding case study.
+
+Draws true parameters for the true hypothesis from its prior. Every experiment
+shares them apart from its glucose level and enzyme changes, so that the
+experiments differ only by design. Finds each experiment's steady state and
+adds noise to its concentrations, enzyme levels, boundary fluxes and MIDs.
+Writes the measurements to data/measurements.csv and the true values to
+data/truth.json, then checks the log density at the truth.
+"""
 
 import csv
 import json

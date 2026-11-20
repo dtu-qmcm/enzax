@@ -1,4 +1,11 @@
-"""TODO(TG): module docstring for the regulator-finding design."""
+"""Sample the posterior with NUTS, one chain per core.
+
+Launches each chain as its own process pinned to one core, sampling in
+coordinates whitened by the Laplace approximation from mode.py. Runs as many
+fits at once as there are free groups of four cores. Then gathers the draws and
+sampler statistics into an arviz netCDF file and prints convergence
+diagnostics. Runs once for each fit in common.FITS, saving to results/<fit>/.
+"""
 
 import os
 import subprocess
