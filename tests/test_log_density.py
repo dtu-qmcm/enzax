@@ -31,6 +31,7 @@ from enzax.statistical_modelling import (
     log_density_grapevine,
     prior_from_truth,
 )
+from enzax.steady_state import get_steady_state
 
 jax.config.update("jax_enable_x64", True)
 
@@ -203,6 +204,26 @@ def test_the_grapevine_density_returns_a_steady_state_per_experiment():
     assert jnp.isclose(value, density(EXPANDED))
     assert steady.shape == GUESS.shape
     assert not jnp.allclose(steady[0], steady[1])
+
+
+def test_the_steady_state_function_can_be_swapped():
+    keywords = {"layout": LAYOUT, "guess": GUESS, **MEASUREMENTS}
+    hybrid = log_density(EXPANDED, MODEL, PRIOR, **keywords)
+    integrated = log_density(
+        EXPANDED,
+        MODEL,
+        PRIOR,
+        steady_state_fn=get_steady_state,
+        **keywords,
+    )
+    assert float(integrated) == pytest.approx(float(hybrid), rel=1e-6)
+
+    def fail(model, guess, parameters, **kwargs):
+        return jnp.full_like(guess, jnp.nan)
+
+    assert jnp.isnan(
+        log_density(EXPANDED, MODEL, PRIOR, steady_state_fn=fail, **keywords),
+    )
 
 
 def test_the_stability_penalty_charges_each_growth_rate():
