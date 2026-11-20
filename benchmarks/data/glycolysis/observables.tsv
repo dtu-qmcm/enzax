@@ -17,3 +17,4 @@ obs_r5p_c	r5p_c	0.1	log	normal
 obs_xu5p_c	xu5p_c	0.1	log	normal
 obs_e4p_c	e4p_c	0.1	log	normal
 obs_s7p_c	s7p_c	0.1	log	normal
+obs_glc_c	glc_c	0.1	log	normal
