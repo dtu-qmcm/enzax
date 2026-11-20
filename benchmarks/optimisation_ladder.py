@@ -36,6 +36,7 @@ os.environ.setdefault("EQX_ON_ERROR", "nan")
 import csv
 import functools
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -54,128 +55,72 @@ import yaml
 from amici.importers.petab.v1 import import_petab_problem
 from amici.sim.jax.petab import SteadyStateEvent, run_simulations
 from amici.sim.sundials import SensitivityMethod, SteadyStateSensitivityMode
-from common import BUILD, HERE, RESULTS
-from diffrax_bdf import BDF, BDFController
-from grapevine import GuessInputs, guess_implicit
-from grapevine.adaptation import grapenuts_window_adaptation
-from grapevine.grapenuts import grapenuts_sampler
-from grapevine.integrator import grapevine_velocity_verlet
+from blackjax.mcmc.metrics import default_metric
+from grapevine import GuessInputs
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
 from jax.scipy.stats import norm
 from pypesto.history import MemoryHistory
 from pypesto.sample.pymc import PymcObjectiveOp
+from work_precision import BUILD, HERE, RESULTS
+
+sys.path.insert(0, str(HERE.parent / "case_studies" / "glycolysis"))
+
+from common import (
+    FITS,
+    MODELS,
+    SOLVER,
+    STEPSIZE_CONTROLLER,
+    TRUE_HYPOTHESIS,
+    get_expanded_reference,
+    get_layout,
+    get_prior,
+    get_reference,
+    get_split,
+    get_z_posterior,
+    load_measurements,
+    solve,
+)
+from fit import N_CHAIN, N_SAMPLE, get_chain_file, get_guess_fn, get_whitening
 
 from enzax import sbml
 from enzax.examples import glycolysis
-from enzax.measurements import (
-    LognormalMeasurement,
-    NormalMeasurement,
-    pick_concs,
-    pick_enzymes,
-    pick_fluxes,
-)
-from enzax.parameter_split import (
-    combine_parameters,
-    count_free_parameters,
-    get_free_parameters,
-    split_parameters_by_fixing,
-)
-from enzax.statistical_modelling import (
-    enzax_prior_logdensity,
-    pack_locs_and_scales,
-)
+from enzax.parameter_split import count_free_parameters, get_free_labels
+from enzax.parameters import SEP
 from enzax.steady_state import get_steady_state, get_steady_state_hybrid
 
-# Importing enzax enables this already. It is repeated because a BDF above
-# order 2 is noise in float32: high order backward differences suffer heavy
-# cancellation.
-jax.config.update("jax_enable_x64", True)
-
 SEED = 1234
-
-# Never inferred. The formation energies are equilibrator's, whose prior is a
-# covariance matrix enzax cannot express yet, and the temperature is the one
-# parameter that is not on a log scale.
-ALWAYS_FIXED = ("dgf", "temperature")
-
-# How far the truth sits from the shipped values, and how wide the prior is.
-# They match on purpose: the truth is then a draw from the prior. Every free
-# parameter is on a log scale, so 0.03 is a jitter of about 3%.
-JITTER_SD = 0.03
-PRIOR_SD = 0.03
-
-# Measurement errors. Concentrations and enzymes are measured on a log scale,
-# so theirs are relative already; fluxes are not.
-CONC_ERROR = 0.03
-ENZYME_ERROR = 0.03
-FLUX_ERROR = 0.05
-# The flux error's floor, as a fraction of the largest flux in the model. A
-# purely relative error would make a reaction whose flux is zero by
-# construction an infinitely precise measurement.
-FLUX_ERROR_FLOOR = 1e-6
-
-# Warmup settings. The acceptance target is blackjax's default rather than
-# `scripts/mcmc_demo.py`'s 0.95: a higher target buys smaller steps and more
-# of them, which is the wrong trade when a leapfrog step is an ODE solve.
-TARGET_ACCEPTANCE = 0.8
-# Warmup adapts the step size, but it pays for every catastrophic proposal it
-# makes on the way. The glycolysis log density's gradient reaches 1e5 near the
-# prior mean, so a leapfrog step of h moves the worst coordinate by about
-# `h**2 * 1e5`, and a few log units out is where the steady state solve stops
-# converging.
-INITIAL_STEP_SIZE = 0.001
-INIT_SD = 0.01
-N_WARMUP = 200
-N_SAMPLE = 20
-MAX_TREEDEPTH = 6
-
-N_TIMED = 6
-N_REPEAT = 3
+FIT = f"{TRUE_HYPOTHESIS}_series_dca"
+HYPOTHESIS, EXPERIMENTS = FITS[FIT]
+MODEL = MODELS[HYPOTHESIS]
+N_TRAJECTORY = 10
 OUT_PREFIX = RESULTS / "optimisation_ladder"
 PETAB_DIR = HERE / "data" / "optimisation_ladder"
 AMICI_BUILD = BUILD / "optimisation_ladder"
-
-# Solve tolerances and step cap, all of them enzax's own defaults, repeated
-# here so that every configuration gets the same ones.
-IVP_RTOL = 1e-9
-IVP_ATOL = 1e-9
 STEADY_STATE_RTOL = 1e-12
-STEADY_STATE_ATOL = 1e-12
-MAX_SOLVER_STEPS = 10000
 
 # Each solver with the step size controller that suits it. `Kvaerno5` and its
-# controller are enzax's own configuration. A variable order `BDF` needs
-# `BDFController` to receive its current order, and that controller's deadband
-# is what lets the factorisation of `I - cJ` survive from step to step.
-# `dtmax` is set for BDF because, integrating to `t1=inf`, its growth factor
-# saturates as the residual collapses and the step then grows until it
-# overflows the time variable.
+# controller are enzax's own configuration, and `BDF` and its controller are
+# the case study's.
 SOLVERS = {
     "kvaerno5": (
         diffrax.Kvaerno5(),
-        diffrax.PIDController(
-            pcoeff=0.1,
-            icoeff=0.3,
-            rtol=IVP_RTOL,
-            atol=IVP_ATOL,
-        ),
+        diffrax.PIDController(pcoeff=0.1, icoeff=0.3, rtol=1e-9, atol=1e-9),
     ),
-    "bdf": (BDF(), BDFController(rtol=IVP_RTOL, atol=IVP_ATOL, dtmax=1e6)),
+    "bdf": (SOLVER, STEPSIZE_CONTROLLER),
 }
 
-# `checkpoints` is not diffrax's default, which is `max_steps` -- 10000 here,
-# which compiles to a program too large to be worth waiting for. 64 is
-# binomial checkpointing's usual working range and costs recomputation the
-# backward pass was going to do anyway.
-ADJOINTS = {
-    "implicit": diffrax.ImplicitAdjoint(),
-    "backprop": diffrax.RecursiveCheckpointAdjoint(checkpoints=64),
+AMICI_PROBLEM = "without MIDs or stability penalty"
+PROBLEMS = {
+    "case study": {},
+    AMICI_PROBLEM: {"mid_measurements": (), "stability_penalty_scale": None},
 }
 
 PETAB_BOUND = 10.0
 AMICI_FORWARD_STEADY_STATE_TOL = 1e-10
 WITHOUT_PYMC = "AMICI + pyPESTO, without PyMC"
+PYMC_DEFAULTS = "AMICI + pyPESTO + PyMC, defaults"
+TRAJECTORY_LIMITS = {PYMC_DEFAULTS: 2}
 SENSITIVITY_METHODS = {
     "forward": SensitivityMethod.forward,
     "adjoint": SensitivityMethod.adjoint,
@@ -183,455 +128,221 @@ SENSITIVITY_METHODS = {
 
 
 class Configuration(NamedTuple):
-    """One row of the benchmark: which optimisations are switched on.
-
-    :param label: what the row is called, in the figure and the csv.
-
-    :param adjoint: a key of `ADJOINTS`, how the solve is differentiated.
-
-    :param solver: a key of `SOLVERS`, which integrator runs.
-
-    :param grapevine: whether each leapfrog step's guess comes from the
-        previous step's solution, rather than from the default guess.
-
-    :param hybrid: whether a bounded Newton root find runs before the
-        integration.
-    """
-
     label: str
-    adjoint: str
     solver: str
+    steady_state_fn: Callable
     grapevine: bool
-    hybrid: bool
 
+
+# `checkpoints` is not diffrax's default, which is `max_steps` -- 10000 here,
+# which compiles to a program too large to be worth waiting for. 64 is
+# binomial checkpointing's usual working range and costs recomputation the
+# backward pass was going to do anyway.
+BACKPROP = functools.partial(
+    get_steady_state,
+    adjoint=diffrax.RecursiveCheckpointAdjoint(checkpoints=64),
+)
 
 # The optimisations, cumulatively, in the order the performance page lists
 # them.
 CONFIGURATIONS = (
-    Configuration("no optimisations", "backprop", "kvaerno5", False, False),
-    Configuration("+ implicit adjoint", "implicit", "kvaerno5", False, False),
-    Configuration("+ BDF solver", "implicit", "bdf", False, False),
-    Configuration("+ grapevine", "implicit", "bdf", True, False),
-    Configuration("+ hybrid solve", "implicit", "bdf", True, True),
+    Configuration("no optimisations", "kvaerno5", BACKPROP, False),
+    Configuration("+ implicit adjoint", "kvaerno5", get_steady_state, False),
+    Configuration("+ BDF solver", "bdf", get_steady_state, False),
+    Configuration("+ grapevine", "bdf", get_steady_state, True),
+    Configuration("+ hybrid solve", "bdf", get_steady_state_hybrid, True),
 )
 
 
-class Problem(NamedTuple):
-    """A simulated fitting problem, and the pieces needed to evaluate it.
-
-    :param model: the kinetic model.
-
-    :param split: which parameters are free, and the values of the rest.
-
-    :param prior: the free parameters' prior, as locations and scales.
-
-    :param measurements: measurements of concentrations, enzymes and fluxes,
-        in that order.
-
-    :param position: the free parameters at the prior mean, ravelled, which is
-        where sampling starts.
-
-    :param unflatten: turns a position back into a parameter PyTree.
-
-    :param default_guess: the steady state at the shipped parameters: the
-        guess someone fitting this model would really have.
-    """
-
-    model: object
-    split: object
-    prior: object
-    measurements: tuple
-    position: jax.Array
-    unflatten: Callable
+class Coordinates(NamedTuple):
+    to_z_scores: Callable
+    to_theta: Callable
+    to_position: Callable
     default_guess: jax.Array
+    guess_fn: Callable
 
 
-def build_problem(example, seed: int) -> tuple[Problem, jax.Array]:
-    """Simulate measurements from a jittered version of a model's parameters.
+class Start(NamedTuple):
+    position: jax.Array
+    step_size: float
+    inverse_mass_matrix: jax.Array
+    n_leapfrog: int
 
-    :param example: a module of `enzax.examples`, which must define `model`,
-        `parameters` and `steady_state`.
 
-    :param seed: seeds the jitter and the measurement noise.
+def get_coordinates() -> Coordinates:
+    split, layout, from_z_scores, _, z_zero = get_z_posterior(
+        HYPOTHESIS,
+        EXPERIMENTS,
+    )
+    _, unflatten = ravel_pytree(z_zero)
+    prior = get_prior(HYPOTHESIS, layout, split)
+    loc, prior_scale = (
+        ravel_pytree({kind: leaf[i] for kind, leaf in prior.items()})[0]
+        for i in (0, 1)
+    )
+    mode, scale, default_guess = get_whitening(FIT)
 
-    :return: the problem, and the true free parameters it was simulated from.
-    """
-    model = example.model
-    reference = example.parameters
-    split = split_parameters_by_fixing(
-        model.parameter_labelling,
-        reference,
-        {parameter: None for parameter in ALWAYS_FIXED},
+    def to_z_scores(position):
+        return unflatten(mode + scale @ position)
+
+    def to_theta(position):
+        return loc + prior_scale * (mode + scale @ position)
+
+    def to_position(theta):
+        return jnp.linalg.solve(scale, (theta - loc) / prior_scale - mode)
+
+    guess_fn = get_guess_fn(
+        MODEL,
+        layout,
+        split,
+        lambda position: from_z_scores(to_z_scores(position)),
     )
-    free_reference = get_free_parameters(split, reference)
-    key_jitter, key_simulate = jax.random.split(jax.random.key(seed), 2)
-    free_true = jitter(key_jitter, free_reference, JITTER_SD)
-    true_parameters = combine_parameters(split, free_true)
-    prior = pack_locs_and_scales(
-        loc=free_reference,
-        scale=jax.tree.map(
-            lambda leaf: jnp.full_like(leaf, PRIOR_SD),
-            free_reference,
-        ),
+    return Coordinates(
+        to_z_scores,
+        to_theta,
+        to_position,
+        default_guess,
+        guess_fn,
     )
-    default_guess = example.steady_state
-    steady = get_steady_state_hybrid(model, default_guess, true_parameters)
-    balanced = model.get_balanced_conc(steady, true_parameters)
-    true_conc = model.get_conc(
-        balanced,
-        model.get_log_conc_unbalanced(true_parameters),
-    )
-    true_flux = model.flux(balanced, true_parameters)
-    true_log_enzyme = true_parameters["log_enzyme"]
-    flux_error = (
-        FLUX_ERROR * jnp.abs(true_flux)
-        + FLUX_ERROR_FLOOR * jnp.abs(true_flux).max()
-    )
-    errors = (
-        jnp.full_like(true_conc, CONC_ERROR),
-        jnp.full_like(true_log_enzyme, ENZYME_ERROR),
-        flux_error,
-    )
-    values = simulate(
-        key_simulate,
-        (true_conc, true_log_enzyme, true_flux),
-        errors,
-    )
-    position, unflatten = ravel_pytree(free_reference)
-    problem = Problem(
-        model=model,
-        split=split,
-        prior=prior,
-        measurements=(
-            LognormalMeasurement(
-                "e",
-                model.species,
-                values=values[0],
-                errors=errors[0],
+
+
+def get_starts(coordinates: Coordinates) -> list[Start]:
+    chains = [np.load(get_chain_file(FIT, chain)) for chain in range(N_CHAIN)]
+    draws = np.linspace(0, N_CHAIN * N_SAMPLE - 1, N_TRAJECTORY)
+    starts = []
+    for draw in draws.round().astype(int):
+        chain = chains[draw // N_SAMPLE]
+        theta = jnp.asarray(chain["draws"][draw % N_SAMPLE])
+        starts.append(
+            Start(
+                position=coordinates.to_position(theta),
+                step_size=float(chain["step_size"]),
+                inverse_mass_matrix=jnp.asarray(chain["inverse_mass_matrix"]),
+                n_leapfrog=int(np.median(chain["num_integration_steps"])),
             ),
-            LognormalMeasurement(
-                "e",
-                model.parameter_labelling["log_enzyme"],
-                values=values[1],
-                errors=errors[1],
-            ),
-            NormalMeasurement(
-                "e",
-                model.reaction_ids,
-                values=values[2],
-                errors=errors[2],
-            ),
-        ),
-        position=position,
-        unflatten=unflatten,
-        default_guess=default_guess,
-    )
-    return problem, free_true
+        )
+    return starts
 
 
-def jitter(key, parameters, sd: float):
-    """Move every parameter a little, to make a ground truth."""
-    treedef = jax.tree.structure(parameters)
-    keys = jax.tree.unflatten(
-        treedef,
-        list(jax.random.split(key, treedef.num_leaves)),
-    )
-    return jax.tree.map(
-        lambda leaf, leaf_key: leaf
-        + jax.random.normal(leaf_key, leaf.shape) * sd,
-        parameters,
-        keys,
-    )
-
-
-def simulate(key, truth, error):
-    """Simulate observations from the true model.
-
-    :param truth: true concentration, log enzyme and flux.
-
-    :param error: their measurement errors.
-    """
-    key_conc, key_enzyme, key_flux = jax.random.split(key, num=3)
-    true_conc, true_log_enzyme, true_flux = truth
-    conc_error, enzyme_error, flux_error = error
-    return (
-        jnp.exp(
-            jnp.log(true_conc)
-            + jax.random.normal(key_conc, true_conc.shape) * conc_error,
-        ),
-        jnp.exp(
-            true_log_enzyme
-            + jax.random.normal(key_enzyme, true_log_enzyme.shape)
-            * enzyme_error,
-        ),
-        true_flux + jax.random.normal(key_flux, true_flux.shape) * flux_error,
-    )
-
-
-def get_density(problem: Problem, configuration: Configuration) -> Callable:
-    """Get `(position, guess) -> (log density, steady state)`.
-
-    This is `enzax.statistical_modelling.log_density_grapevine` with the
-    solver, the adjoint and the Newton seeding as arguments, which enzax does
-    not offer, and with the position ravelled, which is the form the sampler
-    manipulates. Swapping those three out is the point of this script.
-    """
+def get_density(
+    configuration: Configuration,
+    options: dict,
+    coordinates: Coordinates,
+) -> Callable:
     solver, stepsize_controller = SOLVERS[configuration.solver]
-    steady_state_fn = (
-        get_steady_state_hybrid if configuration.hybrid else get_steady_state
-    )
-    solve = functools.partial(
-        steady_state_fn,
+    *_, log_posterior, _ = get_z_posterior(
+        HYPOTHESIS,
+        EXPERIMENTS,
         solver=solver,
         stepsize_controller=stepsize_controller,
-        adjoint=ADJOINTS[configuration.adjoint],
-        max_steps=MAX_SOLVER_STEPS,
-        ivp_rtol=IVP_RTOL,
-        ivp_atol=IVP_ATOL,
-        steady_state_rtol=STEADY_STATE_RTOL,
-        steady_state_atol=STEADY_STATE_ATOL,
+        steady_state_fn=configuration.steady_state_fn,
+        **options,
     )
-    model = problem.model
 
-    @eqx.filter_jit()
     def density(position, guess):
-        free_parameters = problem.unflatten(position)
-        parameters = combine_parameters(problem.split, free_parameters)
-        steady = solve(model, guess, parameters)
-        balanced = model.get_balanced_conc(steady, parameters)
-        conc_hat = model.get_conc(
-            balanced,
-            model.get_log_conc_unbalanced(parameters),
-        )
-        flux_hat = model.flux(balanced, parameters)
-        conc_msts, enzyme_msts, flux_msts = problem.measurements
-        log_density = (
-            enzax_prior_logdensity(free_parameters, problem.prior)
-            + conc_msts.log_likelihood(
-                pick_concs(model, conc_hat, conc_msts.ids),
-            ).sum()
-            + enzyme_msts.log_likelihood(
-                pick_enzymes(model, parameters, enzyme_msts.ids),
-            ).sum()
-            + flux_msts.log_likelihood(
-                pick_fluxes(model, flux_hat, flux_msts.ids),
-            ).sum()
-        )
-        return log_density, steady
+        return log_posterior(coordinates.to_z_scores(position), guess)
 
     return density
 
 
-def get_guess_fn(problem: Problem) -> Callable:
-    """Get grapevine's implicit heuristic, bound to this problem.
-
-    `guess_implicit` takes an Euler step from the previous steady state, so it
-    needs the residual whose root that state is, as a function of the
-    concentrations and the position being sampled.
-    """
-
-    def target_function(conc_ind, position):
-        parameters = combine_parameters(
-            problem.split,
-            problem.unflatten(position),
-        )
-        return problem.model.dndt(conc_ind, parameters)
-
-    return functools.partial(guess_implicit, target_function=target_function)
-
-
-def warm_up(
-    problem: Problem,
-    key,
-    n_warmup: int,
-    n_sample: int,
-    max_treedepth: int,
-) -> dict:
-    """Adapt the sampler, then see what an iteration really costs.
-
-    Runs one chain of GrapeNUTS at the optimised configuration -- the last
-    entry of `CONFIGURATIONS` -- because the iteration being priced is one
-    that configuration would have produced.
-
-    :param n_warmup: window adaptation draws. The step size is what these buy:
-        dual averaging needs a few hundred draws to leave `INITIAL_STEP_SIZE`,
-        and at a step size that small every configuration looks the same,
-        because a leapfrog step barely moves and the guess is already perfect.
-
-    :param n_sample: draws taken after adaptation, to measure the leapfrog
-        steps per iteration and to land somewhere the chain would really be.
-
-    :return: the adapted step size and inverse mass matrix, the position the
-        chain ended at, and the median leapfrog count.
-    """
-    optimised = CONFIGURATIONS[-1]
-    density = get_density(problem, optimised)
-    guess_fn = get_guess_fn(problem)
-    bound = dict(
-        integrator=grapevine_velocity_verlet,
-        guess_fn=guess_fn,
-        max_num_doublings=max_treedepth,
-    )
-    key_init, key_warmup, key_sample = jax.random.split(key, 3)
-    start = (
-        problem.position
-        + jax.random.normal(key_init, problem.position.shape) * INIT_SD
-    )
-    warmup = grapenuts_window_adaptation(
-        grapenuts_sampler,
-        density,
-        problem.default_guess,
-        initial_step_size=INITIAL_STEP_SIZE,
-        target_acceptance_rate=TARGET_ACCEPTANCE,
-        # A dense mass matrix would be 151 by 151, which no feasible number of
-        # warmup draws could estimate.
-        is_mass_matrix_diagonal=True,
-        **bound,
-    )
-    began = time.time()
-    (state, tuned), _ = warmup.run(key_warmup, start, num_steps=n_warmup)
-    step_size = float(tuned["step_size"])
-    inverse_mass_matrix = np.asarray(tuned["inverse_mass_matrix"])
-    print(
-        f"  adapted in {time.time() - began:.0f} s: step size "
-        f"{step_size:.4g}",
-    )
-    kernel = jax.jit(
-        grapenuts_sampler(
-            density,
-            step_size=tuned["step_size"],
-            inverse_mass_matrix=tuned["inverse_mass_matrix"],
-            default_guess=problem.default_guess,
-            **bound,
-        ).step,
-    )
-    leapfrogs = []
-    accepted = []
-    for sample_key in jax.random.split(key_sample, n_sample):
-        state, info = kernel(sample_key, state)
-        leapfrogs.append(int(info.num_integration_steps))
-        accepted.append(float(info.acceptance_rate))
-    print(
-        f"  {n_sample} draws: {np.median(leapfrogs):.0f} leapfrog steps per "
-        f"iteration (median), acceptance {np.mean(accepted):.3f}",
-    )
-    return {
-        "step_size": np.asarray(step_size),
-        "inverse_mass_matrix": inverse_mass_matrix,
-        "position": np.asarray(state.position),
-        "n_leapfrog": np.asarray(int(np.median(leapfrogs))),
-    }
-
-
 def build_trajectory(
-    problem: Problem,
-    warmed: dict,
+    density: Callable,
+    coordinates: Coordinates,
+    start: Start,
     key,
-    n_step: int,
 ) -> list[tuple]:
-    """Run one Hamiltonian trajectory, recording every step of it.
-
-    The recursion is velocity Verlet with a diagonal Euclidean metric, which
-    is what `grapevine_velocity_verlet` implements and what blackjax's NUTS
-    expands into a trajectory. It is written out here rather than called
-    because what is wanted is the positions and the steady states at them,
-    and a sampler keeps neither.
-
-    NUTS grows its trajectory in both directions from the current draw, so
-    this does too: half the steps run forward from the starting momentum and
-    half run backward from its negation. A trajectory of `n_step` steps taken
-    all in one direction would reach twice as far into the tails as the
-    sampler ever went, where the solve is harder for every configuration and
-    the guesses are no worse for the optimised one.
-
-    :return: one `(previous position, previous solution, position,
-        is_default)` per leapfrog step, in the order the recursion produced
-        them. That is what one step of work needs: the pair a guess is
-        extrapolated from, the position the guess is for, and whether the step
-        starts a trajectory, where the previous solution is the default guess
-        and is used as it is.
-    """
-    density = get_density(problem, CONFIGURATIONS[-1])
-    guess_fn = get_guess_fn(problem)
-    value_and_grad = eqx.filter_jit(jax.value_and_grad(density, has_aux=True))
-    inverse_mass_matrix = jnp.asarray(warmed["inverse_mass_matrix"])
-    step_size = jnp.asarray(warmed["step_size"])
-    start_position = jnp.asarray(warmed["position"])
-    # The metric's mass matrix is the inverse of what warmup reports, and the
-    # momentum is drawn from it, so its standard deviation is the reciprocal
-    # square root of what is stored.
-    start_momentum = jax.random.normal(key, start_position.shape) / jnp.sqrt(
-        inverse_mass_matrix,
+    value_and_grad = jax.jit(jax.value_and_grad(density, has_aux=True))
+    guess_fn = jax.jit(coordinates.guess_fn)
+    metric = default_metric(start.inverse_mass_matrix)
+    (_, start_solution), start_gradient = value_and_grad(
+        start.position,
+        coordinates.default_guess,
     )
-    default_guess = problem.default_guess
-    _, start_gradient = value_and_grad(start_position, guess=default_guess)
+    start_momentum = metric.sample_momentum(key, start.position)
     steps = []
-    halves = ((1.0, n_step - n_step // 2), (-1.0, n_step // 2))
+    halves = (
+        (1.0, start.n_leapfrog - start.n_leapfrog // 2),
+        (-1.0, start.n_leapfrog // 2),
+    )
     for direction, length in halves:
-        position, solution = start_position, default_guess
-        is_default = jnp.bool_(True)
+        position, solution = start.position, start_solution
         momentum = direction * start_momentum
         gradient = start_gradient
         for _ in range(length):
-            momentum = momentum + 0.5 * step_size * gradient
-            moved = position + step_size * inverse_mass_matrix * momentum
-            if is_default:
-                guess = solution
-            else:
-                guess = guess_fn(
-                    GuessInputs(solution, position, is_default),
-                    moved,
-                )
-            (_, moved_solution), gradient = value_and_grad(moved, guess=guess)
-            momentum = momentum + 0.5 * step_size * gradient
-            steps.append((position, solution, moved, is_default))
+            momentum = momentum + 0.5 * start.step_size * gradient
+            moved = position + start.step_size * (
+                start.inverse_mass_matrix @ momentum
+            )
+            guess = guess_fn(
+                GuessInputs(solution, position, jnp.bool_(False)),
+                moved,
+            )
+            (log_density, moved_solution), gradient = value_and_grad(
+                moved,
+                guess,
+            )
+            if not jnp.isfinite(log_density):
+                msg = "The trajectory reached a position with no steady state."
+                raise RuntimeError(msg)
+            momentum = momentum + 0.5 * start.step_size * gradient
+            steps.append((position, solution, moved))
             position, solution = moved, moved_solution
-            is_default = jnp.bool_(False)
     return steps
 
 
 def get_leapfrog_cost(
-    problem: Problem,
+    density: Callable,
     configuration: Configuration,
+    coordinates: Coordinates,
 ) -> Callable:
-    """Find how much work one leapfrog step does, as a function to time.
-
-    That is the guess, if the configuration computes one, and then the log
-    density and its gradient. The guess is made as grapevine's integrator
-    makes it: extrapolated from the previous position and solution, except at
-    the start of a trajectory, where the default guess is used as it is. Every
-    configuration takes all four arguments whether or not it uses them, so
-    that each is timed through a function of the same shape.
-    """
-    density = get_density(problem, configuration)
     value_and_grad = jax.value_and_grad(density, has_aux=True)
-    guess_fn = get_guess_fn(problem) if configuration.grapevine else None
-    default_guess = problem.default_guess
 
-    @eqx.filter_jit()
-    def leapfrog_cost(
-        previous_position,
-        previous_solution,
-        position,
-        is_default,
-    ):
-        if guess_fn is None:
-            guess = default_guess
-        else:
-            guess = jax.lax.cond(
-                is_default,
-                lambda inputs, _: inputs.solution,
-                guess_fn,
-                GuessInputs(previous_solution, previous_position, is_default),
+    @jax.jit
+    def leapfrog_cost(previous_position, previous_solution, position):
+        if configuration.grapevine:
+            guess = coordinates.guess_fn(
+                GuessInputs(
+                    previous_solution,
+                    previous_position,
+                    jnp.bool_(False),
+                ),
                 position,
             )
-        (log_density, _), gradient = value_and_grad(position, guess=guess)
+        else:
+            guess = coordinates.default_guess
+        (log_density, _), gradient = value_and_grad(position, guess)
         return log_density, gradient
 
     return leapfrog_cost
 
 
-def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
+def in_position(
+    cost: Callable,
+    coordinates: Coordinates,
+    position: jax.Array,
+) -> Callable:
+    jacobian = np.asarray(jax.jacfwd(coordinates.to_theta)(position))
+
+    def leapfrog_cost(previous_position, previous_solution, position):
+        value, gradient = cost(np.asarray(coordinates.to_theta(position)))
+        return value, jacobian.T @ np.asarray(gradient)
+
+    return leapfrog_cost
+
+
+def get_condition_id(experiment: str) -> str:
+    return experiment.replace(".", "_")
+
+
+def get_petab_id(kind: str, label: str) -> str:
+    ids = sbml.get_parameter_ids(MODEL)
+    if label in MODEL.parameter_labelling[kind]:
+        return ids[(kind, label)]
+    base, experiment = label.rsplit(SEP, 1)
+    return f"{ids[(kind, base)]}__{get_condition_id(experiment)}"
+
+
+def write_petab_problem(directory: Path) -> petab.Problem:
     """Write the ladder's statistical model as a PEtab problem, for AMICI.
 
     The SBML comes from `enzax_to_sbml`, with two additions: a parameter for
@@ -641,16 +352,21 @@ def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
     parameter gets the ladder's normal prior on the log scale, and bounds
     `PETAB_BOUND` either side of its location, which PEtab requires.
     """
-    model = problem.model
-    ids = sbml.get_parameter_ids(model)
+    layout = get_layout(HYPOTHESIS, EXPERIMENTS)
+    split = get_split(HYPOTHESIS, layout)
+    prior = get_prior(HYPOTHESIS, layout, split)
+    reference = get_expanded_reference(HYPOTHESIS, layout)
+    ids = sbml.get_parameter_ids(MODEL)
+    parameters = get_reference(HYPOTHESIS)
+    steady_state, *_ = solve(MODEL, parameters, glycolysis.steady_state)
     doc = sbml.enzax_to_sbml(
-        model,
-        glycolysis.parameters,
-        problem.default_guess,
+        MODEL,
+        parameters,
+        steady_state,
         "optimisation_ladder",
     )
     sbml_model = doc.getModel()
-    for species_id in model.unbalanced_species:
+    for species_id in MODEL.unbalanced_species:
         parameter_id = ids[("log_conc_unbalanced", species_id)]
         parameter = sbml_model.createParameter()
         parameter.setId(parameter_id)
@@ -659,7 +375,7 @@ def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
         assignment = sbml_model.createInitialAssignment()
         assignment.setSymbol(sbml.get_sbml_id(species_id))
         assignment.setMath(libsbml.parseL3Formula(parameter_id))
-    for reaction_id in model.reaction_ids:
+    for reaction_id in MODEL.reaction_ids:
         sid = sbml.get_sbml_id(reaction_id)
         parameter = sbml_model.createParameter()
         parameter.setId(f"flux__{sid}")
@@ -671,67 +387,88 @@ def write_petab_problem(problem: Problem, directory: Path) -> petab.Problem:
         )
     directory.mkdir(parents=True, exist_ok=True)
     libsbml.writeSBMLToFile(doc, str(directory / "model.xml"))
-    conc_msts, enzyme_msts, flux_msts = problem.measurements
-    observed = [
-        *(
-            (f"conc__{sbml.get_sbml_id(i)}", sbml.get_sbml_id(i), True)
-            for i in conc_msts.ids
-        ),
-        *(
-            (f"enzyme__{sbml.get_sbml_id(i)}", ids[("log_enzyme", i)], True)
-            for i in enzyme_msts.ids
-        ),
-        *(
-            (
-                f"flux__{sbml.get_sbml_id(i)}",
-                f"flux__{sbml.get_sbml_id(i)}",
-                False,
+    conditions = {experiment: {} for experiment in EXPERIMENTS}
+    for kind, labels in layout.labelling.items():
+        free = get_free_labels(split, kind)
+        for position, label in enumerate(labels):
+            if label in MODEL.parameter_labelling[kind]:
+                continue
+            base, experiment = label.rsplit(SEP, 1)
+            conditions[experiment][ids[(kind, base)]] = (
+                get_petab_id(kind, label)
+                if label in free
+                else float(np.exp(reference[kind][position]))
             )
-            for i in flux_msts.ids
-        ),
-    ]
-    values = np.concatenate(
-        [np.asarray(m.values) for m in problem.measurements],
-    )
-    errors = np.concatenate(
-        [np.asarray(m.errors) for m in problem.measurements],
-    )
-    observable_ids = [f"obs_{name}" for name, _, _ in observed]
     pd.DataFrame(
-        {
-            petab.C.OBSERVABLE_ID: observable_ids,
-            petab.C.OBSERVABLE_FORMULA: [formula for _, formula, _ in observed],
-            petab.C.NOISE_FORMULA: [
-                f"noiseParameter1_{i}" for i in observable_ids
-            ],
-            petab.C.OBSERVABLE_TRANSFORMATION: [
-                petab.C.LOG if is_log else petab.C.LIN
-                for _, _, is_log in observed
-            ],
-            petab.C.NOISE_DISTRIBUTION: petab.C.NORMAL,
-        },
-    ).to_csv(directory / "observables.tsv", sep="\t", index=False)
-    pd.DataFrame(
-        {petab.C.CONDITION_ID: ["control"], petab.C.CONDITION_NAME: [""]},
+        [
+            {petab.C.CONDITION_ID: get_condition_id(experiment)} | overrides
+            for experiment, overrides in conditions.items()
+        ],
     ).to_csv(directory / "conditions.tsv", sep="\t", index=False)
-    pd.DataFrame(
-        {
-            petab.C.OBSERVABLE_ID: observable_ids,
-            petab.C.SIMULATION_CONDITION_ID: "control",
-            petab.C.MEASUREMENT: values,
-            petab.C.TIME: np.inf,
-            petab.C.NOISE_PARAMETERS: errors,
-        },
-    ).to_csv(directory / "measurements.tsv", sep="\t", index=False)
-    labelling = model.parameter_labelling
-    parameter_ids = jax.tree.leaves(
-        {
-            kind: [ids[(kind, label)] for label in labelling[kind]]
-            for kind in problem.prior
-        },
+    measurements = load_measurements(EXPERIMENTS)
+    observables = {
+        "conc_measurements": ("conc", sbml.get_sbml_id, True),
+        "enzyme_measurements": (
+            "enzyme",
+            lambda i: ids[("log_enzyme", i)],
+            True,
+        ),
+        "flux_measurements": (
+            "flux",
+            lambda i: f"flux__{sbml.get_sbml_id(i)}",
+            False,
+        ),
+    }
+    observable_rows = {}
+    measurement_rows = []
+    for argument, (prefix, get_formula, is_log) in observables.items():
+        for measurement in measurements[argument]:
+            for i, value, error in zip(
+                measurement.ids,
+                np.asarray(measurement.values),
+                np.asarray(measurement.errors),
+                strict=True,
+            ):
+                observable_id = f"obs_{prefix}__{sbml.get_sbml_id(i)}"
+                observable_rows[observable_id] = {
+                    petab.C.OBSERVABLE_ID: observable_id,
+                    petab.C.OBSERVABLE_FORMULA: get_formula(i),
+                    petab.C.NOISE_FORMULA: f"noiseParameter1_{observable_id}",
+                    petab.C.OBSERVABLE_TRANSFORMATION: (
+                        petab.C.LOG if is_log else petab.C.LIN
+                    ),
+                    petab.C.NOISE_DISTRIBUTION: petab.C.NORMAL,
+                }
+                measurement_rows.append(
+                    {
+                        petab.C.OBSERVABLE_ID: observable_id,
+                        petab.C.SIMULATION_CONDITION_ID: get_condition_id(
+                            measurement.experiment,
+                        ),
+                        petab.C.MEASUREMENT: float(value),
+                        petab.C.TIME: np.inf,
+                        petab.C.NOISE_PARAMETERS: float(error),
+                    },
+                )
+    pd.DataFrame(list(observable_rows.values())).to_csv(
+        directory / "observables.tsv",
+        sep="\t",
+        index=False,
     )
+    pd.DataFrame(measurement_rows).to_csv(
+        directory / "measurements.tsv",
+        sep="\t",
+        index=False,
+    )
+    parameter_ids = [
+        get_petab_id(path[0].key, label)
+        for path, _ in jax.tree.leaves_with_path(
+            {kind: leaf[0] for kind, leaf in prior.items()},
+        )
+        for label in get_free_labels(split, path[0].key)
+    ]
     locs, scales = (
-        ravel_pytree({kind: leaf[i] for kind, leaf in problem.prior.items()})[0]
+        ravel_pytree({kind: leaf[i] for kind, leaf in prior.items()})[0]
         for i in (0, 1)
     )
     pd.DataFrame(
@@ -808,7 +545,7 @@ def get_pymc_cost(problem: pypesto.Problem) -> Callable:
     The PyMC model copies the one pyPESTO's `PymcSampler` builds: a uniform
     prior between each parameter's bounds, with the objective added as a
     potential. Timing calls PyMC's compiled log density and gradient, so it
-    includes PyTensor's and pyPESTO's overhead. The position is mapped onto
+    includes PyTensor's and pyPESTO's overhead. The parameters are mapped onto
     PyMC's unbounded scale, and the function returns the objective's own
     value and gradient, so they can be compared with the other
     configurations'.
@@ -825,19 +562,13 @@ def get_pymc_cost(problem: pypesto.Problem) -> Callable:
         pymc.Deterministic("loggyposty", value)
         logp_dlogp = pymc.NUTS()._logp_dlogp_func
 
-    def leapfrog_cost(
-        previous_position,
-        previous_solution,
-        position,
-        is_default,
-    ):
+    def cost(theta):
         log_posterior._last_evaluation.clear()
-        theta = np.asarray(position)
         logp_dlogp(np.log(theta - lower) - np.log(upper - theta))
         evaluation = log_posterior._last_evaluation
         return evaluation["fval"], evaluation["grad"]
 
-    return leapfrog_cost
+    return cost
 
 
 def get_pypesto_cost(problem: pypesto.Problem) -> Callable:
@@ -848,24 +579,15 @@ def get_pypesto_cost(problem: pypesto.Problem) -> Callable:
     negative log density, so both outputs are negated.
     """
 
-    def leapfrog_cost(
-        previous_position,
-        previous_solution,
-        position,
-        is_default,
-    ):
-        fval, grad = problem.objective(
-            np.asarray(position),
-            sensi_orders=(0, 1),
-        )
+    def cost(theta):
+        fval, grad = problem.objective(theta, sensi_orders=(0, 1))
         return -fval, -grad
 
-    return leapfrog_cost
+    return cost
 
 
 def get_amici_jax_cost(
     petab_problem: petab.Problem,
-    prior,
     steady_state_tol: float,
 ) -> Callable:
     """Find how much work one leapfrog step does through AMICI's JAX backend.
@@ -884,6 +606,8 @@ def get_amici_jax_cost(
     order = np.array(
         [list(jax_problem.parameter_ids).index(i) for i in estimated],
     )
+    layout = get_layout(HYPOTHESIS, EXPERIMENTS)
+    prior = get_prior(HYPOTHESIS, layout, get_split(HYPOTHESIS, layout))
     locs, scales = (
         ravel_pytree({kind: leaf[i] for kind, leaf in prior.items()})[0]
         for i in (0, 1)
@@ -902,137 +626,77 @@ def get_amici_jax_cost(
         llh = run_simulations(with_values, steady_state_event=event)[0]
         return llh + norm.logpdf(theta, locs, scales).sum()
 
-    value_and_grad = jax.jit(jax.value_and_grad(log_density))
-
-    def leapfrog_cost(
-        previous_position,
-        previous_solution,
-        position,
-        is_default,
-    ):
-        return value_and_grad(position)
-
-    return leapfrog_cost
-
-
-def time_call(f, *args, n_repeat: int) -> float:
-    """Get the median time of a jitted call, in seconds.
-
-    One call goes first and is thrown away, so that compilation is not in the
-    numbers.
-    """
-    jax.block_until_ready(f(*args))
-    times = []
-    for _ in range(n_repeat):
-        began = time.time()
-        jax.block_until_ready(f(*args))
-        times.append(time.time() - began)
-    return sorted(times)[len(times) // 2]
+    return jax.jit(jax.value_and_grad(log_density))
 
 
 def time_configuration(
+    problem: str,
     label: str,
     leapfrog_cost: Callable,
-    steps: list[tuple],
-    where: np.ndarray,
-    n_repeat: int,
-    reference_gradients: np.ndarray | None,
+    trajectories: list[list[tuple]],
+    reference: list[np.ndarray] | None,
 ) -> list[dict]:
-    """Time one configuration at several points along the trajectory.
-
-    :param label: what the row is called, in the figure and the csv.
-
-    :param leapfrog_cost: what `get_leapfrog_cost` returned, or one of the
-        functions of the same shape for another tool.
-
-    :param steps: what `build_trajectory` returned.
-
-    :param where: which of those steps to time.
-
-    :param reference_gradients: the optimised configuration's gradients at the
-        same steps, to report each row's against, or None for the row that is
-        itself the reference.
-
-    :return: one record per timed step.
-    """
     began = time.time()
-    jax.block_until_ready(leapfrog_cost(*steps[0]))
+    jax.block_until_ready(leapfrog_cost(*trajectories[0][0]))
     print(f"  compiled in {time.time() - began:.0f} s", end="", flush=True)
     records = []
-    for position, step in enumerate(where):
-        arguments = steps[step]
-        seconds = time_call(leapfrog_cost, *arguments, n_repeat=n_repeat)
-        log_density, gradient = leapfrog_cost(*arguments)
-        gradient = np.asarray(gradient)
-        if reference_gradients is None:
+    for trajectory, steps in enumerate(trajectories):
+        outputs = []
+        began = time.perf_counter()
+        for arguments in steps:
+            outputs.append(jax.block_until_ready(leapfrog_cost(*arguments)))
+        seconds = time.perf_counter() - began
+        log_densities = np.array([float(value) for value, _ in outputs])
+        gradients = np.stack([np.asarray(gradient) for _, gradient in outputs])
+        if reference is None:
             error = 0.0
         else:
-            reference = reference_gradients[position]
+            expected = reference[trajectory]
             error = float(
-                np.linalg.norm(gradient - reference)
-                / np.linalg.norm(reference),
+                np.max(
+                    np.linalg.norm(gradients - expected, axis=1)
+                    / np.linalg.norm(expected, axis=1),
+                ),
             )
         records.append(
             {
+                "problem": problem,
                 "configuration": label,
-                "step": int(step),
-                "is_default": bool(arguments[3]),
+                "trajectory": trajectory,
+                "n_leapfrog": len(steps),
                 "seconds": seconds,
-                "log_density": float(log_density),
+                "n_failed": int(np.sum(~np.isfinite(log_densities))),
                 "gradient_relative_error": error,
-                "gradient": gradient,
+                "gradients": gradients,
             },
         )
+    n_steps = sum(r["n_leapfrog"] for r in records)
     print(
-        f", {np.mean([r['seconds'] for r in records]) * 1e3:.1f} ms per "
-        f"leapfrog step",
+        f", {sum(r['seconds'] for r in records) / n_steps * 1e3:.1f} ms per "
+        f"leapfrog step over {len(records)} trajectories",
     )
     return records
 
 
-def summarise(
-    records: list[dict],
-    n_leapfrog: int,
-    n_default: int,
-    labels: list[str],
-) -> list[dict]:
-    """Turn the timed steps into one row per configuration.
-
-    A NUTS iteration's time is estimated as `n_default` steps at the mean time
-    of the timed trajectory starts, plus the remaining `n_leapfrog -
-    n_default` at the mean time of the other timed steps. Trajectory starts
-    are counted separately because they solve from the default guess, so for
-    the grapevine configurations they cost far more than the steps after them,
-    and an unweighted mean over the timed steps would count them several times
-    over.
-
-    :return: a row per configuration, in `labels` order, with the seconds
-        one NUTS iteration would take, the factor gained over the row above,
-        and the factor over the fully optimised enzax configuration.
-    """
+def summarise(records: list[dict], labels: list[str]) -> list[dict]:
     rows = []
     for label in labels:
-        mine = [
-            record for record in records if record["configuration"] == label
-        ]
-        default = [r["seconds"] for r in mine if r["is_default"]]
-        other = [r["seconds"] for r in mine if not r["is_default"]]
-        seconds_per_iteration = n_default * float(np.mean(default)) + (
-            (n_leapfrog - n_default) * float(np.mean(other)) if other else 0.0
-        )
+        mine = [r for r in records if r["configuration"] == label]
+        seconds = [r["seconds"] for r in mine]
         rows.append(
             {
+                "problem": mine[0]["problem"],
                 "configuration": label,
-                "seconds_per_leapfrog": seconds_per_iteration / n_leapfrog,
-                "seconds_per_iteration": seconds_per_iteration,
+                "n_trajectories": len(mine),
+                "seconds_per_leapfrog": sum(seconds)
+                / sum(r["n_leapfrog"] for r in mine),
+                "seconds_per_iteration": float(np.mean(seconds)),
+                "fastest_iteration": float(np.min(seconds)),
+                "slowest_iteration": float(np.max(seconds)),
                 "gradient_relative_error": float(
-                    np.max(
-                        [record["gradient_relative_error"] for record in mine],
-                    ),
+                    np.max([r["gradient_relative_error"] for r in mine]),
                 ),
-                "log_density": float(
-                    np.mean([record["log_density"] for record in mine]),
-                ),
+                "n_failed": sum(r["n_failed"] for r in mine),
             },
         )
     n_ladder = len(CONFIGURATIONS)
@@ -1048,9 +712,7 @@ def summarise(
             if position < n_ladder
             else 1.0
         )
-    optimised = next(
-        row for row in rows if row["configuration"] == CONFIGURATIONS[-1].label
-    )
+    optimised = rows[n_ladder - 1]
     for row in rows:
         row["times_optimised"] = (
             row["seconds_per_iteration"] / optimised["seconds_per_iteration"]
@@ -1058,16 +720,14 @@ def summarise(
     return rows
 
 
-def report(rows: list[dict], n_leapfrog: int, n_free: int) -> None:
+def report(rows: list[dict], n_free: int) -> None:
     """Print the summary as a table."""
-    print(
-        f"\nOne NUTS iteration: {n_leapfrog} leapfrog steps, {n_free} free "
-        f"parameters",
-    )
+    print(f"\n{rows[0]['problem']}: {n_free} free parameters")
     width = max(len(row["configuration"]) for row in rows) + 2
     header = (
-        f"{'configuration':<{width}}{'s/leapfrog':>12}{'s/iteration':>13}"
-        f"{'factor':>9}{'cumulative':>12}{'vs enzax':>10}{'|grad err|':>12}"
+        f"{'configuration':<{width}}{'trajectories':>13}{'s/leapfrog':>12}"
+        f"{'s/iteration':>13}{'range':>17}{'factor':>9}{'cumulative':>12}"
+        f"{'vs enzax':>10}{'|grad err|':>12}{'failed':>8}"
     )
     print(header)
     print("-" * len(header))
@@ -1078,20 +738,19 @@ def report(rows: list[dict], n_leapfrog: int, n_free: int) -> None:
             if row["cumulative_factor"] == 1.0
             else f"{row['cumulative_factor']:.1f}x"
         )
+        spread = (
+            f"{row['fastest_iteration']:.2f}-{row['slowest_iteration']:.2f}"
+        )
         print(
             f"{row['configuration']:<{width}}"
+            f"{row['n_trajectories']:>13}"
             f"{row['seconds_per_leapfrog']:>12.4f}"
             f"{row['seconds_per_iteration']:>13.2f}"
+            f"{spread:>17}"
             f"{factor:>9}{cumulative:>12}"
             f"{row['times_optimised']:>9.1f}x"
-            f"{row['gradient_relative_error']:>12.2e}",
-        )
-    if not all(np.isfinite(row["log_density"]) for row in rows):
-        print(
-            "\nA log density is not finite: some configuration's steady "
-            "state solve failed at the timed positions, so its time is the "
-            "time of a failure rather than of a solve. The csv's "
-            "log_density column says which.",
+            f"{row['gradient_relative_error']:>12.2e}"
+            f"{row['n_failed']:>8}",
         )
 
 
@@ -1153,8 +812,16 @@ def plot(rows: list[dict], path: str) -> None:
             color=COMPARISON,
             alpha=0.8,
         )
-    for position, (x, y) in enumerate(zip(seconds, height)):
+    for position, (row, x, y) in enumerate(zip(ladder, seconds, height)):
         last = position == n_ladder - 1
+        axes.plot(
+            [row["fastest_iteration"], row["slowest_iteration"]],
+            [y, y],
+            color=SERIES_EMPHASIS if last else SERIES,
+            linewidth=2,
+            solid_capstyle="round",
+            zorder=2,
+        )
         axes.plot(
             [x],
             [y],
@@ -1167,7 +834,7 @@ def plot(rows: list[dict], path: str) -> None:
         )
         axes.annotate(
             format_seconds(x) + ("  (all four)" if last else ""),
-            (x, y),
+            (row["slowest_iteration"], y),
             xytext=(14, 0),
             textcoords="offset points",
             va="center",
@@ -1197,10 +864,15 @@ def plot(rows: list[dict], path: str) -> None:
     axes.set_yticks(height, labels, fontsize=11, color=TEXT_PRIMARY)
     axes.invert_yaxis()
     axes.set_ylim(n_ladder - 0.4, -1.4)
-    every = [row["seconds_per_iteration"] for row in rows]
+    every = [row["fastest_iteration"] for row in ladder] + [
+        row["seconds_per_iteration"] for row in comparisons
+    ]
+    most = [row["slowest_iteration"] for row in ladder] + [
+        row["seconds_per_iteration"] for row in comparisons
+    ]
     # Room on the right for the value labels, which are drawn outside the
     # marks and so outside the data's own range.
-    axes.set_xlim(min(every) / 2.5, max(every) * 5)
+    axes.set_xlim(min(every) / 2.5, max(most) * 5)
     axes.set_xlabel(
         "wall time for one NUTS iteration (s, log scale)",
         fontsize=10,
@@ -1232,7 +904,7 @@ def format_seconds(seconds: float) -> str:
 
 def write_csv(records: list[dict], path: str) -> None:
     """Write one row per timed step, without the gradients themselves."""
-    fields = [field for field in records[0] if field != "gradient"]
+    fields = [field for field in records[0] if field != "gradients"]
     with open(path, "w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
@@ -1241,55 +913,19 @@ def write_csv(records: list[dict], path: str) -> None:
     print(f"timings written to {path}")
 
 
-def main() -> None:
-    """Price each optimisation and draw the figure."""
-    key_warmup, key_trajectory = jax.random.split(jax.random.key(SEED), 2)
-    problem, _ = build_problem(glycolysis, SEED)
-    n_free = count_free_parameters(problem.split)
-    print(
-        f"glycolysis: {len(problem.model.ode_state_species)} balanced "
-        f"species, {len(problem.model.reaction_ids)} reactions, {n_free} free "
-        "parameters",
-    )
-    print(f"warming up: {N_WARMUP} adaptation draws, {N_SAMPLE} samples")
-    warmed = warm_up(problem, key_warmup, N_WARMUP, N_SAMPLE, MAX_TREEDEPTH)
-    n_step = int(warmed["n_leapfrog"])
-    print(f"rebuilding one trajectory of {n_step} leapfrog steps")
-    steps = build_trajectory(problem, warmed, key_trajectory, n_step)
-    defaults = [position for position, step in enumerate(steps) if step[3]]
-    where = np.union1d(
-        np.linspace(0, len(steps) - 1, min(N_TIMED, len(steps)))
-        .round()
-        .astype(int),
-        defaults,
-    )
-    print(f"timing each configuration at steps {[int(s) for s in where]}")
-    records: list[dict] = []
-    reference = None
-    # The optimised configuration goes first, so that the rows above it have
-    # something to report their gradients against.
-    for configuration in reversed(CONFIGURATIONS):
-        print(f"{configuration.label}:")
-        mine = time_configuration(
-            configuration.label,
-            get_leapfrog_cost(problem, configuration),
-            steps,
-            where,
-            N_REPEAT,
-            reference,
-        )
-        if reference is None:
-            reference = np.stack([record["gradient"] for record in mine])
-        records.extend(mine)
-    petab_problem = write_petab_problem(problem, PETAB_DIR)
+def get_comparisons(
+    coordinates: Coordinates,
+    position: jax.Array,
+) -> dict[str, Callable]:
+    petab_problem = write_petab_problem(PETAB_DIR)
     shutil.rmtree(AMICI_BUILD, ignore_errors=True)
     importer = pypesto.petab.PetabImporter(
         petab_problem,
         output_folder=AMICI_BUILD / "cpp",
         model_name="optimisation_ladder",
     )
-    comparisons = {
-        "AMICI + pyPESTO + PyMC, defaults": lambda: get_pymc_cost(
+    costs = {
+        PYMC_DEFAULTS: lambda: get_pymc_cost(
             get_pypesto_problem(
                 importer,
                 "forward",
@@ -1315,31 +951,92 @@ def main() -> None:
         ),
         "AMICI JAX + blackjax": lambda: get_amici_jax_cost(
             petab_problem,
-            problem.prior,
             STEADY_STATE_RTOL,
         ),
     }
-    for label, get_cost in comparisons.items():
-        print(f"{label}:")
-        records.extend(
-            time_configuration(
-                label,
-                get_cost(),
-                steps,
-                where,
-                N_REPEAT,
-                reference,
-            ),
+    return {
+        label: lambda get_cost=get_cost: in_position(
+            get_cost(),
+            coordinates,
+            position,
         )
-    labels = [c.label for c in CONFIGURATIONS] + list(comparisons)
-    rows = summarise(records, n_step, len(defaults), labels)
-    report(rows, n_step, n_free)
-    write_csv(records, f"{OUT_PREFIX}.csv")
-    write_csv(rows, f"{OUT_PREFIX}_summary.csv")
-    plot(
-        [row for row in rows if row["configuration"] != WITHOUT_PYMC],
-        f"{OUT_PREFIX}.png",
+        for label, get_cost in costs.items()
+    }
+
+
+def main() -> None:
+    """Price each optimisation and draw the figure."""
+    coordinates = get_coordinates()
+    starts = get_starts(coordinates)
+    layout = get_layout(HYPOTHESIS, EXPERIMENTS)
+    n_free = count_free_parameters(get_split(HYPOTHESIS, layout))
+    print(
+        f"glycolysis: {len(MODEL.ode_state_species)} balanced species, "
+        f"{len(MODEL.reaction_ids)} reactions, {len(layout.experiments)} "
+        f"experiments, {n_free} free parameters",
     )
+    optimised = get_density(
+        CONFIGURATIONS[-1],
+        PROBLEMS["case study"],
+        coordinates,
+    )
+    trajectories = []
+    keys = jax.random.split(jax.random.key(SEED), N_TRAJECTORY)
+    for trajectory, (start, key) in enumerate(zip(starts, keys, strict=True)):
+        began = time.time()
+        trajectories.append(
+            build_trajectory(optimised, coordinates, start, key),
+        )
+        print(
+            f"trajectory {trajectory}: {start.n_leapfrog} leapfrog steps in "
+            f"{time.time() - began:.0f} s",
+        )
+    for problem, options in PROBLEMS.items():
+        print(f"\n{problem}")
+        records: list[dict] = []
+        reference = None
+        # The optimised configuration goes first, so that the rows above it
+        # have something to report their gradients against.
+        for configuration in reversed(CONFIGURATIONS):
+            print(f"{configuration.label}:")
+            timings = time_configuration(
+                problem,
+                configuration.label,
+                get_leapfrog_cost(
+                    get_density(configuration, options, coordinates),
+                    configuration,
+                    coordinates,
+                ),
+                trajectories,
+                reference,
+            )
+            if reference is None:
+                reference = [r["gradients"] for r in timings]
+            records.extend(timings)
+        labels = [c.label for c in CONFIGURATIONS]
+        if problem == AMICI_PROBLEM:
+            comparisons = get_comparisons(coordinates, starts[0].position)
+            for label, get_cost in comparisons.items():
+                print(f"{label}:")
+                records.extend(
+                    time_configuration(
+                        problem,
+                        label,
+                        get_cost(),
+                        trajectories[: TRAJECTORY_LIMITS.get(label)],
+                        reference,
+                    ),
+                )
+                labels.append(label)
+        rows = summarise(records, labels)
+        report(rows, n_free)
+        suffix = "" if problem == "case study" else "_amici"
+        write_csv(records, f"{OUT_PREFIX}{suffix}.csv")
+        write_csv(rows, f"{OUT_PREFIX}{suffix}_summary.csv")
+        plot(
+            [row for row in rows if row["configuration"] != WITHOUT_PYMC],
+            f"{OUT_PREFIX}{suffix}.png",
+        )
 
 
 if __name__ == "__main__":
