@@ -6,51 +6,51 @@
     </listOfCompartments>
     <listOfSpecies>
       <species id="glc_e" name="glc_e" compartment="compartment" initialConcentration="0.0299987370943989" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="glc_c" name="glc_c" compartment="compartment" initialConcentration="0.0134911818939771" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
+      <species id="glc_c" name="glc_c" compartment="compartment" initialConcentration="0.00674731479074981" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="atp_c" name="atp_c" compartment="compartment" initialConcentration="0.00399085973045097" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="g6p_c" name="g6p_c" compartment="compartment" initialConcentration="0.000535536681244411" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="g6p_c" name="g6p_c" compartment="compartment" initialConcentration="0.000685509230689386" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="adp_c" name="adp_c" compartment="compartment" initialConcentration="0.00130051739180107" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="f6p_c" name="f6p_c" compartment="compartment" initialConcentration="0.000307038830184811" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="fdp_c" name="fdp_c" compartment="compartment" initialConcentration="0.000643970070398375" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="g3p_c" name="g3p_c" compartment="compartment" initialConcentration="6.32989804361847e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="dhap_c" name="dhap_c" compartment="compartment" initialConcentration="3.38324426082627e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="f6p_c" name="f6p_c" compartment="compartment" initialConcentration="0.000393584535314104" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="fdp_c" name="fdp_c" compartment="compartment" initialConcentration="0.000401045119218946" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="g3p_c" name="g3p_c" compartment="compartment" initialConcentration="3.48352382129774e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="dhap_c" name="dhap_c" compartment="compartment" initialConcentration="2.20004922322685e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="pi_c" name="pi_c" compartment="compartment" initialConcentration="0.0159360009265174" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="nad_c" name="nad_c" compartment="compartment" initialConcentration="0.00115732045327122" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="nadh_c" name="nadh_c" compartment="compartment" initialConcentration="5.17564335358803e-07" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="dpg_c" name="dpg_c" compartment="compartment" initialConcentration="2.97240379367923e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="p3g_c" name="p3g_c" compartment="compartment" initialConcentration="0.011892228846682" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="p2g_c" name="p2g_c" compartment="compartment" initialConcentration="0.00274141488252202" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="pep_c" name="pep_c" compartment="compartment" initialConcentration="9.32827287176305e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="pyr_c" name="pyr_c" compartment="compartment" initialConcentration="0.000154999394603516" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="lac_c" name="lac_c" compartment="compartment" initialConcentration="0.000425760575383271" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="dpg_c" name="dpg_c" compartment="compartment" initialConcentration="7.87604512501737e-07" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="p3g_c" name="p3g_c" compartment="compartment" initialConcentration="9.01824892549488e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="p2g_c" name="p2g_c" compartment="compartment" initialConcentration="1.93706428676965e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pep_c" name="pep_c" compartment="compartment" initialConcentration="8.5921174062222e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pyr_c" name="pyr_c" compartment="compartment" initialConcentration="0.000145610334974272" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="lac_c" name="lac_c" compartment="compartment" initialConcentration="0.000398834886240468" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="nadp_c" name="nadp_c" compartment="compartment" initialConcentration="6.04584201169821e-05" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="pgl6_c" name="pgl6_c" compartment="compartment" initialConcentration="0.0105696990581685" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pgl6_c" name="pgl6_c" compartment="compartment" initialConcentration="0.0129258178474095" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="nadph_c" name="nadph_c" compartment="compartment" initialConcentration="1.3492204010902e-05" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="pgc6_c" name="pgc6_c" compartment="compartment" initialConcentration="1.01443312802958e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="ru5p_c" name="ru5p_c" compartment="compartment" initialConcentration="9.84071432737521e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="pgc6_c" name="pgc6_c" compartment="compartment" initialConcentration="1.11291475116487e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="ru5p_c" name="ru5p_c" compartment="compartment" initialConcentration="1.04091496261485e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
       <species id="co2_c" name="co2_c" compartment="compartment" initialConcentration="0.00183838362185888" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
-      <species id="r5p_c" name="r5p_c" compartment="compartment" initialConcentration="4.01505287492952e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="xu5p_c" name="xu5p_c" compartment="compartment" initialConcentration="2.74284273004307e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="s7p_c" name="s7p_c" compartment="compartment" initialConcentration="0.000134590360471314" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="e4p_c" name="e4p_c" compartment="compartment" initialConcentration="2.64919840516967e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
-      <species id="lac_e" name="lac_e" compartment="compartment" initialConcentration="0.000420947262226127" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
+      <species id="r5p_c" name="r5p_c" compartment="compartment" initialConcentration="4.24218879360719e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="xu5p_c" name="xu5p_c" compartment="compartment" initialConcentration="2.88395409675844e-05" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="s7p_c" name="s7p_c" compartment="compartment" initialConcentration="0.000254037685939084" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="e4p_c" name="e4p_c" compartment="compartment" initialConcentration="1.9021911277327e-06" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="lac_e" name="lac_e" compartment="compartment" initialConcentration="4.20947262226128e-05" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="gdp_c" name="gdp_c" compartment="compartment" initialConcentration="0.000281065449326085" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
       <species id="f26bp_c" name="f26bp_c" compartment="compartment" initialConcentration="1.1206584675426" hasOnlySubstanceUnits="false" boundaryCondition="true" constant="true"/>
     </listOfSpecies>
     <listOfParameters>
-      <parameter id="kcat__GLUT4" name="log_kcat GLUT4" value="1e-05" constant="true"/>
-      <parameter id="kcat__HEX1" name="log_kcat HEX1" value="79.3167623747187" constant="true"/>
-      <parameter id="kcat__HEX2" name="log_kcat HEX2" value="532.469918844887" constant="true"/>
+      <parameter id="kcat__GLUT4" name="log_kcat GLUT4" value="5.6391484951473e-06" constant="true"/>
+      <parameter id="kcat__HEX1" name="log_kcat HEX1" value="87.253226728052" constant="true"/>
+      <parameter id="kcat__HEX2" name="log_kcat HEX2" value="857.306398374265" constant="true"/>
       <parameter id="kcat__PGI" name="log_kcat PGI" value="3882.41590802991" constant="true"/>
-      <parameter id="kcat__PFKM" name="log_kcat PFKM" value="1469.44937615149" constant="true"/>
+      <parameter id="kcat__PFKM" name="log_kcat PFKM" value="4477.09794242292" constant="true"/>
       <parameter id="kcat__PFKL" name="log_kcat PFKL" value="127.02098853966" constant="true"/>
       <parameter id="kcat__FBA" name="log_kcat FBA" value="76.4892658694856" constant="true"/>
       <parameter id="kcat__TPI" name="log_kcat TPI" value="1194.03973889557" constant="true"/>
       <parameter id="kcat__GAPD" name="log_kcat GAPD" value="194.030162844134" constant="true"/>
       <parameter id="kcat__PGK" name="log_kcat PGK" value="413.830791277063" constant="true"/>
       <parameter id="kcat__PGM" name="log_kcat PGM" value="818.44818219628" constant="true"/>
-      <parameter id="kcat__ENO" name="log_kcat ENO" value="3.28056274263273" constant="true"/>
-      <parameter id="kcat__PKM1" name="log_kcat PKM1" value="610.843622579536" constant="true"/>
+      <parameter id="kcat__ENO" name="log_kcat ENO" value="16.4028137131636" constant="true"/>
+      <parameter id="kcat__PKM1" name="log_kcat PKM1" value="1309.18849927761" constant="true"/>
       <parameter id="kcat__PKM2" name="log_kcat PKM2" value="446.497966192544" constant="true"/>
       <parameter id="kcat__LDHA" name="log_kcat LDHA" value="508.21529942345" constant="true"/>
       <parameter id="kcat__G6PDH" name="log_kcat G6PDH" value="210.370317745163" constant="true"/>
@@ -61,9 +61,9 @@
       <parameter id="kcat__TKT1" name="log_kcat TKT1" value="11.4843765010382" constant="true"/>
       <parameter id="kcat__TKT2" name="log_kcat TKT2" value="93.6420809785771" constant="true"/>
       <parameter id="kcat__TALA" name="log_kcat TALA" value="73.9111928253034" constant="true"/>
-      <parameter id="kcat__r5p_drain" name="log_kcat r5p_drain" value="3.64933022573755e-07" constant="true"/>
-      <parameter id="kcat__pyr_drain" name="log_kcat pyr_drain" value="2.35157064615811e-05" constant="true"/>
-      <parameter id="kcat__lac_transport" name="log_kcat lac_transport" value="148.121507495207" constant="true"/>
+      <parameter id="kcat__r5p_drain" name="log_kcat r5p_drain" value="7.29866030157594e-07" constant="true"/>
+      <parameter id="kcat__pyr_drain" name="log_kcat pyr_drain" value="0.000256809069369346" constant="true"/>
+      <parameter id="kcat__lac_transport" name="log_kcat lac_transport" value="0.000108759262321718" constant="true"/>
       <parameter id="enzyme__GLUT4" name="log_enzyme GLUT4" value="100.1" constant="true"/>
       <parameter id="enzyme__HEX1" name="log_enzyme HEX1" value="2.13671490395641e-06" constant="true"/>
       <parameter id="enzyme__HEX2" name="log_enzyme HEX2" value="9.71521044008875e-08" constant="true"/>
@@ -89,8 +89,8 @@
       <parameter id="enzyme__r5p_drain" name="log_enzyme r5p_drain" value="1" constant="true"/>
       <parameter id="enzyme__pyr_drain" name="log_enzyme pyr_drain" value="1" constant="true"/>
       <parameter id="enzyme__lac_transport" name="log_enzyme lac_transport" value="1.01" constant="true"/>
-      <parameter id="saturation_constant__km_GLUT4_glc_e" name="log_saturation_constant km|GLUT4|glc_e" value="0.0015" constant="true"/>
-      <parameter id="saturation_constant__km_GLUT4_glc_c" name="log_saturation_constant km|GLUT4|glc_c" value="0.005" constant="true"/>
+      <parameter id="saturation_constant__km_GLUT4_glc_e" name="log_saturation_constant km|GLUT4|glc_e" value="0.0299987370943989" constant="true"/>
+      <parameter id="saturation_constant__km_GLUT4_glc_c" name="log_saturation_constant km|GLUT4|glc_c" value="0.001" constant="true"/>
       <parameter id="saturation_constant__km_HEX1_glc_c" name="log_saturation_constant km|HEX1|glc_c" value="5.67962031385365e-05" constant="true"/>
       <parameter id="saturation_constant__km_HEX1_atp_c" name="log_saturation_constant km|HEX1|atp_c" value="0.000712378413732767" constant="true"/>
       <parameter id="saturation_constant__km_HEX1_g6p_c" name="log_saturation_constant km|HEX1|g6p_c" value="1.95001019718033e-05" constant="true"/>
@@ -106,7 +106,8 @@
       <parameter id="saturation_constant__km_PFKM_f6p_c" name="log_saturation_constant km|PFKM|f6p_c" value="0.000122518274440435" constant="true"/>
       <parameter id="saturation_constant__km_PFKM_adp_c" name="log_saturation_constant km|PFKM|adp_c" value="0.000101892339215238" constant="true"/>
       <parameter id="saturation_constant__km_PFKM_fdp_c" name="log_saturation_constant km|PFKM|fdp_c" value="0.000144893393962184" constant="true"/>
-      <parameter id="saturation_constant__dc_PFKM_lac_c" name="log_saturation_constant dc|PFKM|lac_c" value="4.35170588183203e-05" constant="true"/>
+      <parameter id="saturation_constant__dc_PFKM_lac_c" name="log_saturation_constant dc|PFKM|lac_c" value="0.00130551176454961" constant="true"/>
+      <parameter id="saturation_constant__dc_PFKM_pep_c" name="log_saturation_constant dc|PFKM|pep_c" value="2e-06" constant="true"/>
       <parameter id="saturation_constant__dc_PFKM_f26bp_c" name="log_saturation_constant dc|PFKM|f26bp_c" value="0.000100261810534379" constant="true"/>
       <parameter id="saturation_constant__km_PFKL_atp_c" name="log_saturation_constant km|PFKL|atp_c" value="0.000159930263790598" constant="true"/>
       <parameter id="saturation_constant__km_PFKL_f6p_c" name="log_saturation_constant km|PFKL|f6p_c" value="0.000420280853458473" constant="true"/>
@@ -134,7 +135,7 @@
       <parameter id="saturation_constant__km_PKM1_adp_c" name="log_saturation_constant km|PKM1|adp_c" value="0.000290602963503954" constant="true"/>
       <parameter id="saturation_constant__km_PKM1_pep_c" name="log_saturation_constant km|PKM1|pep_c" value="7.28395170767033e-05" constant="true"/>
       <parameter id="saturation_constant__km_PKM1_atp_c" name="log_saturation_constant km|PKM1|atp_c" value="0.000109437764611243" constant="true"/>
-      <parameter id="saturation_constant__km_PKM1_pyr_c" name="log_saturation_constant km|PKM1|pyr_c" value="0.00189523620836873" constant="true"/>
+      <parameter id="saturation_constant__km_PKM1_pyr_c" name="log_saturation_constant km|PKM1|pyr_c" value="9.47618104184367e-05" constant="true"/>
       <parameter id="saturation_constant__km_PKM2_adp_c" name="log_saturation_constant km|PKM2|adp_c" value="0.000309208075250258" constant="true"/>
       <parameter id="saturation_constant__km_PKM2_pep_c" name="log_saturation_constant km|PKM2|pep_c" value="0.000269127349140949" constant="true"/>
       <parameter id="saturation_constant__km_PKM2_atp_c" name="log_saturation_constant km|PKM2|atp_c" value="8.89715384565263e-05" constant="true"/>
@@ -168,12 +169,12 @@
       <parameter id="saturation_constant__km_TALA_e4p_c" name="log_saturation_constant km|TALA|e4p_c" value="9.08086610497106e-06" constant="true"/>
       <parameter id="saturation_constant__km_TALA_g3p_c" name="log_saturation_constant km|TALA|g3p_c" value="5.70322277827353e-05" constant="true"/>
       <parameter id="saturation_constant__km_TALA_s7p_c" name="log_saturation_constant km|TALA|s7p_c" value="0.000334189364531613" constant="true"/>
-      <parameter id="saturation_constant__km_r5p_drain_r5p_c" name="log_saturation_constant km|r5p_drain|r5p_c" value="1e-12" constant="true"/>
-      <parameter id="saturation_constant__km_pyr_drain_pyr_c" name="log_saturation_constant km|pyr_drain|pyr_c" value="1e-06" constant="true"/>
-      <parameter id="saturation_constant__km_lac_transport_lac_c" name="log_saturation_constant km|lac_transport|lac_c" value="0.00010009333986218" constant="true"/>
-      <parameter id="saturation_constant__km_lac_transport_lac_e" name="log_saturation_constant km|lac_transport|lac_e" value="0.000100101098659895" constant="true"/>
+      <parameter id="saturation_constant__km_r5p_drain_r5p_c" name="log_saturation_constant km|r5p_drain|r5p_c" value="4.86904705682768e-05" constant="true"/>
+      <parameter id="saturation_constant__km_pyr_drain_pyr_c" name="log_saturation_constant km|pyr_drain|pyr_c" value="0.0013779515695061" constant="true"/>
+      <parameter id="saturation_constant__km_lac_transport_lac_c" name="log_saturation_constant km|lac_transport|lac_c" value="0.000420947558642221" constant="true"/>
+      <parameter id="saturation_constant__km_lac_transport_lac_e" name="log_saturation_constant km|lac_transport|lac_e" value="0.000420947262226127" constant="true"/>
       <parameter id="tc__HEX2" name="log_tc HEX2" value="0.163222197109584" constant="true"/>
-      <parameter id="tc__PFKM" name="log_tc PFKM" value="1.25545131313677" constant="true"/>
+      <parameter id="tc__PFKM" name="log_tc PFKM" value="2269.90922343584" constant="true"/>
       <parameter id="tc__PFKL" name="log_tc PFKL" value="0.999917713353732" constant="true"/>
       <parameter id="tc__G6PDH" name="log_tc G6PDH" value="0.987607329314051" constant="true"/>
       <parameter id="dgf__glc" name="dgf glc" value="-406.461886862193" constant="true"/>
@@ -804,6 +805,7 @@
         <listOfModifiers>
           <modifierSpeciesReference species="f26bp_c"/>
           <modifierSpeciesReference species="lac_c"/>
+          <modifierSpeciesReference species="pep_c"/>
         </listOfModifiers>
         <kineticLaw>
           <math xmlns="http://www.w3.org/1998/Math/MathML">
@@ -925,6 +927,19 @@
                             <divide/>
                             <ci> lac_c </ci>
                             <ci> saturation_constant__dc_PFKM_lac_c </ci>
+                          </apply>
+                          <cn type="integer"> 1 </cn>
+                        </apply>
+                        <cn> 4 </cn>
+                      </apply>
+                      <apply>
+                        <power/>
+                        <apply>
+                          <plus/>
+                          <apply>
+                            <divide/>
+                            <ci> pep_c </ci>
+                            <ci> saturation_constant__dc_PFKM_pep_c </ci>
                           </apply>
                           <cn type="integer"> 1 </cn>
                         </apply>

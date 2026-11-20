@@ -660,14 +660,14 @@ wheels = [
 
 [[package]]
 name = "diffrax-bdf"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diffrax" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/31/c6f45a4da150a98d1138969e6c5f1dedf27129b25b29658653fc59d5daa1/diffrax_bdf-0.1.0.tar.gz", hash = "sha256:a87bbaec99b0adcf4db84a5362edf89c876dd835a65c1d7ac676827686859e31", size = 19100, upload-time = "2026-11-13T12:15:11.422Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/51/9f/07fc125bfa8554f7183e9be8be02ce366695a128b2f99e77ef2300a03b86/diffrax_bdf-0.2.0.tar.gz", hash = "sha256:2150b668c8d96eda67a1887ef445ee5a29dd51f63edb8ec08ae612b13b4146bf", size = 26524, upload-time = "2026-11-20T12:04:49.766Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/20/ad5de55c18c0cffbfecdbc7ba53b8a6413222435630c6f1bd6527ba3f8ac/diffrax_bdf-0.1.0-py3-none-any.whl", hash = "sha256:c6ed2be84c4817131c33c887160261ac6b34c55b7de8b1132615a144e54a7cfa", size = 21605, upload-time = "2026-11-13T12:15:10.168Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/53/0b2ad4d0b7a9e08ec36352ecfc9d6650e65f08f74256f47c47e1eb6e7996/diffrax_bdf-0.2.0-py3-none-any.whl", hash = "sha256:0f1ed33d0050b645ca0714d78e2ef35eae74961eb74b18be4b343400fd5d1d7b", size = 29759, upload-time = "2026-11-20T12:04:48.611Z" },
 ]
 
 [[package]]

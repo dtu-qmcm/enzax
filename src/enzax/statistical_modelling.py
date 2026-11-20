@@ -187,6 +187,7 @@ _STATIC_SOLVE_ARGUMENTS = (
     "steady_state_atol",
     "solver",
     "stepsize_controller",
+    "steady_state_fn",
 )
 _STATIC_ARGUMENTS = (
     *_STATIC_SOLVE_ARGUMENTS,
@@ -195,6 +196,7 @@ _STATIC_ARGUMENTS = (
 )
 
 MidSimulator = Callable[[str, Flux, Flux], Mapping[str, Array]]
+SteadyStateFn = Callable[..., OdeStateArr]
 
 
 def get_measurables_single_experiment(
@@ -207,12 +209,13 @@ def get_measurables_single_experiment(
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    steady_state_fn: SteadyStateFn = get_steady_state_hybrid,
 ) -> tuple[OdeStateArr, Bool[Array, ""], ConcArray, Flux]:
     """Get one experiment's steady state and the quantities measured at it.
 
     parameters has the model's labelling, and guess is where the steady state
-    solve starts. The other arguments are passed on to
-    get_steady_state_hybrid.
+    solve starts. steady_state_fn finds the steady state, and the other
+    arguments are passed on to it.
 
     Non-finite entries of guess are replaced with 0.01, the default guess.
     Under grapevine, a failed solve hands the next draw a NaN guess, and
@@ -221,8 +224,8 @@ def get_measurables_single_experiment(
     lets the next draw recover instead of inheriting the failure.
 
     :return: the steady state, whether it was found, every species'
-        concentration and every reaction's flux. get_steady_state_hybrid
-        returns NaN when it finds no steady state, and flux raises on a NaN
+        concentration and every reaction's flux. steady_state_fn returns NaN
+        when it finds no steady state, and flux raises on a NaN
         concentration, so in that case the concentrations and fluxes are
         computed at the guess instead: they are finite but meaningless, and
         found says to throw them away. Balanced species' concentrations are
@@ -230,7 +233,7 @@ def get_measurables_single_experiment(
         out a little below zero.
     """
     guess = jnp.where(jnp.isfinite(guess), guess, 0.01)
-    steady = get_steady_state_hybrid(
+    steady = steady_state_fn(
         model,
         guess,
         parameters,
@@ -348,6 +351,7 @@ def _log_density_and_steady_states(
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    steady_state_fn: SteadyStateFn = get_steady_state_hybrid,
     stability_penalty_scale: float | None = None,
 ) -> tuple[Scalar, Float[Array, "n_experiment n_state"]]:
     """Get the log posterior density of the parameters, and the steady states.
@@ -387,7 +391,7 @@ def _log_density_and_steady_states(
         recompiling.
 
     :param ivp_rtol: relative tolerance of the steady state solve's initial
-        value problem, passed on to get_steady_state_hybrid. Static, since a
+        value problem, passed on to steady_state_fn. Static, since a
         traced tolerance would reach diffrax as an array rather than a float.
 
     :param ivp_atol: absolute tolerance of the initial value problem.
@@ -396,10 +400,15 @@ def _log_density_and_steady_states(
 
     :param steady_state_atol: absolute tolerance of the terminating event.
 
-    :param solver: a diffrax ODE solver for get_steady_state_hybrid to use.
+    :param solver: a diffrax ODE solver for steady_state_fn to use.
 
     :param stepsize_controller: a diffrax step size controller for the ODE
         solver to use.
+
+    :param steady_state_fn: finds each experiment's steady state. It takes
+        get_steady_state's arguments, as get_steady_state_hybrid (the default)
+        does, or a functools.partial of get_steady_state with another adjoint.
+        Static, so pass the same function each time to avoid recompiling.
 
     :param stability_penalty_scale: how sharply to penalise unstable steady
         states. Each eigenvalue of each experiment's Jacobian at its steady
@@ -415,10 +424,10 @@ def _log_density_and_steady_states(
         reject. The steady states are returned as they are, NaN included, so
         they show which solve failed.
 
-    The solve is get_steady_state_hybrid rather than get_steady_state, which
-    matters most here: with grapevine each draw's guess is the previous draw's
-    steady state, so the Newton path usually succeeds and the integration
-    usually takes no steps.
+    The default solve is get_steady_state_hybrid rather than get_steady_state,
+    which matters most here: with grapevine each draw's guess is the previous
+    draw's steady state, so the Newton path usually succeeds and the
+    integration usually takes no steps.
     """
     if layout is None:
         layout = get_experiment_layout(
@@ -446,6 +455,7 @@ def _log_density_and_steady_states(
             steady_state_atol=steady_state_atol,
             solver=solver,
             stepsize_controller=stepsize_controller,
+            steady_state_fn=steady_state_fn,
         ),
     )(parameters_by_experiment, guess)
     conc_hat, enz_hat, flux_hat = (
@@ -533,6 +543,7 @@ def log_density(
     steady_state_atol: float = 1e-12,
     solver: diffrax.AbstractSolver | None = None,
     stepsize_controller: diffrax.AbstractStepSizeController | None = None,
+    steady_state_fn: SteadyStateFn = get_steady_state_hybrid,
     stability_penalty_scale: float | None = None,
 ) -> Scalar:
     """Get the log posterior density of a kinetic model's parameters.
@@ -558,6 +569,7 @@ def log_density(
         steady_state_atol,
         solver,
         stepsize_controller,
+        steady_state_fn,
         stability_penalty_scale,
     )
     return density

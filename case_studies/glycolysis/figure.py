@@ -1,160 +1,95 @@
-"""Plot panels B to D of the glycolysis figure.
+"""Plot panels B to E of the glycolysis regulator-finding figure.
 
-Panel A, a map of the pathway showing its reactions and PFKM's regulation,
-is drawn separately. B shows each measurement's standardised residual, as
-the posterior median and interquartile range, on the scale of its
-measurement model: log for concentrations, linear for fluxes, and ordered
-isometric log-ratio coordinates for MIDs, averaged over replicates. C shows
-how much each fit's data narrow each free parameter's prior, as one minus
-the ratio of posterior to prior variance. D shows ZeLa's glucose uptake
-relative to the wild type, as simulated and in analyse.py's two
-counterfactual states: the prior, the posterior from the wild type and ZeLa
-alone, the posterior with the high-lactate experiment added, and the truth.
-Saves results/figure.png and results/figure.pdf.
+Panel A, a map of the pathway showing its reactions and PFKM's regulation, is
+drawn separately. B shows sedoheptulose 7-phosphate against external glucose,
+as predicted by the round-one fits of the PEP and lactate hypotheses, with the
+measurements from rounds one and two. C shows the design screens after rounds
+one and two, for the pair of hypotheses each round leaves open. D shows each
+hypothesis's cumulative log predictive density of each new round's data, from
+the previous round's fits, relative to the best hypothesis. E shows how five
+concentrations change under DCA, comparing the PEP and PEP-plus-lactate
+hypotheses' predictions from the round-two fits and estimates from the
+round-three fits with the measurements. Saves results/figure.png and
+results/figure.pdf.
 """
 
-import jax
+import csv
+
 import matplotlib.pyplot as plt
 import numpy as np
-from jax.flatten_util import ravel_pytree
-from matplotlib.ticker import NullFormatter
+from matplotlib.lines import Line2D
 
-from analyse import get_derived_file
+from analyse import get_derived_file, get_pointwise_predictive_density
 from common import (
-    EXPERIMENTS,
-    FITS,
+    DESIGN,
+    HELD_OUT,
+    HIGH_GLUCOSE,
+    HYPOTHESES,
+    MEASUREMENTS_FILE,
     MODEL,
-    POOL_SEPARATOR,
+    MODELS,
+    PRIOR_SD,
+    REFERENCE_EXPERIMENT,
     RESULTS_DIR,
-    get_labels,
-    get_layout,
-    get_prior,
-    get_split,
-    load_measurements,
+    SERIES,
+    get_reference,
 )
-from enzax.measurements import get_ordered_ilr
+from design import GLUCOSE_MM, REFERENCE_GLUCOSE_MM, get_design_file
 from fit import N_CHAIN, get_chain_file
 
-COLOURS = {"wild_type": "#2a78d6", "zela": "#eb6834", "high_lactate": "#1baf7a"}
-EXPERIMENT_NAMES = {
-    "wild_type": "Wild type",
-    "zela": "ZeLa",
-    "high_lactate": "Wild type, high lactate",
+COLOURS = dict(
+    zip(HYPOTHESES, ("#2a78d6", "#eb6834", "#1baf7a", "#eda100"), strict=True),
+)
+HYPOTHESIS_NAMES = {
+    "none": "No effector",
+    "pep": "PEP",
+    "lac": "Lactate",
+    "both": "PEP and lactate",
 }
-MAIN_FIT = "all_experiments"
-PRIOR_COLOUR = "#b5b3ad"
-POSTERIOR_COLOUR = "#2a78d6"
-POSTERIORS = {
-    "without_high_lactate": ("Posterior, wild type and ZeLa", "#9cc0ec"),
-    "all_experiments": ("Posterior, all experiments", POSTERIOR_COLOUR),
+ROUND_CONTRASTS = {
+    "high_glucose": ("pep", "lac"),
+    "series": ("pep", "both"),
 }
-ROW_SPACING = 0.22
-LEGEND_HEADROOM = 1.6
+ROUND_NAMES = {
+    "high_glucose": "round one",
+    "series": "round two",
+    "series_dca": "round three",
+}
+PREDICTED_ROUNDS = {
+    "high_glucose": "Round two\nlow glucose",
+    "series": "Round three\nDCA",
+}
+RESPONSE_SPECIES = "s7p_c"
+MIN_GLUCOSE_MM = 0.1
+RESPONSE_TICKS_MM = (0.1, 0.2, 0.3)
+NESTED_HYPOTHESIS = "both"
+DCA_CONTRAST = ("pep", "both")
+DCA_SPECIES = {
+    "f6p_c": "F6P",
+    "fdp_c": "FBP",
+    "pep_c": "PEP",
+    "pyr_c": "Pyruvate",
+    "lac_c": "Lactate",
+}
+DCA_CANDIDATE = "DCA x3"
+CONTROL_CANDIDATE = f"Glucose {REFERENCE_GLUCOSE_MM:g} mM"
+BEFORE_ALPHA = 0.35
+LACTATE_SITE = "dc|PFKM|lac_c"
+PHASE_COLOURS = {
+    "high_glucose": "#a9c9f0",
+    "series": "#5b9be0",
+    "series_dca": "#1d5aa6",
+}
+PRIOR_COLOUR = "#8a8984"
+TRAINING_COLOUR = "#efeeeb"
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
-INTERVAL = (0.05, 0.95)
-INNER_INTERVAL = (0.25, 0.75)
-RESIDUAL_BAND = 2.0
-RESIDUAL_KINDS = {
-    "conc_measurements": "Concentrations",
-    "flux_measurements": "Fluxes",
-    "mid_measurements": "MIDs (log-ratio coordinates)",
-}
-KIND_GAP = 6
-PARAMETER_KINDS = {
-    "log_kcat": "Turnover numbers",
-    "log_enzyme": "Enzyme levels",
-    "log_saturation_constant": "Saturation constants",
-    "log_tc": "Transfer constants",
-    "log_conc_unbalanced": "Clamped concentrations",
-}
-JITTER = 0.08
-JITTER_SEED = 0
-UPTAKE_TICKS = (0.33, 0.5, 0.67, 1, 1.5, 2, 3)
-COUNTERFACTUALS = {
-    "uptake_ratio": "Simulated",
-    "uptake_ratio|pep_frozen": (
-        "Lactate relief alone\n(PEP site as in wild type)"
-    ),
-    "uptake_ratio|lac_frozen": (
-        "PEP inhibition alone\n(lactate site as in wild type)"
-    ),
-}
-
-
-def load_derived(fit):
-    derived = np.load(get_derived_file(fit))
-    return {
-        source: {
-            key.split("|", 1)[1]: derived[key]
-            for key in derived.files
-            if key.startswith(f"{source}|")
-        }
-        for source in ("truth", "posterior", "prior")
-    }
-
-
-def is_stable(derived, experiments):
-    return np.all(
-        [
-            (derived[f"found|{experiment}"] == 1)
-            & (derived[f"growth_rate|{experiment}"] < 0)
-            for experiment in experiments
-        ],
-        axis=0,
-    )
-
-
-def get_residuals(posterior):
-    measurements = load_measurements(FITS[MAIN_FIT])
-    residuals = []
-    for kind in RESIDUAL_KINDS:
-        for m in measurements[kind]:
-            if kind == "conc_measurements":
-                positions = [MODEL.species.index(s) for s in m.ids]
-                predicted = posterior[f"conc|{m.experiment}"][:, positions]
-                draws = (np.log(m.values) - np.log(predicted)) / m.errors
-            elif kind == "flux_measurements":
-                positions = [MODEL.reaction_ids.index(r) for r in m.ids]
-                predicted = posterior[f"flux|{m.experiment}"][:, positions]
-                draws = (m.values - predicted) / m.errors
-            else:
-                pool = POOL_SEPARATOR.join(m.ids)
-                predicted = posterior[f"mid|{pool}|{m.experiment}"]
-                measured = np.mean(
-                    [get_ordered_ilr(replicate) for replicate in m.values],
-                    axis=0,
-                )
-                error = m.errors / np.sqrt(len(m.values))
-                draws = (
-                    measured - jax.vmap(get_ordered_ilr)(predicted)
-                ) / error
-            for draw in np.asarray(draws).T:
-                residuals.append((kind, m.experiment, draw))
-    return residuals
-
-
-def get_contraction(fit):
-    layout = get_layout(FITS[fit])
-    split = get_split(layout)
-    prior = get_prior(layout, split)
-    loc = {kind: leaf[0] for kind, leaf in prior.items()}
-    scale = np.asarray(
-        ravel_pytree({kind: leaf[1] for kind, leaf in prior.items()})[0],
-    )
-    draws = np.concatenate(
-        [
-            np.load(get_chain_file(fit, chain))["draws"]
-            for chain in range(N_CHAIN)
-        ],
-    )
-    contraction = 1 - (draws.std(axis=0) / scale) ** 2
-    kinds = [label.split("[")[0] for label in get_labels(split, loc)]
-    return {
-        kind: contraction[[k == kind for k in kinds]]
-        for kind in PARAMETER_KINDS
-    }
+HEATMAP = "Blues"
+N_BIN = 40
+DODGE = 0.06
+DCA_OFFSET = 0.15
+M_TO_MM = 1000
 
 
 def style(ax):
@@ -164,146 +99,336 @@ def style(ax):
         ax.spines[side].set_visible(False)
 
 
-def plot_residuals(ax, residuals):
-    ax.axhspan(-RESIDUAL_BAND, RESIDUAL_BAND, color=GRID, alpha=0.5, zorder=0)
-    ax.axhline(0, color=MUTED, linewidth=0.6, zorder=0)
-    position = 0
-    centres = []
-    for kind in RESIDUAL_KINDS:
-        start = position
-        for experiment in EXPERIMENTS:
-            for k, e, draws in residuals:
-                if k != kind or e != experiment:
-                    continue
-                low, median, high = np.quantile(
-                    draws,
-                    [INNER_INTERVAL[0], 0.5, INNER_INTERVAL[1]],
-                )
-                ax.plot(
-                    [position, position],
-                    [low, high],
-                    color=COLOURS[experiment],
-                    linewidth=1.2,
-                    solid_capstyle="round",
-                )
-                ax.plot(
-                    position,
-                    median,
-                    "o",
-                    markersize=2.5,
-                    color=COLOURS[experiment],
-                )
-                position += 1
-        centres.append((start + position - 1) / 2)
-        position += KIND_GAP
-    ax.set_xticks(centres, list(RESIDUAL_KINDS.values()))
-    ax.tick_params(axis="x", length=0)
-    ax.set_xlim(-KIND_GAP / 2, position - KIND_GAP / 2)
-    ax.set_ylabel("Standardised residual")
-    for experiment in EXPERIMENTS:
-        ax.plot(
-            [],
-            [],
-            "o",
-            markersize=4,
-            color=COLOURS[experiment],
-            label=EXPERIMENT_NAMES[experiment],
-        )
-    ax.legend(
-        frameon=False,
-        loc="lower right",
-        bbox_to_anchor=(1, 1),
-        ncols=len(EXPERIMENTS),
+def get_glucose_mm(experiment):
+    return REFERENCE_GLUCOSE_MM * DESIGN[experiment].get("glc_e", 1.0)
+
+
+def load_measured(species, experiments):
+    with MEASUREMENTS_FILE.open() as f:
+        return {
+            row["experiment"]: float(row["value"])
+            for row in csv.DictReader(f)
+            if row["kind"] == "conc"
+            and row["id"] == species
+            and row["experiment"] in experiments
+        }
+
+
+def plot_glucose_response(ax, design):
+    glucose = np.array([mm for mm in GLUCOSE_MM if mm >= MIN_GLUCOSE_MM])
+    candidates = list(design["candidates"])
+    rows = [candidates.index(f"Glucose {mm:g} mM") for mm in glucose]
+    column = list(design["observables"]).index(RESPONSE_SPECIES)
+    ax.axvspan(
+        min(map(get_glucose_mm, HIGH_GLUCOSE)),
+        max(map(get_glucose_mm, HIGH_GLUCOSE)),
+        color=TRAINING_COLOUR,
+        linewidth=0,
     )
+    for hypothesis in ROUND_CONTRASTS["high_glucose"]:
+        conc = M_TO_MM * np.exp(
+            design[f"predictions|{hypothesis}"][:, rows, column],
+        )
+        low, median, high = np.nanquantile(conc, [0.05, 0.5, 0.95], axis=0)
+        ax.fill_between(
+            glucose,
+            low,
+            high,
+            color=COLOURS[hypothesis],
+            alpha=0.2,
+            linewidth=0,
+        )
+        ax.plot(
+            glucose,
+            median,
+            color=COLOURS[hypothesis],
+            linewidth=2,
+            label=f"{HYPOTHESIS_NAMES[hypothesis]}, round-one fit",
+        )
+    measured = load_measured(RESPONSE_SPECIES, SERIES)
+    for experiments, fill, name in (
+        (HIGH_GLUCOSE, TEXT, "one"),
+        (tuple(e for e in SERIES if e not in HIGH_GLUCOSE), "white", "two"),
+    ):
+        ax.plot(
+            [get_glucose_mm(e) for e in experiments],
+            [M_TO_MM * measured[e] for e in experiments],
+            "o",
+            markersize=5,
+            markerfacecolor=fill,
+            markeredgecolor=TEXT,
+            label=f"Measured, round {name}",
+        )
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xticks(glucose, [f"{mm:g}" for mm in glucose])
+    ax.set_yticks(RESPONSE_TICKS_MM, [f"{y:g}" for y in RESPONSE_TICKS_MM])
+    ax.minorticks_off()
+    ax.set_xlabel("External glucose (mM)")
+    ax.set_ylabel("Sedoheptulose 7-phosphate (mM)")
+    ax.legend(frameon=False, loc="upper right")
+    style(ax)
+
+
+def plot_discrimination(fig, ax, designs):
+    candidates = list(designs["high_glucose"]["candidates"])
+    columns = []
+    for phase, (a, b) in ROUND_CONTRASTS.items():
+        design = designs[phase]
+        pairs = list(design["pairs"])
+        columns.append(design["discrimination"][:, pairs.index(f"{a}-{b}")])
+    discrimination = np.stack(columns, axis=1)
+    image = ax.imshow(
+        np.log10(1 + discrimination),
+        cmap=HEATMAP,
+        aspect="auto",
+        vmin=0,
+    )
+    for (i, j), value in np.ndenumerate(discrimination):
+        ax.text(
+            j,
+            i,
+            f"{value:.0f}" if value >= 1 else f"{value:.1f}",
+            ha="center",
+            va="center",
+            fontsize=6,
+            color="white"
+            if np.log10(1 + value) > 0.6 * np.log10(1 + discrimination.max())
+            else TEXT,
+        )
+    ax.set_xticks(
+        range(len(ROUND_CONTRASTS)),
+        [
+            f"After {ROUND_NAMES[phase]}\n"
+            f"{HYPOTHESIS_NAMES[a]} vs\n{HYPOTHESIS_NAMES[b]}"
+            for phase, (a, b) in ROUND_CONTRASTS.items()
+        ],
+    )
+    ax.xaxis.tick_top()
+    ax.set_yticks(range(len(candidates)), candidates)
+    ax.tick_params(length=0)
+    for side in ax.spines.values():
+        side.set_visible(False)
+    colourbar = fig.colorbar(image, ax=ax, shrink=0.8)
+    colourbar.set_label("log10(1 + discrimination)")
+
+
+def plot_sequential_score(ax):
+    pointwise = {
+        h: [
+            get_pointwise_predictive_density(
+                np.load(get_derived_file(f"{h}_{phase}"))[
+                    "held_out_log_likelihood"
+                ],
+            )[0]
+            for phase in PREDICTED_ROUNDS
+        ]
+        for h in HYPOTHESES
+    }
+    positions = np.arange(len(PREDICTED_ROUNDS))
+    scores = {h: [] for h in HYPOTHESES}
+    errors = {h: [] for h in HYPOTHESES}
+    for position in positions:
+        cumulative = {
+            h: np.concatenate(p[: position + 1]) for h, p in pointwise.items()
+        }
+        best = max(HYPOTHESES, key=lambda h: cumulative[h].sum())
+        for hypothesis in HYPOTHESES:
+            difference = cumulative[hypothesis] - cumulative[best]
+            scores[hypothesis].append(difference.sum())
+            errors[hypothesis].append(
+                np.sqrt(len(difference) * difference.var()),
+            )
+    for offset, hypothesis in zip(
+        np.linspace(-DODGE, DODGE, len(HYPOTHESES)),
+        HYPOTHESES,
+        strict=True,
+    ):
+        ax.errorbar(
+            positions + offset,
+            scores[hypothesis],
+            yerr=errors[hypothesis],
+            color=COLOURS[hypothesis],
+            linewidth=2,
+            marker="o",
+            markersize=6,
+            capsize=0,
+        )
+        ax.annotate(
+            HYPOTHESIS_NAMES[hypothesis],
+            (positions[-1] + offset, scores[hypothesis][-1]),
+            xytext=(10, 0),
+            textcoords="offset points",
+            va="center",
+            color=TEXT,
+        )
+    ax.set_xticks(positions, list(PREDICTED_ROUNDS.values()))
+    ax.set_xlim(-0.3, positions[-1] + 0.9)
+    ax.set_ylabel("Cumulative log predictive density,\nrelative to the best")
     style(ax)
     ax.grid(axis="x", visible=False)
 
 
-def plot_contraction(ax, contraction):
-    rng = np.random.default_rng(JITTER_SEED)
-    positions = np.arange(len(PARAMETER_KINDS))[::-1]
-    for row, (fit, (_, colour)) in enumerate(POSTERIORS.items()):
-        offset = ROW_SPACING * (0.5 - row)
-        for position, kind in zip(positions, PARAMETER_KINDS, strict=True):
-            values = contraction[fit][kind]
-            ax.scatter(
-                values,
-                position + offset + rng.uniform(-JITTER, JITTER, len(values)),
-                s=10,
-                color=colour,
-                edgecolor="white",
-                linewidth=0.5,
-            )
-    ax.set_yticks(positions, list(PARAMETER_KINDS.values()))
-    ax.tick_params(axis="y", length=0)
-    ax.set_xlim(-0.2, 1.05)
-    ax.set_xlabel("Posterior contraction")
-    style(ax)
-    ax.grid(axis="y", visible=False)
+def load_parameter_draws(fit, column):
+    chains = [np.load(get_chain_file(fit, chain)) for chain in range(N_CHAIN)]
+    position = [str(x) for x in chains[0]["labels"]].index(column)
+    return np.concatenate([c["draws"][:, position] for c in chains])
 
 
-def plot_counterfactuals(ax, derived):
-    prior = derived[MAIN_FIT]["prior"]
-    prior = {
-        key: values[is_stable(prior, FITS[MAIN_FIT])]
-        for key, values in prior.items()
-    }
-    rows = [(prior, PRIOR_COLOUR)] + [
-        (derived[fit]["posterior"], colour)
-        for fit, (_, colour) in POSTERIORS.items()
-    ]
-    positions = np.arange(len(COUNTERFACTUALS))[::-1]
-    for position, key in zip(positions, COUNTERFACTUALS, strict=True):
-        for row, (source, colour) in enumerate(rows):
-            draws = source[key]
-            offset = ROW_SPACING * (1 - row)
-            low, high = np.quantile(draws, INTERVAL)
-            inner_low, inner_high = np.quantile(draws, INNER_INTERVAL)
-            ax.plot(
-                [low, high],
-                [position + offset] * 2,
-                color=colour,
-                linewidth=1.5,
-                solid_capstyle="round",
-            )
-            ax.plot(
-                [inner_low, inner_high],
-                [position + offset] * 2,
-                color=colour,
-                linewidth=4,
-                solid_capstyle="round",
-            )
-        ax.plot(
-            derived[MAIN_FIT]["truth"][key],
-            position,
-            marker="|",
-            markersize=18,
-            markeredgewidth=1.0,
-            color=TEXT,
-            zorder=1,
-        )
-    ax.axvline(1, color=MUTED, linewidth=0.6, zorder=0)
-    ax.set_xscale("log")
-    ax.set_xticks(UPTAKE_TICKS, [f"{tick:g}" for tick in UPTAKE_TICKS])
-    ax.xaxis.set_minor_formatter(NullFormatter())
-    ax.set_xlim(UPTAKE_TICKS[0], UPTAKE_TICKS[-1])
-    ax.set_yticks(positions, list(COUNTERFACTUALS.values()))
-    ax.tick_params(axis="y", length=0)
-    ax.set_xlabel("ZeLa / wild-type glucose uptake (log scale)")
-    ax.plot([], [], color=PRIOR_COLOUR, linewidth=4, label="Prior")
-    for label, colour in POSTERIORS.values():
-        ax.plot([], [], color=colour, linewidth=4, label=label)
-    ax.plot(
-        [],
-        [],
-        color=TEXT,
-        marker="|",
-        linestyle="none",
-        markersize=10,
-        label="Truth",
+def get_prior_loc(hypothesis, kind, label):
+    labels = list(MODELS[hypothesis].parameter_labelling[kind])
+    return float(get_reference(hypothesis)[kind][labels.index(label)])
+
+
+def plot_marginals(ax, loc, draws, offset):
+    to_log10 = np.log10(np.e)
+    low = min(loc - 4 * PRIOR_SD, *(d.min() for d, _, _ in draws))
+    high = max(loc + 4 * PRIOR_SD, *(d.max() for d, _, _ in draws))
+    grid = np.linspace(low, high, 200)
+    prior = np.exp(-0.5 * ((grid - loc) / PRIOR_SD) ** 2) / (
+        PRIOR_SD * np.sqrt(2 * np.pi)
     )
-    ax.set_ylim(-2 * ROW_SPACING, positions[0] + LEGEND_HEADROOM)
-    ax.legend(frameon=False, loc="upper right")
+    ax.plot(
+        grid * to_log10 + offset,
+        prior / to_log10,
+        color=PRIOR_COLOUR,
+        linestyle="--",
+        linewidth=1.5,
+        label="Prior",
+    )
+    bins = np.linspace(low, high, N_BIN) * to_log10 + offset
+    for values, name, colour in draws:
+        ax.hist(
+            values * to_log10 + offset,
+            bins=bins,
+            density=True,
+            histtype="step",
+            linewidth=2,
+            color=colour,
+            label=name,
+        )
+    ax.set_ylabel("Density")
+    style(ax)
+
+
+def plot_lactate_site(ax):
+    column = f"log_saturation_constant[{LACTATE_SITE}]"
+    plot_marginals(
+        ax,
+        get_prior_loc(
+            NESTED_HYPOTHESIS,
+            "log_saturation_constant",
+            LACTATE_SITE,
+        ),
+        [
+            (
+                load_parameter_draws(f"{NESTED_HYPOTHESIS}_{phase}", column),
+                f"After {ROUND_NAMES[phase]}",
+                colour,
+            )
+            for phase, colour in PHASE_COLOURS.items()
+        ],
+        offset=3,
+    )
+    ax.set_xlabel("PFKM lactate dissociation constant\n(log10 mM)")
+    ax.legend(frameon=False, loc="upper left")
+
+
+def get_percent_change(log_ratio):
+    return 100 * (np.exp(log_ratio) - 1)
+
+
+def get_dca_changes(design, hypothesis):
+    candidates = list(design["candidates"])
+    observables = list(design["observables"])
+    predictions = design[f"predictions|{hypothesis}"]
+    dca, control = (
+        predictions[:, candidates.index(candidate)]
+        for candidate in (DCA_CANDIDATE, CONTROL_CANDIDATE)
+    )
+    derived = np.load(get_derived_file(f"{hypothesis}_series_dca"))
+    before, after = {}, {}
+    for species in DCA_SPECIES:
+        observable = observables.index(species)
+        before[species] = get_percent_change(
+            dca[:, observable] - control[:, observable],
+        )
+        position = MODEL.species.index(species)
+        after[species] = get_percent_change(
+            np.log(derived["conc|dca"][:, position])
+            - np.log(derived[f"conc|{REFERENCE_EXPERIMENT}"][:, position]),
+        )
+    return before, after
+
+
+def plot_dca_response(ax, design):
+    rows = np.arange(len(DCA_SPECIES))[::-1]
+    offsets = np.linspace(DCA_OFFSET, -DCA_OFFSET, len(DCA_CONTRAST))
+    for offset, hypothesis in zip(offsets, DCA_CONTRAST, strict=True):
+        for changes, alpha in zip(
+            get_dca_changes(design, hypothesis),
+            (BEFORE_ALPHA, 1.0),
+            strict=True,
+        ):
+            for row, species in zip(rows, DCA_SPECIES, strict=True):
+                low, median, high = np.quantile(
+                    changes[species],
+                    [0.05, 0.5, 0.95],
+                )
+                ax.plot(
+                    [low, high],
+                    [row + offset] * 2,
+                    color=COLOURS[hypothesis],
+                    alpha=alpha,
+                    linewidth=2,
+                    solid_capstyle="round",
+                )
+                ax.plot(
+                    median,
+                    row + offset,
+                    "o",
+                    color=COLOURS[hypothesis],
+                    alpha=alpha,
+                    markersize=5,
+                )
+    measured = [
+        load_measured(species, (REFERENCE_EXPERIMENT, "dca"))
+        for species in DCA_SPECIES
+    ]
+    ax.plot(
+        [
+            get_percent_change(np.log(m["dca"] / m[REFERENCE_EXPERIMENT]))
+            for m in measured
+        ],
+        rows,
+        "D",
+        color=TEXT,
+        markersize=4,
+        zorder=3,
+    )
+    handles = [
+        Line2D([], [], color=COLOURS[h], marker="o", linewidth=2)
+        for h in DCA_CONTRAST
+    ] + [
+        Line2D([], [], color=MUTED, marker="o", alpha=BEFORE_ALPHA),
+        Line2D([], [], color=MUTED, marker="o"),
+        Line2D([], [], color=TEXT, marker="D", linestyle="none", markersize=4),
+    ]
+    ax.legend(
+        handles,
+        [
+            *(HYPOTHESIS_NAMES[h] for h in DCA_CONTRAST),
+            "Before DCA (round-two fit)",
+            "After DCA (round-three fit)",
+            "Measured",
+        ],
+        frameon=False,
+        loc="lower right",
+    )
+    ax.axvline(0, color=MUTED, linewidth=0.6)
+    ax.set_yticks(rows, list(DCA_SPECIES.values()))
+    ax.tick_params(axis="y", length=0)
+    ax.set_xlabel("Change under DCA (%)")
     style(ax)
     ax.grid(axis="y", visible=False)
 
@@ -319,24 +444,22 @@ def main():
             "legend.fontsize": 7,
         },
     )
-    derived = {fit: load_derived(fit) for fit in FITS}
-    fig = plt.figure(figsize=(7.5, 5.5), layout="constrained")
-    top, bottom = fig.subfigures(2, 1, height_ratios=[1, 1.1])
-    residual_ax = top.subplots()
-    contraction_ax, counterfactual_ax = bottom.subplots(
+    designs = {phase: np.load(get_design_file(phase)) for phase in HELD_OUT}
+    fig = plt.figure(figsize=(7.5, 7.5), layout="constrained")
+    top, bottom = fig.subfigures(2, 1, height_ratios=[1.3, 1])
+    response_ax, discrimination_ax = top.subplots(
         1,
         2,
-        width_ratios=[1, 1.3],
+        width_ratios=[1.3, 1],
     )
-    plot_residuals(residual_ax, get_residuals(derived[MAIN_FIT]["posterior"]))
-    plot_contraction(
-        contraction_ax,
-        {fit: get_contraction(fit) for fit in POSTERIORS},
-    )
-    plot_counterfactuals(counterfactual_ax, derived)
+    score_ax, dca_ax = bottom.subplots(1, 2)
+    plot_glucose_response(response_ax, designs["high_glucose"])
+    plot_discrimination(top, discrimination_ax, designs)
+    plot_sequential_score(score_ax)
+    plot_dca_response(dca_ax, designs["series"])
     for ax, letter in zip(
-        [residual_ax, contraction_ax, counterfactual_ax],
-        "BCD",
+        [response_ax, discrimination_ax, score_ax, dca_ax],
+        "BCDE",
         strict=True,
     ):
         ax.set_title(letter, loc="left", fontweight="bold")

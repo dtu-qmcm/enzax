@@ -38,17 +38,12 @@ expected_flux_file = HERE / "data" / "expected_glycolysis_flux.json"
 # 154 kJ/mol, which at these concentrations is the difference between an
 # enolase at a driving force of 0.71 and one saturated at 1.
 KNOWN_DIFFERENT = {"HEX1": 0.0568, "ENO": 0.2943}
+PEP_SITE_OFF = 50.0
 
 
 def get_expected():
     with open(expected_flux_file, "r") as f:
         return json.load(f)
-
-
-def get_julia(filename: str):
-    """Get the CHO-S wild type block of one of the julia model's outputs."""
-    with open(Path(glycolysis.__file__).parent / filename, "r") as f:
-        return json.load(f)["lines"]["CHO-S wt"]
 
 
 def get_sbml_parameters():
@@ -58,10 +53,10 @@ def get_sbml_parameters():
     the file itself ships live here, next to the fluxes they produce.
     """
     with open(HERE / "data" / "sbml_glycolysis_parameters.json", "r") as f:
-        return pack_parameters(
-            glycolysis.model.parameter_labelling,
-            json.load(f),
-        )
+        values = json.load(f)
+    values["log_saturation_constant"]["dc|PFKM|pep_c"] = PEP_SITE_OFF
+    del values["log_conc_unbalanced"]["glc_c"]
+    return pack_parameters(glycolysis.model.parameter_labelling, values)
 
 
 def get_initial_conc(expected) -> jnp.ndarray:
@@ -79,10 +74,8 @@ def get_flux_at_initial_conc(expected) -> jnp.ndarray:
 def test_the_model_has_the_shape_of_the_sbml_file():
     model = glycolysis.model
     assert len(model.species) == 31
-    # Cytosolic glucose is balanced in the SBML file and fixed here, as it is
-    # in the fitted julia version of the same model.
-    assert len(model.balanced_species) == 18
-    assert len(model.unbalanced_species) == 13
+    assert len(model.balanced_species) == 19
+    assert len(model.unbalanced_species) == 12
     assert len(model.reaction_ids) == 26
     # Glucose and lactate are the two compounds in two compartments each.
     assert len(model.parameter_labelling["dgf"]) == 29
@@ -163,34 +156,3 @@ def test_the_stoichiometry_balances_an_independent_implementation():
     for species, rate in zip(glycolysis.model.species, dcdt):
         if species in balanced:
             assert abs(rate) < 1e-9 * jnp.abs(v).max()
-
-
-def test_the_fitted_model_reproduces_julias_fluxes():
-    """At the fitted parameters, our fluxes are the julia version's.
-
-    Glucose transport is the one reaction left out: the julia model holds it
-    at exactly zero, and here it is computed and inert, since both glucose
-    pools are fixed.
-    """
-    expected = get_julia("cho_steady_state_fluxes.json")["flux"]
-    flux = glycolysis.model.flux(glycolysis.steady_state, glycolysis.parameters)
-    for position, reaction in enumerate(glycolysis.model.reaction_ids):
-        if reaction == "GLUT4":
-            continue
-        assert float(flux[position]) == pytest.approx(
-            expected[reaction],
-            rel=1e-9,
-            abs=1e-30,
-        )
-
-
-def test_julias_steady_state_is_ours():
-    """Their steady state is the example's, and is steady for us too."""
-    state = get_julia("cho_steady_state.json")["concentration"]
-    conc = glycolysis.steady_state
-    assert jnp.array_equal(
-        conc,
-        jnp.array([state[s] for s in glycolysis.model.ode_state_species]),
-    )
-    dndt = glycolysis.model.dndt(conc, glycolysis.parameters)
-    assert (jnp.abs(dndt / conc) < 1e-9).all()

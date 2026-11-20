@@ -1,142 +1,192 @@
-"""Compute derived quantities from the prior and posterior draws.
+"""Compute derived quantities from the posterior draws.
 
-For every posterior draw, 1000 prior draws and the true parameters, finds
-each experiment's steady state and records its concentrations, fluxes, pool
-MIDs, PFKM's tense-state fraction and the largest real part of its
-Jacobian's eigenvalues. The tense-state fraction is defined as one minus the
-ratio of PFKM's flux to its flux with the tense state removed.
-
-Also solves two counterfactual ZeLa states, one for each of PFKM's
-tense-state inhibitors, PEP and lactate. Each removes the inhibitor's site
-from the tense state by giving it a very large dissociation constant, and
-multiplies PFKM's transfer constant by the fourth power of the factor
-1 + c/K that the site contributed in the wild type, where c is the
-inhibitor's wild-type concentration and K its dissociation constant. The
-inhibitor then acts on PFKM in ZeLa exactly as it did in the wild type,
-while every other effect of the knockdown remains. Records each
-counterfactual's glucose uptake relative to the wild type. Runs once for
-each fit in common.FITS, saving to results/<fit>/derived.npz.
+For every posterior draw, finds each fitted experiment's steady state. Records
+its concentrations, fluxes, pool MIDs, the largest real part of its Jacobian's
+eigenvalues and each measurement's log likelihood. For fits from the first two
+rounds, also predicts the next round's experiments and records each of their
+measurements' log likelihoods. Then prints the log predictive density of those
+experiments, which sums, over measurements, the log of the likelihood averaged
+over draws. Runs once for each fit in common.FITS, saving to
+results/<fit>/derived.npz.
 """
 
+import sys
 import time
 
 import jax
 import numpy as np
 from jax import numpy as jnp
 from jax.flatten_util import ravel_pytree
+from jax.scipy.special import logsumexp
 
 from common import (
     FITS,
+    HELD_OUT,
     MEASURED_POOLS,
-    MODEL,
+    MODELS,
     POOL_SEPARATOR,
+    REFERENCE_EXPERIMENT,
+    get_experiment_parameters,
     get_mid_simulator,
     get_results_dir,
     get_z_posterior,
-    load_true_parameters,
+    load_measurements,
+    solve,
 )
 from enzax.experiments import gather_parameters_by_experiment
-from enzax.measurements import get_pool_mid
+from enzax.measurements import (
+    get_pool_mid,
+    pick_concs,
+    pick_enzymes,
+    pick_fluxes,
+)
 from enzax.parameter_split import combine_parameters
-from enzax.statistical_modelling import get_measurables_single_experiment
 from enzax.thermodynamics import get_one_way_fluxes
 from fit import N_CHAIN, get_chain_file
-
-N_PRIOR_DRAW = 1000
-PRIOR_SEED = 4321
-TENSE_REACTION = "PFKM"
-INHIBITORS = {"pep": "pep_c", "lac": "lac_c"}
-FROZEN_LOG_DC = 50.0
 
 
 def get_derived_file(fit):
     return get_results_dir(fit) / "derived.npz"
 
 
-def get_tense_fraction(parameters, steady):
-    position = MODEL.reaction_ids.index(TENSE_REACTION)
-    tc = MODEL.parameter_labelling["log_tc"].index(TENSE_REACTION)
-    relaxed = parameters | {
-        "log_tc": parameters["log_tc"].at[tc].set(-jnp.inf),
-    }
-    flux = MODEL.flux(steady, parameters)[position]
-    relaxed_flux = MODEL.flux(steady, relaxed)[position]
-    return 1.0 - flux / relaxed_flux
-
-
-def freeze_site(parameters, species_id, conc):
-    tc = MODEL.parameter_labelling["log_tc"].index(TENSE_REACTION)
-    dc = MODEL.parameter_labelling["log_saturation_constant"].index(
-        f"dc|{TENSE_REACTION}|{species_id}",
+def load_draws(fit):
+    return np.concatenate(
+        [
+            np.load(get_chain_file(fit, chain))["draws"]
+            for chain in range(N_CHAIN)
+        ],
     )
-    log_dc = parameters["log_saturation_constant"][dc]
-    occupancy = conc[MODEL.species.index(species_id)] / jnp.exp(log_dc)
-    return parameters | {
-        "log_saturation_constant": parameters["log_saturation_constant"]
-        .at[dc]
-        .set(FROZEN_LOG_DC),
-        "log_tc": parameters["log_tc"].at[tc].add(4 * jnp.log1p(occupancy)),
-    }
 
 
-def get_growth_rate(parameters, steady):
-    jacobian = jax.jacfwd(MODEL.dndt)(steady, parameters)
+def get_growth_rate(model, parameters, steady):
+    jacobian = jax.jacfwd(model.dndt)(steady, parameters)
     return jnp.linalg.eigvals(jacobian).real.max()
 
 
-def derive(layout, mid_simulator, parameters, guess):
+def score_experiment(model, measurements, experiment, parameters, solved):
+    found, conc, flux, mids = solved
+    picks = {
+        "conc_measurements": (pick_concs, conc),
+        "enzyme_measurements": (pick_enzymes, parameters),
+        "flux_measurements": (pick_fluxes, flux),
+    }
+    terms = []
+    for argument, group in measurements.items():
+        for m in group:
+            if m.experiment != experiment:
+                continue
+            if argument == "mid_measurements":
+                predicted = get_pool_mid(model, conc, mids, m.ids)
+            else:
+                pick, values = picks[argument]
+                predicted = pick(model, values, m.ids)
+            terms.append(
+                jnp.where(found, m.log_likelihood(predicted), jnp.nan),
+            )
+    return terms
+
+
+def solve_with_mids(model, mid_simulator, experiment, parameters, guess):
+    steady, found, conc, flux = solve(model, parameters, guess)
+    forward, reverse = get_one_way_fluxes(
+        model,
+        conc[model.balanced_species_ix],
+        parameters,
+    )
+    return steady, (
+        found,
+        conc,
+        flux,
+        mid_simulator(experiment, forward, reverse),
+    )
+
+
+def get_held_out_likelihood(hypothesis, mid_simulator, experiments):
+    model = MODELS[hypothesis]
+    measurements = load_measurements(experiments)
+
+    def likelihood(cells, guess):
+        terms = []
+        for experiment in experiments:
+            parameters = get_experiment_parameters(cells, experiment)
+            _, solved = solve_with_mids(
+                model,
+                mid_simulator,
+                experiment,
+                parameters,
+                guess,
+            )
+            terms.extend(
+                score_experiment(
+                    model,
+                    measurements,
+                    experiment,
+                    parameters,
+                    solved,
+                ),
+            )
+        return jnp.concatenate(terms)
+
+    return likelihood
+
+
+def derive(
+    model,
+    layout,
+    measurements,
+    mid_simulator,
+    parameters,
+    guess,
+    held_out,
+):
     by_experiment = gather_parameters_by_experiment(layout, parameters)
-    uptake = MODEL.reaction_ids.index("GLUT4")
     derived = {}
-    solutions = {}
+    terms = []
     for i, experiment in enumerate(layout.experiments):
         experiment_parameters = jax.tree.map(
             lambda leaf, i=i: leaf[i],
             by_experiment,
         )
-        steady, found, conc, flux = get_measurables_single_experiment(
-            MODEL,
+        steady, solved = solve_with_mids(
+            model,
+            mid_simulator,
+            experiment,
             experiment_parameters,
             guess[i],
         )
-        solutions[experiment] = experiment_parameters, steady, conc, flux
+        found, conc, flux, mids = solved
+        derived[f"steady|{experiment}"] = steady
         derived[f"found|{experiment}"] = found
         derived[f"growth_rate|{experiment}"] = get_growth_rate(
-            experiment_parameters,
-            steady,
-        )
-        derived[f"tense_fraction|{experiment}"] = get_tense_fraction(
+            model,
             experiment_parameters,
             steady,
         )
         derived[f"conc|{experiment}"] = conc
         derived[f"flux|{experiment}"] = flux
-        forward, reverse = get_one_way_fluxes(
-            MODEL,
-            conc[MODEL.balanced_species_ix],
-            experiment_parameters,
-        )
-        mids = mid_simulator(experiment, forward, reverse)
         for pool in MEASURED_POOLS:
             pool_id = POOL_SEPARATOR.join(pool)
             derived[f"mid|{pool_id}|{experiment}"] = get_pool_mid(
-                MODEL,
+                model,
                 conc,
                 mids,
                 pool,
             )
-    _, _, wild_type_conc, wild_type_flux = solutions["wild_type"]
-    zela_parameters, zela_steady, _, zela_flux = solutions["zela"]
-    derived["uptake_ratio"] = zela_flux[uptake] / wild_type_flux[uptake]
-    for name, species_id in INHIBITORS.items():
-        _, found, _, flux = get_measurables_single_experiment(
-            MODEL,
-            freeze_site(zela_parameters, species_id, wild_type_conc),
-            zela_steady,
+        terms.extend(
+            score_experiment(
+                model,
+                measurements,
+                experiment,
+                experiment_parameters,
+                solved,
+            ),
         )
-        derived[f"found|{name}_frozen"] = found
-        derived[f"uptake_ratio|{name}_frozen"] = (
-            flux[uptake] / wild_type_flux[uptake]
+    derived["log_likelihood"] = jnp.concatenate(terms)
+    if held_out is not None:
+        reference = layout.experiments.index(REFERENCE_EXPERIMENT)
+        derived["held_out_log_likelihood"] = held_out(
+            jax.tree.map(lambda leaf: leaf[reference], by_experiment),
+            derived[f"steady|{REFERENCE_EXPERIMENT}"],
         )
     return derived
 
@@ -149,56 +199,63 @@ def derive_all(derive_one, positions):
     return {key: np.array([row[key] for row in rows]) for key in rows[0]}
 
 
+def get_pointwise_predictive_density(log_likelihoods):
+    finite = log_likelihoods[np.isfinite(log_likelihoods).all(axis=1)]
+    pointwise = np.asarray(logsumexp(finite, axis=0)) - np.log(len(finite))
+    return pointwise, len(finite)
+
+
 def main(fit):
-    split, layout, from_z_scores, _, z_zero = get_z_posterior(FITS[fit])
+    hypothesis, experiments = FITS[fit]
+    split, layout, _, _, z_zero = get_z_posterior(hypothesis, experiments)
     _, unflatten = ravel_pytree(z_zero)
     guess = jnp.asarray(np.load(get_results_dir(fit) / "mode.npz")["guess"])
     mid_simulator = get_mid_simulator()
+    measurements = load_measurements(experiments)
+    held_out_experiments = HELD_OUT.get(fit.removeprefix(f"{hypothesis}_"))
+    held_out = (
+        None
+        if held_out_experiments is None
+        else get_held_out_likelihood(
+            hypothesis,
+            mid_simulator,
+            held_out_experiments,
+        )
+    )
 
     @jax.jit
     def derive_parameters(parameters):
         return derive(
+            MODELS[hypothesis],
             layout,
+            measurements,
             mid_simulator,
             combine_parameters(split, parameters),
             guess,
+            held_out,
         )
 
     start = time.perf_counter()
-    truth = derive(
-        layout,
-        mid_simulator,
-        load_true_parameters(layout),
-        guess,
-    )
     posterior = derive_all(
         lambda x: derive_parameters(unflatten(x)),
-        np.concatenate(
-            [
-                np.load(get_chain_file(fit, chain))["draws"]
-                for chain in range(N_CHAIN)
-            ],
-        ),
-    )
-    z_prior = jax.random.normal(
-        jax.random.key(PRIOR_SEED),
-        (N_PRIOR_DRAW, *ravel_pytree(z_zero)[0].shape),
-    )
-    prior = derive_all(
-        lambda z: derive_parameters(from_z_scores(unflatten(z))),
-        z_prior,
+        load_draws(fit),
     )
     derived_file = get_derived_file(fit)
-    np.savez(
-        derived_file,
-        **{f"truth|{k}": np.asarray(v) for k, v in truth.items()},
-        **{f"posterior|{k}": v for k, v in posterior.items()},
-        **{f"prior|{k}": v for k, v in prior.items()},
-    )
+    np.savez(derived_file, **posterior)
     minutes = (time.perf_counter() - start) / 60
     print(f"Saved derived quantities to {derived_file} in {minutes:.1f} min")
+    if held_out is not None:
+        pointwise, n_finite = get_pointwise_predictive_density(
+            posterior["held_out_log_likelihood"],
+        )
+        print(
+            f"Log predictive density of {', '.join(held_out_experiments)}: "
+            f"{pointwise.sum():.2f} "
+            f"({n_finite} of {len(posterior['held_out_log_likelihood'])} "
+            "draws finite)",
+        )
 
 
 if __name__ == "__main__":
-    for fit in FITS:
+    for fit in sys.argv[1:] or FITS:
         main(fit)
