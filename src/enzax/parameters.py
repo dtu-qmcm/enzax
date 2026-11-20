@@ -86,6 +86,7 @@ STRUCTURAL_PARAMETERS = (
     "moiety_totals",
     "log_amount_initial",
     "temperature",
+    "membrane_potential",
 )
 
 # Every parameter enzax knows about, in packing order.

@@ -273,6 +273,7 @@ class Reaction(Module, ABC):
 
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
+    transported_charge: float = field(kw_only=True, default=0.0)
     compartment: str | None = field(kw_only=True, default=None)
     batch_rule: ClassVar[BatchRule | None] = None
 

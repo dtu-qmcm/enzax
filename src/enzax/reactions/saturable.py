@@ -28,7 +28,7 @@ from typing import ClassVar
 import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Bool, Int, Scalar
+from jaxtyping import Bool, Int, Scalar, ScalarLike
 
 from enzax.array_types import (
     BatchFlux,
@@ -84,6 +84,7 @@ from enzax.reaction import (
 )
 from enzax.thermodynamics import (
     ReverseTermIx,
+    get_membrane_potential,
     get_reverse_term,
     get_reverse_term_indexes,
     get_reverse_terms,
@@ -230,6 +231,7 @@ class SaturableIx(eqx.Module):
     reactant_stoichiometry: StaticReactantArr
     water_stoichiometry: float
     water_dgf: float
+    transported_charge: float
     binding_polynomial: BindingPolynomial
     allostery: AllostericIx | None
 
@@ -252,6 +254,8 @@ class SaturableInput(eqx.Module):
     reactant_stoichiometry: StaticReactantArr
     water_stoichiometry: float
     water_dgf: float
+    transported_charge: float
+    membrane_potential: ScalarLike
     binding_polynomial: BindingPolynomial
     allostery: AllostericInput | None
 
@@ -363,6 +367,7 @@ def get_saturable_batch_indexes(
             [ix.ix_dgf for ix in ixs],
             [ix.water_stoichiometry for ix in ixs],
             [ix.water_dgf for ix in ixs],
+            [ix.transported_charge for ix in ixs],
         ),
         polynomials=get_polynomial_table(
             polynomials,
@@ -758,6 +763,7 @@ class SaturableReaction(Reaction):
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
             water_dgf=scope.water_dgf,
+            transported_charge=self.transported_charge,
             binding_polynomial=get_polynomial_indexes(
                 self.get_expression(scope),
                 scope,
@@ -844,6 +850,11 @@ class SaturableReaction(Reaction):
             reactant_stoichiometry=ix.reactant_stoichiometry,
             water_stoichiometry=ix.water_stoichiometry,
             water_dgf=ix.water_dgf,
+            transported_charge=ix.transported_charge,
+            membrane_potential=get_membrane_potential(
+                parameters,
+                ix.transported_charge,
+            ),
             binding_polynomial=ix.binding_polynomial,
             allostery=allostery,
         )
@@ -880,6 +891,8 @@ class SaturableReaction(Reaction):
                 temperature=rate_input.temperature,
                 water_stoichiometry=rate_input.water_stoichiometry,
                 water_dgf=rate_input.water_dgf,
+                transported_charge=rate_input.transported_charge,
+                membrane_potential=rate_input.membrane_potential,
             ) / jnp.prod(rate_input.substrate_kms)
         rate = rate_input.kcat * rate_input.enzyme * numerator * fer
         if rate_input.allostery is not None:

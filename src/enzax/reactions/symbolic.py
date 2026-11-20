@@ -15,7 +15,7 @@ import equinox as eqx
 import numpy as np
 import sympy
 from jax import numpy as jnp
-from jaxtyping import Array, Scalar
+from jaxtyping import Array, Scalar, ScalarLike
 
 from enzax.array_types import ConcArray, ParamDict, ParamLabelling
 from enzax.parameters import (
@@ -31,7 +31,11 @@ from enzax.reaction import (
     get_species_label,
     get_species_positions,
 )
-from enzax.thermodynamics import get_keq, get_reversibility
+from enzax.thermodynamics import (
+    get_keq,
+    get_membrane_potential,
+    get_reversibility,
+)
 
 RESERVED_SYMBOLS = ("reversibility", "keq")
 
@@ -44,7 +48,7 @@ FUNCTIONS = {
     "Max": sympy.Max,
 }
 
-ALLOWED_KINDS = KINETIC_PARAMETERS + ("temperature",)
+ALLOWED_KINDS = KINETIC_PARAMETERS + ("temperature", "membrane_potential")
 
 REACTION_LABEL_KINDS = (
     "log_kcat",
@@ -56,7 +60,7 @@ REACTION_LABEL_KINDS = (
 
 CUSTOM_KINDS = ("log_custom", "custom")
 
-UNLABELLED_KINDS = ("temperature",)
+UNLABELLED_KINDS = ("temperature", "membrane_potential")
 
 
 def parse_expression(expression: str | sympy.Expr) -> sympy.Expr:
@@ -279,6 +283,7 @@ class ThermodynamicIx(eqx.Module):
     reactant_stoichiometry: np.ndarray
     water_stoichiometry: float
     water_dgf: float
+    transported_charge: float
 
 
 class SymbolicIx(eqx.Module):
@@ -297,6 +302,7 @@ class SymbolicInput(eqx.Module):
     thermodynamics: ThermodynamicIx | None
     dgf: Array | None
     temperature: Scalar | None
+    membrane_potential: ScalarLike
 
 
 def get_reserved_values(
@@ -316,6 +322,8 @@ def get_reserved_values(
             thermodynamics.reactant_stoichiometry,
             thermodynamics.water_stoichiometry,
             thermodynamics.water_dgf,
+            thermodynamics.transported_charge,
+            symbolic_input.membrane_potential,
         )
     if "keq" in symbolic_input.reserved:
         values["keq"] = get_keq(
@@ -324,6 +332,8 @@ def get_reserved_values(
             thermodynamics.reactant_stoichiometry,
             thermodynamics.water_stoichiometry,
             thermodynamics.water_dgf,
+            thermodynamics.transported_charge,
+            symbolic_input.membrane_potential,
         )
     return values
 
@@ -502,6 +512,7 @@ class SymbolicReaction(Reaction):
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
             water_dgf=scope.water_dgf,
+            transported_charge=self.transported_charge,
         )
 
     def get_input_indexes(
@@ -589,6 +600,14 @@ class SymbolicReaction(Reaction):
             ),
             temperature=(
                 None if thermodynamics is None else parameters["temperature"]
+            ),
+            membrane_potential=(
+                0.0
+                if thermodynamics is None
+                else get_membrane_potential(
+                    parameters,
+                    thermodynamics.transported_charge,
+                )
             ),
         )
 

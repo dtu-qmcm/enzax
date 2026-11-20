@@ -765,6 +765,8 @@ def check_model_is_exportable(model: KineticModel) -> None:
         problems.append("rapid equilibria")
     if model.algebraic_constraints:
         problems.append("algebraic constraints")
+    if any(r.transported_charge for r in model.reactions.values()):
+        problems.append("reactions that carry charge")
     for compartment_id, compartment in (model.compartments or {}).items():
         if compartment.variable_volume or compartment.volume != 1.0:
             problems.append(
