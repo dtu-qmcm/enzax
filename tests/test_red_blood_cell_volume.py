@@ -12,6 +12,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from enzax.examples import red_blood_cell_volume as rbcv
+from enzax.thermodynamics import MEMBRANE_POTENTIAL
 
 jax.config.update("jax_enable_x64", True)
 
@@ -25,19 +26,48 @@ STATES = {
 }
 
 
-def test_the_variables_are_the_volume_and_the_donnan_ratio():
-    assert rbcv.faithful.algebraic_variables == ["volume|c", "r"]
+def get_volume_and_donnan_ratio(model, state, parameters):
+    volume, membrane_potential = model.get_algebraic_variables(
+        state,
+        parameters,
+    )
+    return volume, rbcv.get_donnan_ratio(
+        membrane_potential,
+        parameters["temperature"],
+    )
+
+
+def test_the_variables_are_the_volume_and_the_membrane_potential():
+    assert rbcv.faithful.algebraic_variables == [
+        "volume|c",
+        MEMBRANE_POTENTIAL,
+    ]
     assert rbcv.faithful.volume_variables == {"volume|c": "c"}
 
 
-def test_the_leak_reads_the_donnan_ratio_as_a_variable():
-    labels = rbcv.faithful.parameter_labelling["log_custom"]
-    assert "cu|leak_Na|r" not in labels
-    assert "cu|leak_Na|k_perm" in labels
+def test_the_membrane_potential_is_not_a_parameter():
+    labelling = rbcv.faithful.parameter_labelling
+    assert MEMBRANE_POTENTIAL not in labelling
+    assert "cu|leak_Na|r" not in labelling["log_custom"]
+    assert "cu|leak_Na|k_perm" in labelling["log_custom"]
+
+
+def test_the_intracellular_anions_follow_the_donnan_ratio():
+    model, parameters = rbcv.faithful, rbcv.faithful_parameters
+    _, donnan_ratio = get_volume_and_donnan_ratio(
+        model,
+        rbcv.faithful_initial_state,
+        parameters,
+    )
+    conc = model.get_balanced_conc(rbcv.faithful_initial_state, parameters)
+    for anion, plasma in rbcv.PLASMA_ANIONS.items():
+        position = model.balanced_species.index(anion.removesuffix("_e"))
+        assert np.isclose(conc[position], donnan_ratio * plasma, rtol=1e-10)
 
 
 def test_the_faithful_constraints_at_the_reference_composition():
-    volume, donnan_ratio = rbcv.faithful.get_algebraic_variables(
+    volume, donnan_ratio = get_volume_and_donnan_ratio(
+        rbcv.faithful,
         rbcv.faithful_initial_state,
         rbcv.faithful_parameters,
     )
@@ -49,7 +79,11 @@ def test_the_stored_faithful_steady_state():
     model, parameters = rbcv.faithful, rbcv.faithful_parameters
     steady = STATES["faithful"]
     assert jnp.max(jnp.abs(model.dndt(steady, parameters))) < 1e-9
-    volume, donnan_ratio = model.get_algebraic_variables(steady, parameters)
+    volume, donnan_ratio = get_volume_and_donnan_ratio(
+        model,
+        steady,
+        parameters,
+    )
     assert 0.9 < volume < 1.1
     assert 0.55 < donnan_ratio < 0.70
 
