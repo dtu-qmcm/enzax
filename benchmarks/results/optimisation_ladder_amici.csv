@@ -1,83 +1,83 @@
 problem,configuration,trajectory,n_leapfrog,seconds,n_failed,gradient_relative_error
-without MIDs or stability penalty,+ hybrid solve,0,63,0.6858467608690262,0,0.0
-without MIDs or stability penalty,+ hybrid solve,1,63,0.6323145683854818,0,0.0
-without MIDs or stability penalty,+ hybrid solve,2,63,0.6425769440829754,0,0.0
-without MIDs or stability penalty,+ hybrid solve,3,63,0.6237022751010954,0,0.0
-without MIDs or stability penalty,+ hybrid solve,4,63,0.6077089398168027,0,0.0
-without MIDs or stability penalty,+ hybrid solve,5,63,0.6192869320511818,0,0.0
-without MIDs or stability penalty,+ hybrid solve,6,63,0.5955827417783439,0,0.0
-without MIDs or stability penalty,+ hybrid solve,7,63,0.6368789989501238,0,0.0
-without MIDs or stability penalty,+ hybrid solve,8,63,0.6375337061472237,0,0.0
-without MIDs or stability penalty,+ hybrid solve,9,63,0.6246268823742867,0,0.0
-without MIDs or stability penalty,+ grapevine,0,63,2.0087350723333657,0,1.242481145350654e-05
-without MIDs or stability penalty,+ grapevine,1,63,2.0351346731185913,0,1.6567841639706868e-05
-without MIDs or stability penalty,+ grapevine,2,63,1.9752836129628122,0,1.4084516152008083e-05
-without MIDs or stability penalty,+ grapevine,3,63,1.9351424146443605,0,1.3860187854690158e-05
-without MIDs or stability penalty,+ grapevine,4,63,1.8715441599488258,0,1.592295278509685e-05
-without MIDs or stability penalty,+ grapevine,5,63,2.0321089448407292,0,1.3706409722199572e-05
-without MIDs or stability penalty,+ grapevine,6,63,1.8367338431999087,0,1.664009280492906e-05
-without MIDs or stability penalty,+ grapevine,7,63,1.8142346129752696,0,1.335563243177058e-05
-without MIDs or stability penalty,+ grapevine,8,63,1.7286384678445756,0,1.4371063732258984e-05
-without MIDs or stability penalty,+ grapevine,9,63,2.151214229874313,0,1.5053493823618397e-05
-without MIDs or stability penalty,+ BDF solver,0,63,6.812886671163142,0,8.466282057760322e-06
-without MIDs or stability penalty,+ BDF solver,1,63,6.523028261959553,0,2.07974305706574e-05
-without MIDs or stability penalty,+ BDF solver,2,63,6.514428939204663,0,1.5191830814319359e-05
-without MIDs or stability penalty,+ BDF solver,3,63,6.627035268116742,0,1.3034196545374032e-05
-without MIDs or stability penalty,+ BDF solver,4,63,5.910677911248058,0,1.6552640398917215e-05
-without MIDs or stability penalty,+ BDF solver,5,63,6.6699100052937865,0,1.2889468009359336e-05
-without MIDs or stability penalty,+ BDF solver,6,63,6.607271584216505,0,1.758699453677438e-05
-without MIDs or stability penalty,+ BDF solver,7,63,5.561707634944469,0,1.3917928898369679e-05
-without MIDs or stability penalty,+ BDF solver,8,63,6.716299602761865,0,1.644742855460777e-05
-without MIDs or stability penalty,+ BDF solver,9,63,6.185138417873532,0,1.708406077055139e-05
-without MIDs or stability penalty,+ implicit adjoint,0,63,16.17109773820266,0,8.185866767830211e-06
-without MIDs or stability penalty,+ implicit adjoint,1,63,15.490385985933244,0,1.6075583808949047e-05
-without MIDs or stability penalty,+ implicit adjoint,2,63,15.844854162074625,0,1.2634388017201633e-05
-without MIDs or stability penalty,+ implicit adjoint,3,63,16.00999612407759,0,1.0934567618846959e-05
-without MIDs or stability penalty,+ implicit adjoint,4,63,15.145398651715368,0,1.2160434523177963e-05
-without MIDs or stability penalty,+ implicit adjoint,5,63,15.77609918359667,0,9.662273311284403e-06
-without MIDs or stability penalty,+ implicit adjoint,6,63,15.958140337839723,0,1.3760054461272244e-05
-without MIDs or stability penalty,+ implicit adjoint,7,63,14.786240779794753,0,9.583604164878799e-06
-without MIDs or stability penalty,+ implicit adjoint,8,63,16.001613861881196,0,1.2017259364005655e-05
-without MIDs or stability penalty,+ implicit adjoint,9,63,15.485833790153265,0,1.2082912195048076e-05
-without MIDs or stability penalty,no optimisations,0,63,77.50463944813237,0,0.0001966158334436172
-without MIDs or stability penalty,no optimisations,1,63,73.97306831507012,0,0.0007653733617978753
-without MIDs or stability penalty,no optimisations,2,63,75.47654798394069,0,0.0003077324357536038
-without MIDs or stability penalty,no optimisations,3,63,76.19375568488613,0,0.008303883618061916
-without MIDs or stability penalty,no optimisations,4,63,71.39481503795832,0,0.00014743999203749853
-without MIDs or stability penalty,no optimisations,5,63,74.62090601911768,0,0.007178765061854894
-without MIDs or stability penalty,no optimisations,6,63,75.61668166983873,0,0.002965390559501408
-without MIDs or stability penalty,no optimisations,7,63,69.64878398366272,0,0.0024053706523507676
-without MIDs or stability penalty,no optimisations,8,63,75.89105336694047,0,0.004754166476364865
-without MIDs or stability penalty,no optimisations,9,63,73.2863361868076,0,0.0019709897264010446
-without MIDs or stability penalty,"AMICI + pyPESTO + PyMC, defaults",0,63,1040.4137379247695,8,nan
-without MIDs or stability penalty,"AMICI + pyPESTO + PyMC, defaults",1,63,919.9624975170009,6,nan
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,0,63,10.079170310869813,0,1.3070266562570242e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,1,63,9.794408342801034,0,1.972722693223101e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,2,63,10.36265802429989,0,1.7861864490811043e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,3,63,10.241656982339919,0,1.6006344954642506e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,4,63,10.102903231978416,0,1.6022952985767817e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,5,63,10.226479930337518,0,1.5158714494557545e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,6,63,10.188796336296946,0,1.9421582721110036e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,7,63,10.337993973866105,0,1.484086779838694e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,8,63,10.275747523177415,0,1.6932564162395917e-05
-without MIDs or stability penalty,AMICI + pyPESTO + PyMC,9,63,10.583803472109139,0,1.7444444754461366e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",0,63,4.973181771114469,0,1.4482636462329954e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",1,63,4.851575475651771,0,2.1293899110486093e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",2,63,5.170965222176164,0,1.6970069527162428e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",3,63,5.019615939818323,0,1.540387331301213e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",4,63,4.964940491132438,0,1.686910648044679e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",5,63,5.025552412029356,0,1.5138984469217665e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",6,63,4.988984867930412,0,1.9313816531101633e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",7,63,5.066242633853108,0,1.5593947163209956e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",8,63,5.0377099104225636,0,1.7856938170650494e-05
-without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",9,63,5.178934081923217,0,1.78861933975056e-05
-without MIDs or stability penalty,AMICI JAX + blackjax,0,63,10.31568867014721,0,9.397584535208719e-06
-without MIDs or stability penalty,AMICI JAX + blackjax,1,63,9.452528030145913,0,1.4913297282862982e-05
-without MIDs or stability penalty,AMICI JAX + blackjax,2,63,10.683568249922246,0,1.2496828159473616e-05
-without MIDs or stability penalty,AMICI JAX + blackjax,3,63,10.283585217781365,0,1.1282965754006444e-05
-without MIDs or stability penalty,AMICI JAX + blackjax,4,63,10.050434831064194,0,1.0769860333936518e-05
-without MIDs or stability penalty,AMICI JAX + blackjax,5,63,10.333445432595909,0,9.652881896703396e-06
-without MIDs or stability penalty,AMICI JAX + blackjax,6,63,9.720648375805467,0,1.3652523820607742e-05
-without MIDs or stability penalty,AMICI JAX + blackjax,7,63,10.592131139244884,0,9.520006650984734e-06
-without MIDs or stability penalty,AMICI JAX + blackjax,8,63,10.226034161169082,0,9.170116098917886e-06
-without MIDs or stability penalty,AMICI JAX + blackjax,9,63,10.882308232132345,0,1.05322048749575e-05
+without MIDs or stability penalty,+ hybrid solve,0,63,0.6892541870474815,0,0.0
+without MIDs or stability penalty,+ hybrid solve,1,63,0.6086869579739869,0,0.0
+without MIDs or stability penalty,+ hybrid solve,2,63,0.6116680591367185,0,0.0
+without MIDs or stability penalty,+ hybrid solve,3,63,0.5954886157996953,0,0.0
+without MIDs or stability penalty,+ hybrid solve,4,63,0.6025290340185165,0,0.0
+without MIDs or stability penalty,+ hybrid solve,5,63,0.6006396063603461,0,0.0
+without MIDs or stability penalty,+ hybrid solve,6,63,0.6569846500642598,0,0.0
+without MIDs or stability penalty,+ hybrid solve,7,63,0.6216552071273327,0,0.0
+without MIDs or stability penalty,+ hybrid solve,8,63,0.6143952878192067,0,0.0
+without MIDs or stability penalty,+ hybrid solve,9,63,0.6895753531716764,0,0.0
+without MIDs or stability penalty,+ grapevine,0,63,1.9025545422919095,0,1.242481145350654e-05
+without MIDs or stability penalty,+ grapevine,1,63,2.0678946059197187,0,1.6567841639706868e-05
+without MIDs or stability penalty,+ grapevine,2,63,1.958037514705211,0,1.4084516152008083e-05
+without MIDs or stability penalty,+ grapevine,3,63,1.878186282236129,0,1.3860187854690158e-05
+without MIDs or stability penalty,+ grapevine,4,63,1.8133727936074138,0,1.592295278509685e-05
+without MIDs or stability penalty,+ grapevine,5,63,1.9461278598755598,0,1.3706409722199572e-05
+without MIDs or stability penalty,+ grapevine,6,63,1.8590941210277379,0,1.664009280492906e-05
+without MIDs or stability penalty,+ grapevine,7,63,1.8242282569408417,0,1.335563243177058e-05
+without MIDs or stability penalty,+ grapevine,8,63,1.7839316776953638,0,1.4371063732258984e-05
+without MIDs or stability penalty,+ grapevine,9,63,2.0341974669136107,0,1.5053493823618397e-05
+without MIDs or stability penalty,+ BDF solver,0,63,6.694032821804285,0,8.466282057760322e-06
+without MIDs or stability penalty,+ BDF solver,1,63,6.437189613003284,0,2.07974305706574e-05
+without MIDs or stability penalty,+ BDF solver,2,63,6.372603083029389,0,1.5191830814319359e-05
+without MIDs or stability penalty,+ BDF solver,3,63,6.425659860018641,0,1.3034196545374032e-05
+without MIDs or stability penalty,+ BDF solver,4,63,5.813646369148046,0,1.6552640398917215e-05
+without MIDs or stability penalty,+ BDF solver,5,63,6.44484555721283,0,1.2889468009359336e-05
+without MIDs or stability penalty,+ BDF solver,6,63,6.374893825035542,0,1.758699453677438e-05
+without MIDs or stability penalty,+ BDF solver,7,63,5.472284578252584,0,1.3917928898369679e-05
+without MIDs or stability penalty,+ BDF solver,8,63,6.571045862045139,0,1.644742855460777e-05
+without MIDs or stability penalty,+ BDF solver,9,63,6.08631531521678,0,1.708406077055139e-05
+without MIDs or stability penalty,+ implicit adjoint,0,63,16.14724751189351,0,8.185866767830211e-06
+without MIDs or stability penalty,+ implicit adjoint,1,63,15.431890888605267,0,1.6075583808949047e-05
+without MIDs or stability penalty,+ implicit adjoint,2,63,15.861527444329113,0,1.2634388017201633e-05
+without MIDs or stability penalty,+ implicit adjoint,3,63,15.988955426961184,0,1.0934567618846959e-05
+without MIDs or stability penalty,+ implicit adjoint,4,63,15.009577697142959,0,1.2160434523177963e-05
+without MIDs or stability penalty,+ implicit adjoint,5,63,15.713567080907524,0,9.662273311284403e-06
+without MIDs or stability penalty,+ implicit adjoint,6,63,15.887348586227745,0,1.3760054461272244e-05
+without MIDs or stability penalty,+ implicit adjoint,7,63,14.776536244899035,0,9.583604164878799e-06
+without MIDs or stability penalty,+ implicit adjoint,8,63,16.01799727976322,0,1.2017259364005655e-05
+without MIDs or stability penalty,+ implicit adjoint,9,63,15.404807134065777,0,1.2082912195048076e-05
+without MIDs or stability penalty,no optimisations,0,63,76.90220264624804,0,0.0001966158334436172
+without MIDs or stability penalty,no optimisations,1,63,73.19299205299467,0,0.0007653733617978753
+without MIDs or stability penalty,no optimisations,2,63,74.79623390780762,0,0.0003077324357536038
+without MIDs or stability penalty,no optimisations,3,63,75.8007589043118,0,0.008303883618061916
+without MIDs or stability penalty,no optimisations,4,63,71.10138952825218,0,0.00014743999203749853
+without MIDs or stability penalty,no optimisations,5,63,74.58313586190343,0,0.007178765061854894
+without MIDs or stability penalty,no optimisations,6,63,74.90404819976538,0,0.002965390559501408
+without MIDs or stability penalty,no optimisations,7,63,69.24633285403252,0,0.0024053706523507676
+without MIDs or stability penalty,no optimisations,8,63,75.02124235080555,0,0.004754166476364865
+without MIDs or stability penalty,no optimisations,9,63,72.56596133997664,0,0.0019709897264010446
+without MIDs or stability penalty,"AMICI + pyPESTO + PyMC, defaults",0,63,1076.330417736899,8,nan
+without MIDs or stability penalty,"AMICI + pyPESTO + PyMC, defaults",1,63,957.4897132627666,6,nan
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,0,63,9.96370258135721,0,1.3070266562570242e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,1,63,9.760045320726931,0,1.972722693223101e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,2,63,10.315084414090961,0,1.7861864490811043e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,3,63,10.126694626174867,0,1.6006344954642506e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,4,63,10.053453679662198,0,1.6022952985767817e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,5,63,10.177225310821086,0,1.5158714494557545e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,6,63,10.149367591831833,0,1.9421582721110036e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,7,63,10.326148324180394,0,1.484086779838694e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,8,63,10.22401010710746,0,1.6932564162395917e-05
+without MIDs or stability penalty,AMICI + pyPESTO + PyMC,9,63,10.605823230929673,0,1.7444444754461366e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",0,63,4.990164704155177,0,1.4482636462329954e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",1,63,4.863423942122608,0,2.1293899110486093e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",2,63,5.141316969878972,0,1.6970069527162428e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",3,63,5.037264762911946,0,1.540387331301213e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",4,63,4.979178260080516,0,1.686910648044679e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",5,63,5.040940148755908,0,1.5138984469217665e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",6,63,5.013522075954825,0,1.9313816531101633e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",7,63,5.07986159902066,0,1.5593947163209956e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",8,63,5.0392225361429155,0,1.7856938170650494e-05
+without MIDs or stability penalty,"AMICI + pyPESTO, without PyMC",9,63,5.2129507581703365,0,1.78861933975056e-05
+without MIDs or stability penalty,AMICI JAX + blackjax,0,63,10.154615011997521,0,9.397584535208719e-06
+without MIDs or stability penalty,AMICI JAX + blackjax,1,63,9.288853419944644,0,1.4913297282862982e-05
+without MIDs or stability penalty,AMICI JAX + blackjax,2,63,10.50505351787433,0,1.2496828159473616e-05
+without MIDs or stability penalty,AMICI JAX + blackjax,3,63,10.224800873082131,0,1.1282965754006444e-05
+without MIDs or stability penalty,AMICI JAX + blackjax,4,63,9.920319281052798,0,1.0769860333936518e-05
+without MIDs or stability penalty,AMICI JAX + blackjax,5,63,10.206727587152272,0,9.652881896703396e-06
+without MIDs or stability penalty,AMICI JAX + blackjax,6,63,9.610169094987214,0,1.3652523820607742e-05
+without MIDs or stability penalty,AMICI JAX + blackjax,7,63,10.434063746128231,0,9.520006650984734e-06
+without MIDs or stability penalty,AMICI JAX + blackjax,8,63,10.150286675896496,0,9.170116098917886e-06
+without MIDs or stability penalty,AMICI JAX + blackjax,9,63,10.76554233301431,0,1.05322048749575e-05
