@@ -1,10 +1,6 @@
-"""Find the posterior mode and the Hessian of the log density there.
+"""TODO(TG): module docstring for the regulator-finding design."""
 
-Climbs from the prior mean with adam, then polishes with Newton steps, and
-saves the mode, its steady states and the Hessian. fit.py uses these to
-whiten the sampler's coordinates. Runs once for each fit in common.FITS,
-saving to results/<fit>/.
-"""
+import sys
 
 import jax
 import numpy as np
@@ -22,7 +18,7 @@ from common import (
 )
 
 N_STEP = 3000
-LEARNING_RATE = 0.02
+LEARNING_RATES = (0.02, 0.005)
 MIN_LEARNING_RATE = 1e-5
 REPORT_EVERY = 250
 HESSIAN_STEP = 1e-5
@@ -32,7 +28,7 @@ MIN_NEWTON_STEP = 1e-3
 N_SHOW = 5
 
 
-def find_mode(log_posterior, z, guess):
+def find_mode(log_posterior, z, guess, learning_rate):
     def negative_log_density(z, guess):
         log_density, steady = log_posterior(z, guess)
         return -log_density, steady
@@ -41,7 +37,7 @@ def find_mode(log_posterior, z, guess):
         jax.value_and_grad(negative_log_density, has_aux=True),
     )
     optimiser = optax.inject_hyperparams(optax.adam)(
-        learning_rate=LEARNING_RATE,
+        learning_rate=learning_rate,
     )
     state = optimiser.init(z)
     good = (z, state, guess)
@@ -116,7 +112,7 @@ def polish_mode(log_posterior, mode, guess):
         flat = flat + size * direction
         value, gradient, guess = new_value, new_gradient, steady
         hessian = get_hessian(value_and_grad, flat, guess)
-    return unflatten(flat), guess, hessian
+    return unflatten(flat), guess, hessian, float(jnp.linalg.norm(gradient))
 
 
 def report_laplace(hessian, labels):
@@ -145,14 +141,17 @@ def report_laplace(hessian, labels):
 
 
 def main(fit):
-    experiments = FITS[fit]
-    split, _, _, log_posterior, z_zero = get_z_posterior(experiments)
-    mode, guess = find_mode(
-        log_posterior,
-        z_zero,
-        get_initial_guess(experiments),
+    hypothesis, experiments = FITS[fit]
+    split, _, _, log_posterior, z_zero = get_z_posterior(
+        hypothesis,
+        experiments,
     )
-    mode, guess, hessian = polish_mode(log_posterior, mode, guess)
+    mode, guess = z_zero, get_initial_guess(hypothesis, experiments)
+    for learning_rate in LEARNING_RATES:
+        mode, guess = find_mode(log_posterior, mode, guess, learning_rate)
+        mode, guess, hessian, norm = polish_mode(log_posterior, mode, guess)
+        if norm < GRADIENT_TOLERANCE:
+            break
     labels = get_labels(split, z_zero)
     report_laplace(hessian, labels)
     results_dir = get_results_dir(fit)
@@ -169,5 +168,5 @@ def main(fit):
 
 
 if __name__ == "__main__":
-    for fit in FITS:
+    for fit in sys.argv[1:] or FITS:
         main(fit)

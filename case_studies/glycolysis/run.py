@@ -1,13 +1,7 @@
-"""Run the glycolysis case study from start to finish.
-
-Simulates the measurements, then for each fit in common.FITS finds the
-posterior mode, samples the posterior and computes derived quantities, and
-finally plots the figure. One fit uses all three experiments; the other
-leaves out the high-lactate experiment, to show what it adds. Sampling
-needs four free cores, and the whole run takes about an hour and a half.
-"""
+"""TODO(TG): module docstring for the regulator-finding design."""
 
 import analyse
+import design
 import figure
 import fit
 import mode
@@ -19,8 +13,11 @@ def main():
     simulate.main()
     for name in FITS:
         mode.main(name)
-        fit.main(name)
+    fit.main(list(FITS))
+    for name in FITS:
         analyse.main(name)
+    for phase in design.SCREENED_PHASES:
+        design.main(phase)
     figure.main()
 
 

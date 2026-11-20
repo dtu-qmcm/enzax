@@ -1,22 +1,17 @@
-"""Sample the posterior with NUTS, one chain per core.
-
-Launches each chain as its own process pinned to one core, sampling in
-coordinates whitened by the Laplace approximation from mode.py. Then
-gathers the draws and sampler statistics into an arviz netCDF file and
-prints convergence diagnostics. Runs once for each fit in common.FITS,
-saving to results/<fit>/.
-"""
+"""TODO(TG): module docstring for the regulator-finding design."""
 
 import os
 import subprocess
 import sys
 import time
+from functools import partial
 
 import arviz as az
 import blackjax
 import jax
 import numpy as np
 from blackjax.adaptation.base import get_filter_adapt_info_fn
+from blackjax.adaptation.window_adaptation import build_schedule
 from teddys_blackjax_utils import inference_loop
 from grapevine import grapenuts, guess_implicit
 from jax import numpy as jnp
@@ -24,7 +19,7 @@ from jax.flatten_util import ravel_pytree
 
 from common import (
     FITS,
-    MODEL,
+    MODELS,
     get_floored_precision,
     get_labels,
     get_results_dir,
@@ -41,6 +36,7 @@ MAX_TREEDEPTH = 10
 INIT_SD = 0.3
 INITIAL_STEP_SIZE = 0.5
 TARGET_ACCEPTANCE = 0.99
+FINAL_BUFFER = 250
 IMM_PSEUDO_COUNT = 200.0
 SINGLE_THREADED_XLA = (
     "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
@@ -58,14 +54,14 @@ def get_chain_file(fit, chain):
     return get_results_dir(fit) / f"chain_{chain}.npz"
 
 
-def get_guess_fn(layout, split, to_parameters):
+def get_guess_fn(model, layout, split, to_parameters):
     def target_function(conc, position):
         parameters = gather_parameters_by_experiment(
             layout,
             combine_parameters(split, to_parameters(position)),
         )
         conc = conc.reshape(len(layout.experiments), -1)
-        return jax.vmap(MODEL.dndt)(conc, parameters).ravel()
+        return jax.vmap(model.dndt)(conc, parameters).ravel()
 
     def guess_fn(guess_inputs, position):
         shape = guess_inputs.solution.shape
@@ -78,15 +74,24 @@ def get_guess_fn(layout, split, to_parameters):
     return guess_fn
 
 
-def run_chain(fit, chain):
-    split, layout, from_z_scores, log_posterior, z_zero = get_z_posterior(
-        FITS[fit],
-    )
+def get_whitening(fit):
     saved = np.load(get_results_dir(fit) / "mode.npz")
-    _, unflatten = ravel_pytree(z_zero)
-    mode = jnp.asarray(saved["mode"])
     eigenvectors, precision = get_floored_precision(saved["hessian"])
-    scale = jnp.asarray(eigenvectors / np.sqrt(precision))
+    return (
+        jnp.asarray(saved["mode"]),
+        jnp.asarray(eigenvectors / np.sqrt(precision)),
+        jnp.asarray(saved["guess"]),
+    )
+
+
+def run_chain(fit, chain):
+    hypothesis, experiments = FITS[fit]
+    split, layout, from_z_scores, log_posterior, z_zero = get_z_posterior(
+        hypothesis,
+        experiments,
+    )
+    _, unflatten = ravel_pytree(z_zero)
+    mode, scale, default_guess = get_whitening(fit)
 
     def to_z_scores(u):
         return unflatten(mode + scale @ u)
@@ -98,8 +103,8 @@ def run_chain(fit, chain):
         return from_z_scores(to_z_scores(u))
 
     make_warmup, make_kernel = grapenuts(
-        jnp.asarray(saved["guess"]),
-        guess_fn=get_guess_fn(layout, split, to_parameters),
+        default_guess,
+        guess_fn=get_guess_fn(MODELS[hypothesis], layout, split, to_parameters),
     )
     warmup = make_warmup(
         density,
@@ -108,6 +113,7 @@ def run_chain(fit, chain):
         imm_shrinkage_to_previous=IMM_PSEUDO_COUNT,
         initial_step_size=INITIAL_STEP_SIZE,
         target_acceptance_rate=TARGET_ACCEPTANCE,
+        schedule_fn=partial(build_schedule, final_buffer_size=FINAL_BUFFER),
         adaptation_info_fn=get_filter_adapt_info_fn(
             state_keys={"logdensity"},
             info_keys=set(INFO_FIELDS),
@@ -165,11 +171,7 @@ def run_chain(fit, chain):
     )
 
 
-def launch_chains(fit):
-    cores = sorted(os.sched_getaffinity(0))
-    if len(cores) < N_CHAIN:
-        msg = f"{N_CHAIN} chains need as many cores, not {len(cores)}."
-        raise RuntimeError(msg)
+def launch_chains(fit, cores):
     results_dir = get_results_dir(fit)
     results_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ | {
@@ -177,7 +179,7 @@ def launch_chains(fit):
         "EQX_ON_ERROR": "nan",
     }
     processes = []
-    for chain, core in zip(range(N_CHAIN), cores):
+    for chain, core in zip(range(N_CHAIN), cores, strict=True):
         command = [
             "taskset",
             "--cpu-list",
@@ -196,10 +198,16 @@ def launch_chains(fit):
                 stderr=subprocess.STDOUT,
             ),
         )
-        print(f"Chain {chain} on core {core}, logging to {log.name}")
+        print(f"{fit} chain {chain} on core {core}, logging to {log.name}")
+    return processes
+
+
+def wait_for_chains(fit, processes):
     failed = [chain for chain, p in enumerate(processes) if p.wait() != 0]
     if failed:
-        msg = f"Chains {failed} failed; see their logs in {results_dir}."
+        msg = (
+            f"Chains {failed} failed; see their logs in {get_results_dir(fit)}."
+        )
         raise RuntimeError(msg)
 
 
@@ -246,14 +254,30 @@ def combine_chains(fit):
     print(f"Saved the draws to {draws_file}")
 
 
-def main(fit):
-    launch_chains(fit)
-    combine_chains(fit)
+def main(fits):
+    cores = sorted(os.sched_getaffinity(0))
+    n_parallel = len(cores) // N_CHAIN
+    if n_parallel == 0:
+        msg = f"{N_CHAIN} chains need as many cores, not {len(cores)}."
+        raise RuntimeError(msg)
+    for start in range(0, len(fits), n_parallel):
+        batch = fits[start : start + n_parallel]
+        processes = {
+            fit: launch_chains(
+                fit,
+                cores[N_CHAIN * position : N_CHAIN * (position + 1)],
+            )
+            for position, fit in enumerate(batch)
+        }
+        for fit, fit_processes in processes.items():
+            wait_for_chains(fit, fit_processes)
+        for fit in batch:
+            print(fit)
+            combine_chains(fit)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    if len(sys.argv) == 3 and sys.argv[2].isdigit():
         run_chain(sys.argv[1], int(sys.argv[2]))
     else:
-        for fit in FITS:
-            main(fit)
+        main(sys.argv[1:] or list(FITS))
