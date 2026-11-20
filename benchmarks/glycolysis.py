@@ -25,7 +25,7 @@ import pandas as pd
 import petab.v1 as petab
 import yaml
 
-from common import (
+from work_precision import (
     HERE,
     get_enzax_steady_state_solve,
     get_estimated,

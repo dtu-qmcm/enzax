@@ -20,7 +20,7 @@ import numpy as np
 import petab.v1 as petab
 import sympy
 
-from common import (
+from work_precision import (
     HERE,
     get_enzax_steady_state_solve,
     get_enzax_time_course_options,
