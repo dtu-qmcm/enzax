@@ -3,9 +3,15 @@
 enzax gives every compound a standard formation energy `dgf`, in kJ/mol, and
 calculates each reaction's standard Gibbs energy change from it:
 
-    dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
+    dgr_std = (
+        reactant_stoichiometry @ dgf
+        + water_stoichiometry * water_dgf
+        + transported_charge * F * psi
+    )
 
 Water is added separately because it is not one of the model's species. The
+last term only matters for reactions that move charge across a membrane: see
+`enzax.reaction.Reaction`. The
 functions here turn `dgr_std` into what rate laws need, so every reversible
 rate law in a model agrees about where each reaction's equilibrium is.
 """
@@ -46,8 +52,8 @@ def get_membrane_potential(
     parameters: ParamDict,
     transported_charge: float | np.ndarray,
 ) -> ScalarLike:
-    """Get the membrane potential that reactions carrying the given charges
-    read, which is 0 if none of them carries any."""
+    """Get the membrane potential for reactions with the given transported
+    charges, or 0 if none carries charge."""
     if not np.any(transported_charge):
         return 0.0
     return parameters[MEMBRANE_POTENTIAL]

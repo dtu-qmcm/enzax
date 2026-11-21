@@ -366,16 +366,19 @@ class SymbolicReaction(Reaction):
       `pack_parameters` reports as a missing value.
     * `water_stoichiometry`: how much water the reaction consumes or produces,
       which only matters to `reversibility` and `keq`.
+    * `transported_charge`: see `Reaction`.
 
     The allowed parameter kinds are `log_saturation_constant`, `log_kcat`,
     `log_enzyme`, `log_tc`, `log_drain`, `log_k_plus`, `log_custom`,
-    `custom` and `temperature`.
+    `custom`, `temperature` and `membrane_potential`.
 
     The default label is the reaction id for `log_kcat`,
     `log_enzyme`, `log_tc`, `log_drain` and `log_k_plus`, and
     `cu|{reaction}|{symbol}` for
     `log_custom` and `custom`. `log_saturation_constant` has no default, so
-    its label must be given, and `temperature` is unlabelled. Two symbols
+    its label must be given, and `temperature` and `membrane_potential` are
+    unlabelled. A `membrane_potential` symbol reads the solved value when the
+    model's membrane potential is an algebraic variable. Two symbols
     share a value by being given the same label, but two symbols that would
     share one only because of their defaults are an error.
 

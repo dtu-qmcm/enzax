@@ -52,7 +52,8 @@ class RapidEquilibriumReaction(Module):
     It has no rate law, labels or flux. Its equilibrium constant comes from
     the formation energies of its species (and of water, via
     `water_stoichiometry`), and the model integrates the fast moieties it
-    conserves instead of the species themselves.
+    conserves instead of the species themselves. See `Reaction` for
+    `transported_charge`.
     """
 
     stoichiometry: dict[str, float] = field(kw_only=True)
