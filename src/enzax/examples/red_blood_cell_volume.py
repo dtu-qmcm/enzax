@@ -1,8 +1,8 @@
 """Joshi and Palsson's red blood cell model with a variable cell volume.
 
-The cell volume and the Donnan ratio are algebraic variables, set by osmotic
-balance and intracellular electroneutrality as in Joshi and Palsson's Part II,
-with the cell in an open suspension whose plasma is clamped.
+The cell volume and the membrane potential are algebraic variables, set by
+osmotic balance and intracellular electroneutrality as in Joshi and Palsson's
+Part II, with the cell in an open suspension whose plasma is clamped.
 """
 
 from dataclasses import dataclass
@@ -11,7 +11,7 @@ import equinox as eqx
 import numpy as np
 from scipy.optimize import brentq
 from jax import numpy as jnp
-from jaxtyping import Array
+from jaxtyping import Array, ScalarLike
 
 from enzax.algebraic_constraint import (
     AlgebraicConstraint,
@@ -22,12 +22,24 @@ from enzax.compartment import Compartment
 from enzax.examples import red_blood_cell as rbc
 from enzax.kinetic_model import KineticModel
 from enzax.parameters import get_parameter_position, pack_parameters
-from enzax.rapid_equilibrium import RapidEquilibriumNetwork
+from enzax.rapid_equilibrium import (
+    RapidEquilibriumNetwork,
+    RapidEquilibriumReaction,
+)
 from enzax.reactions import SymbolicReaction
+from enzax.thermodynamics import FARADAY, GAS_CONSTANT, MEMBRANE_POTENTIAL
 
 VOLUME = "volume|c"
-DONNAN_RATIO = "r"
 PHI = 0.93
+PLASMA_ANIONS = {"cl_e": 107.0, "hco3_e": 25.0}
+
+
+def get_donnan_ratio(
+    membrane_potential: ScalarLike,
+    temperature: ScalarLike,
+) -> Array:
+    """Get the Donnan ratio from the membrane potential (Part II eq 5)."""
+    return jnp.exp(FARADAY * membrane_potential / (GAS_CONSTANT * temperature))
 
 
 def get_intracellular_ph(donnan_ratio: Array, ph_e: Array) -> Array:
@@ -77,7 +89,7 @@ class CellIx(eqx.Module):
     species: tuple[int, ...]
     values: tuple[int, ...]
     volume: int
-    donnan_ratio: int
+    membrane_potential: int
 
 
 class CellInput(eqx.Module):
@@ -88,7 +100,7 @@ class CellInput(eqx.Module):
 
 class CellConstraint(AlgebraicConstraint):
     """A constraint on the cell that reads species' concentrations, positive
-    parameters by label, the cell volume and the Donnan ratio."""
+    parameters by label, the cell volume and the membrane potential."""
 
     def get_species(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(self.get_species_read()))
@@ -100,7 +112,7 @@ class CellConstraint(AlgebraicConstraint):
         raise NotImplementedError
 
     def get_variables_read(self) -> tuple[str, ...]:
-        return (VOLUME, DONNAN_RATIO)
+        return (VOLUME, MEMBRANE_POTENTIAL)
 
     def get_labels(self, scope: ConstraintScope) -> CellLabels:
         return CellLabels(labels=self.get_value_labels())
@@ -113,7 +125,9 @@ class CellConstraint(AlgebraicConstraint):
                 for label in self.get_value_labels()
             ),
             volume=scope.algebraic_variables.index(VOLUME),
-            donnan_ratio=scope.algebraic_variables.index(DONNAN_RATIO),
+            membrane_potential=scope.algebraic_variables.index(
+                MEMBRANE_POTENTIAL,
+            ),
         )
 
     def get_input(self, parameters, ix: CellIx) -> CellInput:
@@ -131,7 +145,7 @@ class CellConstraint(AlgebraicConstraint):
             species,
             values,
             variables[ix.volume],
-            variables[ix.donnan_ratio],
+            variables[ix.membrane_potential],
         )
 
 
@@ -140,9 +154,8 @@ class OsmoticBalance(CellConstraint):
 
     Each mapping gives the osmotic coefficient of a term. `species` are
     intracellular species, `amounts` labels of fixed amounts that the cell
-    volume dilutes, `anions` labels of plasma anion concentrations whose
-    intracellular concentration is the Donnan ratio times the plasma's,
-    `constants` labels of osmolarities that the volume doesn't dilute,
+    volume dilutes, `constants` labels of osmolarities that the volume doesn't
+    dilute,
     `plasma_species` plasma species and `plasma` labels of plasma
     concentrations. `hemoglobin` labels haemoglobin's amount, whose osmotic
     coefficient depends on its concentration.
@@ -150,7 +163,6 @@ class OsmoticBalance(CellConstraint):
 
     species: dict[str, float]
     amounts: dict[str, float]
-    anions: dict[str, float]
     constants: dict[str, float]
     plasma_species: dict[str, float]
     plasma: dict[str, float]
@@ -164,7 +176,6 @@ class OsmoticBalance(CellConstraint):
             dict.fromkeys(
                 [
                     *self.amounts,
-                    *self.anions,
                     *self.constants,
                     *self.plasma,
                     self.hemoglobin,
@@ -173,7 +184,7 @@ class OsmoticBalance(CellConstraint):
         )
 
     def __call__(self, conc, variables, constraint_input: CellInput):
-        species, values, volume, donnan_ratio = self.unpack(
+        species, values, volume, _ = self.unpack(
             conc,
             variables,
             constraint_input,
@@ -182,9 +193,6 @@ class OsmoticBalance(CellConstraint):
         inside = (
             sum(phi * species[s] for s, phi in self.species.items())
             + sum(phi * values[a] / volume for a, phi in self.amounts.items())
-            + sum(
-                phi * donnan_ratio * values[a] for a, phi in self.anions.items()
-            )
             + sum(c * values[label] for label, c in self.constants.items())
             + get_hb_osmotic_coefficient(hb) * hb
         )
@@ -199,18 +207,15 @@ class Electroneutrality(CellConstraint):
 
     Each mapping gives the charge of a term. `species` are intracellular
     species and `amounts` labels of fixed amounts that the cell volume
-    dilutes. `anions` labels plasma concentrations of monovalent anions whose
-    intracellular concentration is the Donnan ratio times the plasma's.
-    `hemoglobin` labels haemoglobin's amount and `dpg` is the 2,3-DPG species,
-    whose charges depend on the intracellular pH, which `ph_e` (the label of
-    the external pH) and the Donnan ratio determine. If `phosphate` names a
-    species, its charge depends on the intracellular pH too, with pK
-    `phosphate_pk`.
+    dilutes. `hemoglobin` labels haemoglobin's amount and `dpg` is the 2,3-DPG
+    species, whose charges depend on the intracellular pH, which `ph_e` (the
+    label of the external pH) and the membrane potential determine. If
+    `phosphate` names a species, its charge depends on the intracellular pH
+    too, with pK `phosphate_pk`.
     """
 
     species: dict[str, float]
     amounts: dict[str, float]
-    anions: tuple[str, ...]
     hemoglobin: str
     dpg: str
     ph_e: str
@@ -224,22 +229,24 @@ class Electroneutrality(CellConstraint):
     def get_value_labels(self) -> tuple[str, ...]:
         return tuple(
             dict.fromkeys(
-                [*self.amounts, *self.anions, self.hemoglobin, self.ph_e],
+                [*self.amounts, self.hemoglobin, self.ph_e],
             ),
         )
 
     def __call__(self, conc, variables, constraint_input: CellInput):
-        species, values, volume, donnan_ratio = self.unpack(
+        species, values, volume, membrane_potential = self.unpack(
             conc,
             variables,
             constraint_input,
         )
-        ph_i = get_intracellular_ph(donnan_ratio, values[self.ph_e])
+        ph_i = get_intracellular_ph(
+            get_donnan_ratio(membrane_potential, constraint_input.temperature),
+            values[self.ph_e],
+        )
         temperature_celsius = constraint_input.temperature - 273.15
         charge = (
             sum(z * species[s] for s, z in self.species.items())
             + sum(z * values[a] / volume for a, z in self.amounts.items())
-            - sum(donnan_ratio * values[a] for a in self.anions)
             + get_hb_charge(ph_i, temperature_celsius)
             * values[self.hemoglobin]
             / volume
@@ -257,25 +264,48 @@ class Electroneutrality(CellConstraint):
         return jnp.array([charge / 100.0])
 
 
+U = f"({FARADAY} * psi / ({GAS_CONSTANT} * temperature))"
+
 LEAK_NA = SymbolicReaction(
     stoichiometry={"na_e": -1.0, "na": 1.0},
     expression=(
-        "k_perm * log(r) * (na_e - r * na) / (r - 1)"
-        " + vm * (na_e / (km + na_e) - r * na / (km + r * na))"
+        f"na_e * reversibility * (k_perm * {U} / (exp({U}) - 1)"
+        f" + vm * km / ((km + na_e) * (km + exp({U}) * na)))"
     ),
     species=["na", "na_e"],
-    algebraic_variables={"r": DONNAN_RATIO},
+    parameters={"psi": MEMBRANE_POTENTIAL, "temperature": "temperature"},
     default_parameter_kind="log_custom",
     compartment="c",
+    transported_charge=1.0,
 )
+
+ANION_EXCHANGE = {
+    "Cl_ex": RapidEquilibriumReaction(
+        stoichiometry={"cl_e": -1.0, "cl": 1.0},
+        transported_charge=-1.0,
+    ),
+    "HCO3_ex": RapidEquilibriumReaction(
+        stoichiometry={"hco3_e": -1.0, "hco3": 1.0},
+        transported_charge=-1.0,
+    ),
+}
+COMPOUND_TO_SPECIES = {
+    "na": ["na", "na_e"],
+    "cl": ["cl", "cl_e"],
+    "hco3": ["hco3", "hco3_e"],
+}
 
 COMPARTMENTS = {
     "c": Compartment(
-        species=rbc.COMPARTMENTS["c"].species,
+        species=[*rbc.COMPARTMENTS["c"].species, "cl", "hco3"],
         variable_volume=True,
     ),
-    "e": rbc.COMPARTMENTS["e"],
+    "e": Compartment(
+        species=[*rbc.COMPARTMENTS["e"].species, *PLASMA_ANIONS],
+        volume=rbc.COMPARTMENTS["e"].volume,
+    ),
 }
+BALANCED_SPECIES = [*rbc.BALANCED_SPECIES, "cl", "hco3"]
 
 MG_POOL = ["mg", "mgatp", "mgadp", "mgamp"]
 
@@ -284,8 +314,6 @@ FAITHFUL_VALUES = {
     "cu|cell|k": rbc.UNBALANCED_CONC["k"],
     "cu|cell|phosphates": 2.5,
     "cu|cell|dn": 20.0,
-    "cu|plasma|cl": 107.0,
-    "cu|plasma|hco3": 25.0,
     "cu|plasma|ca": 2.5,
     "cu|plasma|mg": 1.5,
     "cu|plasma|albumin": 1.05,
@@ -299,25 +327,27 @@ faithful = KineticModel(
     | {"leak_Na": LEAK_NA}
     | rbc.MASS_ACTION_REACTIONS,
     rapid_equilibrium_network=RapidEquilibriumNetwork(
-        reactions=rbc.MG_BINDING_REACTIONS,
+        reactions=rbc.MG_BINDING_REACTIONS | ANION_EXCHANGE,
     ),
-    balanced_species=rbc.BALANCED_SPECIES,
+    balanced_species=BALANCED_SPECIES,
     moiety_label_species=list(rbc.MOIETY_TOTALS),
+    compound_to_species=COMPOUND_TO_SPECIES,
     algebraic_constraints={
         "osmotic": OsmoticBalance(
             species={"na": PHI, "lac": PHI, "dpg23": PHI}
-            | dict.fromkeys(MG_POOL, PHI),
+            | dict.fromkeys(MG_POOL, PHI)
+            | {"cl": PHI, "hco3": PHI},
             amounts={"cu|cell|k": PHI, "cu|cell|phosphates": PHI},
-            anions={"cu|plasma|cl": PHI, "cu|plasma|hco3": PHI},
             constants={"cu|cell|dn": 1.0},
-            plasma_species={"na_e": PHI, "k_e": PHI, "lac_e": PHI},
+            plasma_species=dict.fromkeys(
+                ["na_e", "k_e", "lac_e", *PLASMA_ANIONS],
+                PHI,
+            ),
             plasma={
                 label: PHI
                 for label in [
                     "cu|plasma|ca",
                     "cu|plasma|mg",
-                    "cu|plasma|cl",
-                    "cu|plasma|hco3",
                     "cu|plasma|albumin",
                     "cu|plasma|phosphates",
                     "cu|plasma|sulfates",
@@ -327,13 +357,13 @@ faithful = KineticModel(
             variables=[VOLUME],
         ),
         "electroneutrality": Electroneutrality(
-            species={"na": 1.0, "lac": -1.0} | dict.fromkeys(MG_POOL, 2.0),
+            species={"na": 1.0, "lac": -1.0, "cl": -1.0, "hco3": -1.0}
+            | dict.fromkeys(MG_POOL, 2.0),
             amounts={"cu|cell|k": 1.0, "cu|cell|phosphates": -2.0},
-            anions=("cu|plasma|cl", "cu|plasma|hco3"),
             hemoglobin="cu|cell|hb",
             dpg="dpg23",
             ph_e="cu|plasma|ph",
-            variables=[DONNAN_RATIO],
+            variables=[MEMBRANE_POTENTIAL],
         ),
     },
     compartments=COMPARTMENTS,
@@ -348,14 +378,13 @@ NOMINAL_CHARGES = {
     "nadph": -4.0, "gsh": -1.0, "gssg": -2.0, "ru5p": -2.0, "r5p": -2.0,
     "x5p": -2.0, "s7p": -2.0, "e4p": -2.0, "prpp": -5.0, "imp": -2.0,
     "ino": 0.0, "hx": 0.0, "r1p": -2.0, "na": 1.0, "mg": 2.0, "mgatp": -2.0,
-    "mgadp": -1.0, "mgamp": 0.0, "co2": 0.0, "ade": 0.0,
+    "mgadp": -1.0, "mgamp": 0.0, "co2": 0.0, "ade": 0.0, "cl": -1.0,
+    "hco3": -1.0,
 }  # fmt: skip
 
 IMPROVED_PLASMA = [
     "cu|plasma|ca",
     "cu|plasma|mg",
-    "cu|plasma|cl",
-    "cu|plasma|hco3",
     "cu|plasma|albumin",
     "cu|plasma|phosphates",
     "cu|plasma|sulfates",
@@ -366,21 +395,21 @@ improved = KineticModel(
     | {"leak_Na": LEAK_NA}
     | rbc.MASS_ACTION_REACTIONS,
     rapid_equilibrium_network=RapidEquilibriumNetwork(
-        reactions=rbc.MG_BINDING_REACTIONS,
+        reactions=rbc.MG_BINDING_REACTIONS | ANION_EXCHANGE,
     ),
-    balanced_species=rbc.BALANCED_SPECIES,
+    balanced_species=BALANCED_SPECIES,
     moiety_label_species=list(rbc.MOIETY_TOTALS),
+    compound_to_species=COMPOUND_TO_SPECIES,
     algebraic_constraints={
         "osmotic": OsmoticBalance(
             species=dict.fromkeys(
-                [*rbc.BALANCED_SPECIES, "pi", "co2", "ade"],
+                [*BALANCED_SPECIES, "pi", "co2", "ade"],
                 PHI,
             ),
             amounts={"cu|cell|k": PHI, "cu|cell|other": 1.0},
-            anions={"cu|plasma|cl": PHI, "cu|plasma|hco3": PHI},
             constants={},
             plasma_species=dict.fromkeys(
-                ["na_e", "k_e", "lac_e", "pyr_e"],
+                ["na_e", "k_e", "lac_e", "pyr_e", *PLASMA_ANIONS],
                 PHI,
             ),
             plasma=dict.fromkeys(IMPROVED_PLASMA, PHI)
@@ -391,12 +420,11 @@ improved = KineticModel(
         "electroneutrality": Electroneutrality(
             species=NOMINAL_CHARGES,
             amounts={"cu|cell|k": 1.0},
-            anions=("cu|plasma|cl", "cu|plasma|hco3"),
             hemoglobin="cu|cell|hb",
             dpg="dpg23",
             ph_e="cu|plasma|ph",
             phosphate="pi",
-            variables=[DONNAN_RATIO],
+            variables=[MEMBRANE_POTENTIAL],
         ),
     },
     compartments=COMPARTMENTS,
@@ -414,18 +442,27 @@ def get_parameters(model: KineticModel, values: dict[str, float]) -> dict:
     calibrated as there, without the leak's fixed Donnan ratio, and with the
     constraints' values."""
     spec = rbc.get_parameter_spec(model, calibration_model=rbc.model)
-    labels = model.parameter_labelling["log_custom"]
+    labelling = model.parameter_labelling
     spec["log_custom"] = {
         label: value
         for label, value in spec["log_custom"].items()
-        if label in labels
+        if label in labelling["log_custom"]
     } | {label: np.log(value) for label, value in values.items()}
-    return pack_parameters(model.parameter_labelling, spec)
+    spec["dgf"] = {
+        label: spec["dgf"].get(label, 0.0) for label in labelling["dgf"]
+    }
+    spec["log_conc_unbalanced"] |= {
+        s: np.log(c) for s, c in PLASMA_ANIONS.items()
+    }
+    return pack_parameters(labelling, spec)
 
 
 def get_reference_conc(model: KineticModel) -> Array:
-    """Get the balanced species' reference concentrations."""
-    conc = rbc.get_steady_state_conc()
+    """Get the balanced species' reference concentrations, with the
+    intracellular anions at their plasma concentrations."""
+    conc = rbc.get_steady_state_conc() | {
+        s.removesuffix("_e"): c for s, c in PLASMA_ANIONS.items()
+    }
     return jnp.array([conc[s] for s in model.balanced_species])
 
 
@@ -442,10 +479,19 @@ def calibrate_other_solutes(
     reference composition."""
     reference = get_reference_conc(model)
 
-    def get_residuals(other: float, donnan_ratio: float) -> np.ndarray:
+    def get_residuals(other: float, membrane_potential: float) -> np.ndarray:
         parameters = get_parameters(model, values | {"cu|cell|other": other})
+        donnan_ratio = get_donnan_ratio(
+            membrane_potential,
+            parameters["temperature"],
+        )
+        balanced = reference
+        for anion, plasma in PLASMA_ANIONS.items():
+            balanced = balanced.at[
+                model.balanced_species.index(anion.removesuffix("_e"))
+            ].set(donnan_ratio * plasma)
         conc = model.get_conc(
-            reference,
+            balanced,
             model.get_log_conc_unbalanced(parameters),
         )
         variables = jnp.zeros(len(model.algebraic_variables))
@@ -453,17 +499,21 @@ def calibrate_other_solutes(
             1.0,
         )
         variables = variables.at[
-            model.algebraic_variables.index(DONNAN_RATIO)
-        ].set(donnan_ratio)
+            model.algebraic_variables.index(MEMBRANE_POTENTIAL)
+        ].set(membrane_potential)
         return np.asarray(
             model.get_constraint_residuals(conc, variables, parameters),
         )
 
     osmotic = list(model.algebraic_constraints).index("osmotic")
     charge = list(model.algebraic_constraints).index("electroneutrality")
-    donnan_ratio = brentq(lambda r: get_residuals(1.0, r)[charge], 0.05, 3.0)
-    at_one = get_residuals(1.0, donnan_ratio)[osmotic]
-    at_two = get_residuals(2.0, donnan_ratio)[osmotic]
+    membrane_potential = brentq(
+        lambda psi: get_residuals(1.0, psi)[charge],
+        -0.1,
+        0.05,
+    )
+    at_one = get_residuals(1.0, membrane_potential)[osmotic]
+    at_two = get_residuals(2.0, membrane_potential)[osmotic]
     return 1.0 - at_one / (at_two - at_one)
 
 

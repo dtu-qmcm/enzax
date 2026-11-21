@@ -248,6 +248,14 @@ class Reaction(Module, ABC):
     `water_stoichiometry`, also passed by keyword, says how much water the
     reaction consumes or produces, since water is not a species.
 
+    `transported_charge`, also passed by keyword, says how much positive charge
+    the reaction moves across the membrane each time it runs forward. Its
+    standard Gibbs energy change then gains `transported_charge * F * psi`,
+    where `psi` is the membrane potential, i.e. the electric potential inside
+    the membrane minus the potential outside, in volts. Note that a model can
+    only have one membrane, and that positive `transported_charge` represents
+    movement of positive charge from outside the membrane to inside.
+
     `compartment`, also passed by keyword, says which compartment's volume the
     reaction's rate is per. Only transport reactions, whose species are in more
     than one compartment, need it, since any other reaction is in its species'
@@ -273,6 +281,7 @@ class Reaction(Module, ABC):
 
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
+    transported_charge: float = field(kw_only=True, default=0.0)
     compartment: str | None = field(kw_only=True, default=None)
     batch_rule: ClassVar[BatchRule | None] = None
 

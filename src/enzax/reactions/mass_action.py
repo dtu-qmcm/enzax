@@ -7,7 +7,7 @@ from typing import ClassVar
 import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Bool, Float, Int, Scalar
+from jaxtyping import Bool, Float, Int, Scalar, ScalarLike
 
 from enzax.array_types import (
     BatchFlux,
@@ -39,6 +39,7 @@ from enzax.reaction import (
 )
 from enzax.thermodynamics import (
     ReverseTermIx,
+    get_membrane_potential,
     get_reverse_term,
     get_reverse_term_indexes,
     get_reverse_terms,
@@ -65,6 +66,7 @@ class MassActionIx(eqx.Module):
     reactant_stoichiometry: StaticReactantArr
     water_stoichiometry: float
     water_dgf: float
+    transported_charge: float
 
 
 class MassActionInput(eqx.Module):
@@ -77,6 +79,8 @@ class MassActionInput(eqx.Module):
     reactant_stoichiometry: StaticReactantArr
     water_stoichiometry: float
     water_dgf: float
+    transported_charge: float
+    membrane_potential: ScalarLike
 
 
 class MassActionBatchIx(BatchIndexes):
@@ -124,6 +128,7 @@ def get_mass_action_batch_indexes(
             [ix.ix_dgf for ix in ixs],
             [ix.water_stoichiometry for ix in ixs],
             [ix.water_dgf for ix in ixs],
+            [ix.transported_charge for ix in ixs],
         ),
     )
 
@@ -196,6 +201,7 @@ class MassAction(Reaction):
             reactant_stoichiometry=scope.stoichiometry[ix_reactant],
             water_stoichiometry=self.water_stoichiometry,
             water_dgf=scope.water_dgf,
+            transported_charge=self.transported_charge,
         )
 
     def get_input(
@@ -213,6 +219,11 @@ class MassAction(Reaction):
             reactant_stoichiometry=ix.reactant_stoichiometry,
             water_stoichiometry=ix.water_stoichiometry,
             water_dgf=ix.water_dgf,
+            transported_charge=ix.transported_charge,
+            membrane_potential=get_membrane_potential(
+                parameters,
+                ix.transported_charge,
+            ),
         )
 
     def __call__(self, conc: ConcArray, rate_input: MassActionInput) -> Scalar:
@@ -229,4 +240,6 @@ class MassAction(Reaction):
             reactant_stoichiometry=rate_input.reactant_stoichiometry,
             water_stoichiometry=rate_input.water_stoichiometry,
             water_dgf=rate_input.water_dgf,
+            transported_charge=rate_input.transported_charge,
+            membrane_potential=rate_input.membrane_potential,
         )

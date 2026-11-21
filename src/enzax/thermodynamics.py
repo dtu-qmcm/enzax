@@ -3,9 +3,15 @@
 enzax gives every compound a standard formation energy `dgf`, in kJ/mol, and
 calculates each reaction's standard Gibbs energy change from it:
 
-    dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
+    dgr_std = (
+        reactant_stoichiometry @ dgf
+        + water_stoichiometry * water_dgf
+        + transported_charge * F * psi
+    )
 
 Water is added separately because it is not one of the model's species. The
+last term only matters for reactions that move charge across a membrane: see
+`enzax.reaction.Reaction`. The
 functions here turn `dgr_std` into what rate laws need, so every reversible
 rate law in a model agrees about where each reaction's equilibrium is.
 """
@@ -16,7 +22,7 @@ from typing import TYPE_CHECKING
 import equinox as eqx
 import numpy as np
 from jax import numpy as jnp
-from jaxtyping import Array, Float, Int, Scalar
+from jaxtyping import Array, Float, Int, Scalar, ScalarLike
 
 from enzax.array_types import (
     BalancedConcArr,
@@ -37,6 +43,20 @@ if TYPE_CHECKING:
 
 # The gas constant in kJ/mol/K, the units formation energies are given in.
 GAS_CONSTANT = 0.008314
+# The Faraday constant in kJ/mol/V.
+FARADAY = 96.485
+MEMBRANE_POTENTIAL = "membrane_potential"
+
+
+def get_membrane_potential(
+    parameters: ParamDict,
+    transported_charge: float | np.ndarray,
+) -> ScalarLike:
+    """Get the membrane potential for reactions with the given transported
+    charges, or 0 if none carries charge."""
+    if not np.any(transported_charge):
+        return 0.0
+    return parameters[MEMBRANE_POTENTIAL]
 
 
 def get_reversibility(
@@ -46,6 +66,8 @@ def get_reversibility(
     reactant_stoichiometry: StaticReactantArr,
     water_stoichiometry: float,
     water_dgf: float,
+    transported_charge: float = 0.0,
+    membrane_potential: ScalarLike = 0.0,
 ) -> Scalar:
     """Get the reversibility of a reaction.
 
@@ -61,7 +83,9 @@ def get_reversibility(
     RT = temperature * GAS_CONSTANT
     conc_clipped = jnp.clip(reactant_conc, min=1e-12)
     dgr_std = (
-        reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf
+        reactant_stoichiometry.T @ dgf
+        + water_stoichiometry * water_dgf
+        + transported_charge * FARADAY * membrane_potential
     ).flatten()
     quotient = (reactant_stoichiometry.T @ jnp.log(conc_clipped)).flatten()
     expand = jnp.clip((dgr_std / RT) + quotient, min=-1e2, max=1e2)
@@ -77,6 +101,8 @@ def get_reverse_term(
     reactant_stoichiometry: StaticReactantArr,
     water_stoichiometry: float,
     water_dgf: float,
+    transported_charge: float = 0.0,
+    membrane_potential: ScalarLike = 0.0,
 ) -> Scalar:
     """Get a reaction's forward term multiplied by Q/K.
 
@@ -90,7 +116,9 @@ def get_reverse_term(
     """
     RT = temperature * GAS_CONSTANT
     dgr_std = jnp.ravel(
-        reactant_stoichiometry.T @ dgf + water_stoichiometry * water_dgf,
+        reactant_stoichiometry.T @ dgf
+        + water_stoichiometry * water_dgf
+        + transported_charge * FARADAY * membrane_potential,
     )[0]
     exponent = jnp.ravel(forward_order + reactant_stoichiometry)
     conc = jnp.ravel(reactant_conc)
@@ -108,6 +136,8 @@ def get_keq(
     reactant_stoichiometry: np.ndarray,
     water_stoichiometry: float,
     water_dgf: float,
+    transported_charge: float = 0.0,
+    membrane_potential: ScalarLike = 0.0,
 ) -> Scalar:
     """Get a reaction's equilibrium constant from its formation energies.
 
@@ -121,7 +151,11 @@ def get_keq(
     concentrations are in mM.
     """
     RT = temperature * GAS_CONSTANT
-    dgr_std = reactant_stoichiometry @ dgf + water_stoichiometry * water_dgf
+    dgr_std = (
+        reactant_stoichiometry @ dgf
+        + water_stoichiometry * water_dgf
+        + transported_charge * FARADAY * membrane_potential
+    )
     return jnp.exp(-dgr_std / RT)
 
 
@@ -162,6 +196,8 @@ def get_flux_at_equilibrium(
         stoichiometry[ix_reactant],
         rate_equation.water_stoichiometry,
         model.water_dgf,
+        rate_equation.transported_charge,
+        get_membrane_potential(parameters, rate_equation.transported_charge),
     )
     log_q_without_product = sum(
         stoichiometry[i] * jnp.log(conc[i])
@@ -201,9 +237,16 @@ def get_one_way_fluxes(
         raise NotImplementedError(msg)
     reversible = np.array([r.reversible for r in reactions])
     water_stoichiometry = np.array([r.water_stoichiometry for r in reactions])
+    transported_charge = np.array([r.transported_charge for r in reactions])
     S = np.asarray(model.S)
     dgf = parameters["dgf"][model.species_to_dgf_ix]
-    dgr_std = S.T @ dgf + water_stoichiometry * model.water_dgf
+    dgr_std = (
+        S.T @ dgf
+        + water_stoichiometry * model.water_dgf
+        + transported_charge
+        * FARADAY
+        * get_membrane_potential(parameters, transported_charge)
+    )
     RT = parameters["temperature"] * GAS_CONSTANT
     log_q = S.T @ jnp.log(jnp.clip(conc, min=1e-12))
     log_qk = jnp.where(reversible, dgr_std / RT + log_q, -jnp.inf)
@@ -225,6 +268,7 @@ class ReverseTermIx(eqx.Module):
     ix_dgf: Int[np.ndarray, "n_batch max_reactants"]
     water_stoichiometry: Float[np.ndarray, " n_batch"]
     water_dgf: Float[np.ndarray, " n_batch"]
+    transported_charge: Float[np.ndarray, " n_batch"]
 
 
 def get_reverse_term_indexes(
@@ -235,6 +279,7 @@ def get_reverse_term_indexes(
     ix_dgf: Sequence[np.ndarray],
     water_stoichiometry: Sequence[float],
     water_dgf: Sequence[float],
+    transported_charge: Sequence[float],
 ) -> ReverseTermIx:
     """Combine reactions' reverse term inputs into one batch bundle.
 
@@ -265,6 +310,7 @@ def get_reverse_term_indexes(
         ix_dgf=pad_rows([ix.tolist() for ix in ix_dgf], -1),
         water_stoichiometry=np.array(water_stoichiometry, dtype=float),
         water_dgf=np.array(water_dgf, dtype=float),
+        transported_charge=np.array(transported_charge, dtype=float),
     )
 
 
@@ -280,6 +326,9 @@ def get_reverse_terms(
     dgr_std = (
         jnp.einsum("ij,ij->i", ix.reactant_stoichiometry, dgf)
         + ix.water_stoichiometry * ix.water_dgf
+        + ix.transported_charge
+        * FARADAY
+        * get_membrane_potential(parameters, ix.transported_charge)
     )
     rows = np.arange(conc.shape[0])[:, None]
     reactant_conc = conc[rows, ix.reactant_slot]

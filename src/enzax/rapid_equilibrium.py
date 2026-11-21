@@ -25,7 +25,11 @@ from enzax.array_types import (
     UnbalancedConcArr,
 )
 from enzax.utils import freeze_array, unfreeze_array
-from enzax.thermodynamics import GAS_CONSTANT
+from enzax.thermodynamics import (
+    FARADAY,
+    GAS_CONSTANT,
+    get_membrane_potential,
+)
 
 SubnetworkStoichiometricMatrix = Float[
     np.ndarray,
@@ -48,11 +52,13 @@ class RapidEquilibriumReaction(Module):
     It has no rate law, labels or flux. Its equilibrium constant comes from
     the formation energies of its species (and of water, via
     `water_stoichiometry`), and the model integrates the fast moieties it
-    conserves instead of the species themselves.
+    conserves instead of the species themselves. See `Reaction` for
+    `transported_charge`.
     """
 
     stoichiometry: dict[str, float] = field(kw_only=True)
     water_stoichiometry: float = field(kw_only=True, default=0.0)
+    transported_charge: float = field(kw_only=True, default=0.0)
 
 
 class UnusedFastMoietyLabelWarning(UserWarning):
@@ -83,6 +89,7 @@ class FastMoieties:
 
     reaction_ids: tuple[str, ...]
     water_stoichiometry: tuple[float, ...]
+    transported_charge: tuple[float, ...]
     balanced_species: tuple[str, ...]
     balanced_species_ix: tuple[int, ...]
     unbalanced_species_ix: tuple[int, ...]
@@ -426,6 +433,7 @@ def solve_rapid_equilibria(
     rtol: float = 1e-10,
     atol: float = 1e-10,
     max_steps: int = 256,
+    membrane_potential: ScalarLike = 0.0,
 ) -> BalancedConcArr:
     """Get the balanced species' concentrations at which every rapid
     equilibrium reaction is at equilibrium and the fast moieties have the
@@ -435,7 +443,13 @@ def solve_rapid_equilibria(
     species and water enter them at their fixed concentrations. Returns NaN
     where there is no solution, for example when a total is not positive.
     """
-    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(
+        fast_moieties,
+        dgf,
+        temperature,
+        water_dgf,
+        membrane_potential,
+    )
     solved = jnp.all(fast_moiety_totals > 0)
     subnetwork_conc = []
     for subnetwork in fast_moieties.subnetworks:
@@ -469,12 +483,21 @@ def get_log_keq(
     dgf: Float[Array, " n_species"],
     temperature: ScalarLike,
     water_dgf: float,
+    membrane_potential: ScalarLike = 0.0,
 ) -> Float[Array, " n_rapid_equilibrium_reaction"]:
     """Get the rapid equilibrium reactions' log equilibrium constants from the
     formation energies of their species and of water."""
     water_stoichiometry = np.array(fast_moieties.water_stoichiometry)
+    transported_charge = np.array(fast_moieties.transported_charge)
     RT = temperature * GAS_CONSTANT
-    return -(fast_moieties.S.T @ dgf + water_stoichiometry * water_dgf) / RT
+    return (
+        -(
+            fast_moieties.S.T @ dgf
+            + water_stoichiometry * water_dgf
+            + transported_charge * FARADAY * membrane_potential
+        )
+        / RT
+    )
 
 
 def get_subnetwork_blocks(
@@ -531,11 +554,18 @@ def get_rapid_equilibrium_residual(
     dgf: Float[Array, " n_species"],
     temperature: ScalarLike,
     water_dgf: float,
+    membrane_potential: ScalarLike = 0.0,
 ) -> Float[Array, " n_subnetwork_species"]:
     """Get the residuals of every fast subnetwork's rapid equilibrium
     conditions, given log concentrations in the order of
     `subnetwork_species_ix`."""
-    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(
+        fast_moieties,
+        dgf,
+        temperature,
+        water_dgf,
+        membrane_potential,
+    )
     residuals = []
     start = 0
     for subnetwork in fast_moieties.subnetworks:
@@ -811,11 +841,18 @@ def solve_rapid_equilibria_exactly(
     dgf: Float[Array, " n_species"],
     temperature: ScalarLike,
     water_dgf: float,
+    membrane_potential: ScalarLike = 0.0,
 ) -> Float[Array, " n_subnetwork_species"]:
     """Solve every fast subnetwork exactly, for models where
     `has_exact_solution` holds, giving concentrations in the order of
     `FastMoieties.subnetwork_species_ix`."""
-    log_keq = get_log_keq(fast_moieties, dgf, temperature, water_dgf)
+    log_keq = get_log_keq(
+        fast_moieties,
+        dgf,
+        temperature,
+        water_dgf,
+        membrane_potential,
+    )
     conc = []
     for subnetwork in fast_moieties.subnetworks:
         S_balanced, S_unbalanced, P, rows = get_subnetwork_blocks(
@@ -864,6 +901,7 @@ class RapidEquilibriumNetworkIx(Module):
     ix_dgf: np.ndarray
     has_unbalanced: bool
     water_dgf: float
+    transported_charge: np.ndarray
 
 
 class RapidEquilibriumNetworkInput(Module):
@@ -874,6 +912,7 @@ class RapidEquilibriumNetworkInput(Module):
     temperature: Scalar
     log_conc_unbalanced: UnbalancedConcArr
     water_dgf: float
+    membrane_potential: ScalarLike
 
 
 class RapidEquilibriumNetwork(Module):
@@ -944,6 +983,10 @@ class RapidEquilibriumNetwork(Module):
                 reaction.water_stoichiometry
                 for reaction in self.reactions.values()
             ),
+            transported_charge=tuple(
+                reaction.transported_charge
+                for reaction in self.reactions.values()
+            ),
             balanced_species=tuple(balanced_species),
             balanced_species_ix=tuple(balanced_ix),
             unbalanced_species_ix=tuple(
@@ -968,6 +1011,10 @@ class RapidEquilibriumNetwork(Module):
             ix_dgf=scope.species_to_dgf_ix,
             has_unbalanced="log_conc_unbalanced" in labelling,
             water_dgf=scope.water_dgf,
+            transported_charge=np.array(
+                [r.transported_charge for r in self.reactions.values()],
+                dtype=float,
+            ),
         )
 
     def get_input(
@@ -986,6 +1033,10 @@ class RapidEquilibriumNetwork(Module):
                 else jnp.zeros(0)
             ),
             water_dgf=ix.water_dgf,
+            membrane_potential=get_membrane_potential(
+                parameters,
+                ix.transported_charge,
+            ),
         )
 
     def solve(
@@ -1004,6 +1055,7 @@ class RapidEquilibriumNetwork(Module):
             network_input.dgf,
             network_input.temperature,
             network_input.water_dgf,
+            membrane_potential=network_input.membrane_potential,
         )
 
     def get_guess(
@@ -1035,4 +1087,5 @@ class RapidEquilibriumNetwork(Module):
             network_input.dgf,
             network_input.temperature,
             network_input.water_dgf,
+            network_input.membrane_potential,
         )

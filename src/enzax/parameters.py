@@ -12,10 +12,10 @@ that value sits along the array. The containers themselves -- `ParamLabelling`,
 `ParamValueSpec` and friends -- live in `enzax.array_types`.
 
 A parameter whose labels are the empty tuple has no labelled positions: its
-leaf is one parameter in one piece. `temperature` is the only one today, being
-a scalar, but nothing here assumes that a parameter's leaf is either scalar or
-one dimensional -- a parameter whose leaf were a covariance matrix would be
-unlabelled too.
+leaf is one parameter in one piece. `temperature` and `membrane_potential` are
+the only ones today, being scalars, but nothing here assumes that a
+parameter's leaf is either scalar or one dimensional -- a parameter whose leaf
+were a covariance matrix would be unlabelled too.
 
 Every constant that a concentration is divided by lives in one array called
 `log_saturation_constant`: they saturate the same way, whatever they are
@@ -86,6 +86,7 @@ STRUCTURAL_PARAMETERS = (
     "moiety_totals",
     "log_amount_initial",
     "temperature",
+    "membrane_potential",
 )
 
 # Every parameter enzax knows about, in packing order.

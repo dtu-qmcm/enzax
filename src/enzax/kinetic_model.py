@@ -53,6 +53,7 @@ from enzax.rapid_equilibrium import (
     has_exact_solution,
     solve_rapid_equilibria_exactly,
 )
+from enzax.thermodynamics import MEMBRANE_POTENTIAL
 from enzax.utils import freeze_array, get_ix_from_list, unfreeze_array
 from enzax.reaction import (
     Reaction,
@@ -889,11 +890,42 @@ class KineticModel(eqx.Module):
         if self.moiety_label_species:
             from_structure["moiety_totals"] = self.moiety_label_species
         from_structure["temperature"] = ()
-        return merge_labels(
+        if self._carries_charge():
+            from_structure[MEMBRANE_POTENTIAL] = ()
+        labelling = merge_labels(
             *from_rate_equations,
             *from_constraints,
             from_structure,
         )
+        if MEMBRANE_POTENTIAL in self.algebraic_variables:
+            labelling.pop(MEMBRANE_POTENTIAL, None)
+        return labelling
+
+    def _carries_charge(self) -> bool:
+        """Say whether any reaction, rapid equilibrium ones included,
+        carries charge across a membrane."""
+        return any(
+            reaction.transported_charge
+            for reaction in [
+                *self.reactions.values(),
+                *self._rapid_equilibrium_network.reactions.values(),
+            ]
+        )
+
+    def _with_algebraic_variables(
+        self,
+        parameters: PyTree,
+        algebraic_variables: AlgebraicVariableArr,
+    ) -> PyTree:
+        """Add the algebraic variables to the parameters, for rate laws and
+        rapid equilibria to read like parameters. An algebraic membrane
+        potential is also added under its own name."""
+        added = {"algebraic_variables": algebraic_variables}
+        if MEMBRANE_POTENTIAL in self.algebraic_variables:
+            added[MEMBRANE_POTENTIAL] = algebraic_variables[
+                self.algebraic_variables.index(MEMBRANE_POTENTIAL)
+            ]
+        return parameters | added
 
     def _scopes(self) -> list[ReactionScope]:
         """Get one static description per reaction, in reaction order."""
@@ -949,9 +981,10 @@ class KineticModel(eqx.Module):
             self.get_log_conc_unbalanced(parameters),
         )
         if algebraic_variables is not None:
-            parameters = parameters | {
-                "algebraic_variables": algebraic_variables,
-            }
+            parameters = self._with_algebraic_variables(
+                parameters,
+                algebraic_variables,
+            )
         flux_list = []
         for i in self._unbatched_reaction_ix:
             rate_equation = self.reactions[self.reaction_ids[i]]
@@ -1128,7 +1161,10 @@ class KineticModel(eqx.Module):
                 algebraic["log_conc"],
                 totals,
                 self._rapid_equilibrium_network.get_input(
-                    parameters,
+                    self._with_algebraic_variables(
+                        parameters,
+                        algebraic["variables"],
+                    ),
                     self.rapid_equilibrium_network_ix,
                 ),
             )
@@ -1169,6 +1205,7 @@ class KineticModel(eqx.Module):
                 network_input.dgf,
                 network_input.temperature,
                 network_input.water_dgf,
+                network_input.membrane_potential,
             )
             positive = conc > 0
             log_conc = jnp.where(

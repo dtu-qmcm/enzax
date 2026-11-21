@@ -40,5 +40,12 @@ for name, model, parameters, initial_state in [
     for ph in EXTERNAL_PHS:
         at_ph = with_external_ph(model, parameters, ph)
         steady = get_steady_state_dae(model, initial_state, at_ph)
-        volume, donnan_ratio = model.get_algebraic_variables(steady, at_ph)
+        volume, membrane_potential = model.get_algebraic_variables(
+            steady,
+            at_ph,
+        )
+        donnan_ratio = rbcv.get_donnan_ratio(
+            membrane_potential,
+            at_ph["temperature"],
+        )
         print(f"{name} pH_e {ph}: V = {volume:.3f}, r = {donnan_ratio:.3f}")
