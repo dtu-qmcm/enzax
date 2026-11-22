@@ -393,9 +393,15 @@ IMPROVED_PLASMA = [
 improved = KineticModel(
     reactions=rbc.SLOW_REACTIONS
     | {"leak_Na": LEAK_NA}
-    | rbc.MASS_ACTION_REACTIONS,
+    | {
+        reaction_id: reaction
+        for reaction_id, reaction in rbc.MASS_ACTION_REACTIONS.items()
+        if reaction_id not in rbc.NEAR_EQUILIBRIUM
+    },
     rapid_equilibrium_network=RapidEquilibriumNetwork(
-        reactions=rbc.MG_BINDING_REACTIONS | ANION_EXCHANGE,
+        reactions=rbc.MG_BINDING_REACTIONS
+        | ANION_EXCHANGE
+        | rbc.NEAR_EQUILIBRIUM_REACTIONS,
     ),
     balanced_species=BALANCED_SPECIES,
     moiety_label_species=list(rbc.MOIETY_TOTALS),
@@ -437,11 +443,19 @@ IMPROVED_VALUES = {
 } | {"cu|plasma|glucose": 5.6, "cu|plasma|urea": 4.0}
 
 
-def get_parameters(model: KineticModel, values: dict[str, float]) -> dict:
+def get_parameters(
+    model: KineticModel,
+    values: dict[str, float],
+    forward_to_net_ratio: float = 100.0,
+) -> dict:
     """Get a variable-volume model's parameters: the fixed-volume model's,
     calibrated as there, without the leak's fixed Donnan ratio, and with the
     constraints' values."""
-    spec = rbc.get_parameter_spec(model, calibration_model=rbc.model)
+    spec = rbc.get_parameter_spec(
+        model,
+        forward_to_net_ratio,
+        calibration_model=rbc.model,
+    )
     labelling = model.parameter_labelling
     spec["log_custom"] = {
         label: value
