@@ -21,6 +21,7 @@ from matplotlib.lines import Line2D
 
 from analyse import get_derived_file, get_pointwise_predictive_density
 from common import (
+    COLOURS,
     DESIGN,
     HELD_OUT,
     HIGH_GLUCOSE,
@@ -36,10 +37,8 @@ from common import (
 )
 from design import GLUCOSE_MM, REFERENCE_GLUCOSE_MM, get_design_file
 from fit import N_CHAIN, get_chain_file
+from network import draw_reactions, plot_network
 
-COLOURS = dict(
-    zip(HYPOTHESES, ("#2a78d6", "#eb6834", "#1baf7a", "#eda100"), strict=True),
-)
 HYPOTHESIS_NAMES = {
     "none": "No effector",
     "pep": "PEP",
@@ -166,11 +165,17 @@ def plot_glucose_response(ax, design):
     ax.minorticks_off()
     ax.set_xlabel("External glucose (mM)")
     ax.set_ylabel("Sedoheptulose 7-phosphate (mM)")
-    ax.legend(frameon=False, loc="upper right")
+    ax.legend(
+        frameon=False,
+        loc="lower right",
+        fontsize=6,
+        handlelength=1.2,
+        borderaxespad=0.2,
+    )
     style(ax)
 
 
-def plot_discrimination(fig, ax, designs):
+def plot_discrimination(ax, designs):
     candidates = list(designs["high_glucose"]["candidates"])
     columns = []
     for phase, (a, b) in ROUND_CONTRASTS.items():
@@ -178,7 +183,7 @@ def plot_discrimination(fig, ax, designs):
         pairs = list(design["pairs"])
         columns.append(design["discrimination"][:, pairs.index(f"{a}-{b}")])
     discrimination = np.stack(columns, axis=1)
-    image = ax.imshow(
+    ax.imshow(
         np.log10(1 + discrimination),
         cmap=HEATMAP,
         aspect="auto",
@@ -203,14 +208,13 @@ def plot_discrimination(fig, ax, designs):
             f"{HYPOTHESIS_NAMES[a]} vs\n{HYPOTHESIS_NAMES[b]}"
             for phase, (a, b) in ROUND_CONTRASTS.items()
         ],
+        fontsize=7,
     )
     ax.xaxis.tick_top()
     ax.set_yticks(range(len(candidates)), candidates)
     ax.tick_params(length=0)
     for side in ax.spines.values():
         side.set_visible(False)
-    colourbar = fig.colorbar(image, ax=ax, shrink=0.8)
-    colourbar.set_label("log10(1 + discrimination)")
 
 
 def plot_sequential_score(ax):
@@ -424,6 +428,9 @@ def plot_dca_response(ax, design):
         ],
         frameon=False,
         loc="lower right",
+        fontsize=6,
+        handlelength=1.2,
+        borderaxespad=0.2,
     )
     ax.axvline(0, color=MUTED, linewidth=0.6)
     ax.set_yticks(rows, list(DCA_SPECIES.values()))
@@ -445,24 +452,26 @@ def main():
         },
     )
     designs = {phase: np.load(get_design_file(phase)) for phase in HELD_OUT}
-    fig = plt.figure(figsize=(7.5, 7.5), layout="constrained")
-    top, bottom = fig.subfigures(2, 1, height_ratios=[1.3, 1])
-    response_ax, discrimination_ax = top.subplots(
-        1,
-        2,
-        width_ratios=[1.3, 1],
-    )
+    fig = plt.figure(figsize=(7.5, 8.7), layout="constrained")
+    top, bottom = fig.subfigures(2, 1, height_ratios=[5.4, 3.3])
+    network, side = top.subfigures(1, 2, width_ratios=[4.5, 3.0])
+    network_ax = network.subplots()
+    network_texts = plot_network(network_ax)
+    response_ax, discrimination_ax = side.subplots(2, 1)
     score_ax, dca_ax = bottom.subplots(1, 2)
     plot_glucose_response(response_ax, designs["high_glucose"])
-    plot_discrimination(top, discrimination_ax, designs)
+    plot_discrimination(discrimination_ax, designs)
     plot_sequential_score(score_ax)
     plot_dca_response(dca_ax, designs["series"])
     for ax, letter in zip(
-        [response_ax, discrimination_ax, score_ax, dca_ax],
-        "BCDE",
+        [network_ax, response_ax, discrimination_ax, score_ax, dca_ax],
+        "ABCDE",
         strict=True,
     ):
         ax.set_title(letter, loc="left", fontweight="bold")
+    fig.canvas.draw()
+    fig.set_layout_engine("none")
+    draw_reactions(network_ax, network_texts)
     for suffix in ("png", "pdf"):
         path = RESULTS_DIR / f"figure.{suffix}"
         fig.savefig(path, dpi=300)
