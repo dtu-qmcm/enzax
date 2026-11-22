@@ -1,3 +1,10 @@
+"""Draw the red cell network for panel A of the red cell figure.
+
+Species and reactions sit at hand-placed positions, with rapid equilibria in
+orange. Drawing a network whose reactions differ from the improved model's
+raises an error. Running the module directly saves results/network.png.
+"""
+
 import sys
 from pathlib import Path
 

@@ -1,3 +1,15 @@
+"""Sweep the red cell's external pH under Gunn et al.'s conditions.
+
+Gunn et al. (1973) held washed cells at 0 °C in a medium with 150 mM chloride
+and no bicarbonate, and measured them within two hours, too soon for their
+contents to change. For each variant, the sweep fixes the cell's contents at
+its steady state at 37 °C and pH 7.4, sets the medium to Gunn et al.'s, and
+moves external pH from 5.7 to 9.6. At each pH, solving the constraints and
+rapid equilibria gives the volume and membrane potential, so no rate law is
+evaluated at 0 °C. Saves the volume relative to pH 7.4 and the Donnan ratio
+to results/ph_sweep.csv.
+"""
+
 import csv
 from pathlib import Path
 

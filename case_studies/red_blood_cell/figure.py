@@ -1,3 +1,26 @@
+"""Plot the red cell figure.
+
+A maps the network, with rapid equilibria in orange. B shows the Donnan ratio
+and the volume relative to pH 7.4 against external pH, from ph_sweep.py, for
+the improved and faithful variants, with Joshi and Palsson's (1990) model
+curves and Gunn et al.'s (1973) regression lines. C shows the time each
+solver takes to reach steady state: for the stiff formulation across
+forward-to-net flux ratios, and for the rapid equilibrium formulation as
+horizontal lines. Below it, C shows the largest relative difference between
+the two formulations' steady-state concentrations. D shows the largest log
+sensitivities of volume and Donnan ratio from sensitivities.py, with finite
+differences as ticks. Saves results/figure.png and results/figure.pdf.
+
+data/joshi_palsson.csv holds Joshi and Palsson's model curves, read off
+Figs. 5 and 6 of their 1991 erratum, which replace Part IV's, to within about
+2% of each axis. Gunn et al.'s lines come from the regressions in their
+Fig. 3, of chloride ratio and of water content on pH over pH 5.7 to 9.6,
+with the published standard deviations of intercept and slope. The bands
+cover 95% of lines drawn from those estimates, correlated as an even spread
+of pH over the range implies. The water content lines are divided by their
+values at pH 7.4.
+"""
+
 import csv
 from collections import defaultdict
 

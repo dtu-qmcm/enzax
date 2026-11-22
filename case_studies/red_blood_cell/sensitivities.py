@@ -1,3 +1,14 @@
+"""Compute the improved red cell model's volume and Donnan ratio sensitivities.
+
+Differentiates the log volume and log Donnan ratio at the DAE steady state
+through the steady-state solve, and checks each derivative against central
+finite differences with a step of 1e-4. Rate constants, custom values and
+clamped concentrations enter in log space, and moiety totals are scaled by
+their values, so every result reads as a log sensitivity. Formation energies
+and temperature are left out. Saves the derivatives and finite differences
+to results/sensitivities.csv.
+"""
+
 import csv
 import time
 

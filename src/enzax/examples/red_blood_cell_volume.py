@@ -450,7 +450,9 @@ def get_parameters(
 ) -> dict:
     """Get a variable-volume model's parameters: the fixed-volume model's,
     calibrated as there, without the leak's fixed Donnan ratio, and with the
-    constraints' values."""
+    constraints' values. forward_to_net_ratio sets the forward flux of each
+    near-equilibrium mass action reaction as a multiple of its net flux; a
+    model that treats these reactions as rapid equilibria ignores it."""
     spec = rbc.get_parameter_spec(
         model,
         forward_to_net_ratio,
