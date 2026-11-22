@@ -1,27 +1,30 @@
+import sys
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
-from matplotlib.path import Path
 
 from enzax.examples import red_blood_cell_volume as rbcv
 from ph_sweep import RESULTS_DIR
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from network_drawing import (  # noqa: E402
+    CLAMPED_COLOUR,
+    KINETIC_COLOUR,
+    LABEL_SIZE,
+    MUTED,
+    draw_cell,
+    draw_reaction,
+    draw_species,
+    get_boxes,
+)
+
 MODEL = rbcv.improved
-KINETIC_COLOUR = "#0b0b0b"
 RAPID_COLOUR = "#eb6834"
-CLAMPED_COLOUR = "#8a8984"
-MEMBRANE_COLOUR = "#2a78d6"
-TEXT = "#0b0b0b"
-MUTED = "#52514e"
 CELL = (4, 2.5, 88, 48.5)
 XLIM = (0, 100)
 YLIM = (0, 53)
-LABEL_SIZE = 5
-SPECIES_SIZE = 6
-LABEL_PAD = 1.5
-FORK_CONTROL = 0.6
-STEM = 2.0
 SPECIES_NAMES = {
     "g6p": "G6P",
     "f6p": "F6P",
@@ -128,16 +131,18 @@ REACTIONS = {
     "HK": {
         "legs": ["g6p"],
         "start": (16, 51),
-        "label": (15, 49),
-        "ha": "right",
-        "inline": True,
+        "label": (17, 49.8),
+        "ha": "left",
+        "va": "center",
+        "side": -1,
     },
     "PGI": {"legs": ["g6p", "f6p"], "label": (15, 44.75), "ha": "right"},
     "PFK": {
         "legs": ["f6p", "fdp"],
-        "label": (15, 40.25),
-        "ha": "right",
-        "inline": True,
+        "label": (17, 40.25),
+        "ha": "left",
+        "va": "center",
+        "side": -1,
     },
     "ALD": {
         "legs": ["fdp", "ga3p", "dhap"],
@@ -148,37 +153,55 @@ REACTIONS = {
     "TPI": {"legs": ["dhap", "ga3p"], "bend": -1.2, "label": (11.5, 32.6)},
     "GAPDH": {
         "legs": ["ga3p", "dpg13"],
-        "label": (17, 30.6),
-        "ha": "left",
-        "inline": True,
+        "label": (15, 30.75),
+        "ha": "right",
+        "va": "center",
+        "side": 1,
     },
     "PGK": {
         "legs": ["dpg13", "pg3"],
-        "label": (17, 25.75),
+        "label": (20, 25.75),
         "ha": "left",
-        "inline": True,
+        "va": "center",
+        "side": 1,
     },
     "DPGM": {"legs": ["dpg13", "dpg23"], "bend": 1.0, "label": (11, 28.6)},
-    "DPGase": {"legs": ["dpg23", "pg3"], "bend": 1.0, "label": (11, 22.4)},
+    "DPGase": {
+        "legs": ["dpg23", "pg3"],
+        "bend": 1.0,
+        "label": (10, 23.2),
+        "va": "top",
+        "side": -1,
+    },
     "PGM": {"legs": ["pg3", "pg2"], "label": (17, 20.75), "ha": "left"},
     "EN": {"legs": ["pg2", "pep"], "label": (17, 16.25), "ha": "left"},
     "PK": {
         "legs": ["pep", "pyr"],
-        "label": (17, 11.75),
-        "ha": "left",
-        "inline": True,
+        "label": (15, 11.75),
+        "ha": "right",
+        "va": "center",
+        "side": 1,
     },
     "LDH": {
         "legs": ["pyr", "lac"],
-        "label": (17, 7.5),
-        "ha": "left",
-        "inline": True,
+        "label": (15, 7.5),
+        "ha": "right",
+        "va": "center",
+        "side": 1,
     },
     "PYR_ex": {"legs": ["pyr", "pyr_e"], "label": (9.5, 10.1)},
     "LAC_ex": {"legs": ["lac", "lac_e"], "label": (9.5, 6.1)},
-    "G6PDH": {"legs": ["g6p", "gl6p"], "label": (20.5, 46.2), "va": "top"},
+    "G6PDH": {
+        "legs": ["g6p", "gl6p"],
+        "label": (20.5, 47.6),
+        "side": -1,
+    },
     "PGLase": {"legs": ["gl6p", "go6p"], "label": (29.5, 46.2), "va": "top"},
-    "GL6PDH": {"legs": ["go6p", "ru5p"], "label": (38.5, 47.8)},
+    "GL6PDH": {
+        "legs": ["go6p", "ru5p"],
+        "label": (38.5, 49.4),
+        "side": 1,
+    },
     "R5PI": {"legs": ["ru5p", "r5p"], "label": (48, 46)},
     "Xu5PE": {"legs": ["ru5p", "x5p"], "label": (40.5, 44.4), "va": "top"},
     "TKI": {
@@ -202,7 +225,11 @@ REACTIONS = {
         "direction": (-1, 0),
         "label": (23.5, 42.3),
     },
-    "PRPPsyn": {"legs": ["r5p", "prpp"], "label": (53.5, 46.5)},
+    "PRPPsyn": {
+        "legs": ["r5p", "prpp"],
+        "label": (54, 47.6),
+        "side": 1,
+    },
     "AdPRT": {
         "legs": ["prpp", "ade", "amp"],
         "point": (68, 46.3),
@@ -218,18 +245,28 @@ REACTIONS = {
         "ha": "right",
     },
     "AMPDA": {"legs": ["amp", "imp"], "label": (67, 41.6)},
-    "IMPase": {"legs": ["imp", "ino"], "label": (63.2, 35), "ha": "right"},
+    "IMPase": {
+        "legs": ["imp", "ino"],
+        "label": (62.8, 35),
+        "ha": "right",
+        "va": "center",
+        "side": 1,
+    },
     "AMPase": {
         "legs": ["amp", "ado"],
         "offset": 0.8,
-        "label": (74.5, 38),
+        "label": (76, 38),
         "ha": "left",
+        "va": "center",
+        "side": 1,
     },
     "AK": {
         "legs": ["ado", "amp"],
         "offset": 0.8,
-        "label": (71.5, 36),
+        "label": (68.8, 38),
         "ha": "right",
+        "va": "center",
+        "side": 1,
     },
     "ADA": {"legs": ["ado", "ino"], "label": (68.5, 30.4), "va": "top"},
     "PNPase": {
@@ -238,6 +275,7 @@ REACTIONS = {
         "direction": (-1, 0),
         "label": (60.5, 30.3),
         "va": "top",
+        "side": -1,
     },
     "PRM": {"legs": ["r1p", "r5p"], "label": (52.3, 38), "ha": "right"},
     "HX_ex": {"legs": ["hx"], "end": (54.8, 36), "label": (55.6, 36.6)},
@@ -247,7 +285,12 @@ REACTIONS = {
         "direction": (0, 1),
         "label": (80, 45.8),
     },
-    "ATPase": {"legs": ["atp", "adp"], "label": (84.5, 41.5), "ha": "left"},
+    "ATPase": {
+        "legs": ["atp", "adp"],
+        "label": (84.5, 41.5),
+        "ha": "left",
+        "side": 1,
+    },
     "MgATP": {
         "legs": ["atp", "mgatp"],
         "text": "Mg²⁺",
@@ -269,14 +312,16 @@ REACTIONS = {
     "GSSGR": {
         "legs": ["gssg", "gsh"],
         "offset": 0.8,
-        "label": (47, 6.9),
+        "label": (47, 4.8),
         "va": "top",
+        "side": 1,
     },
     "GSHox": {"legs": ["gsh", "gssg"], "offset": 0.8, "label": (47, 9.1)},
     "pump": {
         "legs": ["na", "k_e", "na_e", "k"],
         "point": (92, 11.5),
         "direction": (0, -1),
+        "side": -1,
         "label": (85, 11.5),
         "ha": "right",
         "va": "center",
@@ -301,208 +346,8 @@ REACTIONS = {
 }
 
 
-def get_species(node):
-    return DUPLICATES.get(node, node)
-
-
-def get_cofactor_text(stoichiometry, legs):
-    shown = {get_species(node) for node in legs}
-    sides = ([], [])
-    for species, coefficient in stoichiometry.items():
-        if species in shown:
-            continue
-        name = SPECIES_NAMES[species]
-        if abs(coefficient) != 1:
-            name = f"{abs(coefficient):g} {name}"
-        sides[coefficient > 0].append(name)
-    if not any(sides):
-        return ""
-    return " + ".join(sides[0]) + " → " + " + ".join(sides[1])
-
-
-def split(points, t):
-    left, right = [points[0]], [points[-1]]
-    while len(points) > 1:
-        points = [(1 - t) * a + t * b for a, b in zip(points, points[1:])]
-        left.append(points[0])
-        right.append(points[-1])
-    return left, right[::-1]
-
-
-def evaluate(points, t):
-    return split(points, t)[0][-1]
-
-
-def trim(points, start_box, end_box):
-    def last_outside(box, reverse):
-        low, high = 0.0, 1.0
-        for _ in range(40):
-            middle = (low + high) / 2
-            t = 1 - middle if reverse else middle
-            if box.contains(*evaluate(points, t)):
-                high = middle
-            else:
-                low = middle
-        return 1 - low if reverse else low
-
-    a = 0.0 if start_box is None else last_outside(start_box, reverse=True)
-    b = 1.0 if end_box is None else last_outside(end_box, reverse=False)
-    if b <= a:
-        raise ValueError("A curve lies inside a species label")
-    left, _ = split(points, b)
-    _, middle = split(left, a / b)
-    return middle
-
-
-def draw_curve(ax, points, boxes, colour, style):
-    points = [np.asarray(point, dtype=float) for point in points]
-    codes = {2: Path.LINETO, 3: Path.CURVE3, 4: Path.CURVE4}[len(points)]
-    ax.add_patch(
-        FancyArrowPatch(
-            path=Path(
-                trim(points, *boxes),
-                [Path.MOVETO] + [codes] * (len(points) - 1),
-            ),
-            arrowstyle=style,
-            mutation_scale=5,
-            linewidth=0.7,
-            color=colour,
-        ),
-    )
-
-
-def draw_reaction(ax, reaction_id, reaction, spec, rapid, boxes):
-    stoichiometry = reaction.stoichiometry
-    colour = RAPID_COLOUR if rapid else KINETIC_COLOUR
-    legs = spec["legs"]
-    substrates = [n for n in legs if stoichiometry[get_species(n)] < 0]
-    products = [n for n in legs if stoichiometry[get_species(n)] > 0]
-    if "point" in spec:
-        point = np.asarray(spec["point"], dtype=float)
-        direction = np.asarray(spec["direction"], dtype=float)
-        direction /= np.linalg.norm(direction)
-        stem = direction * STEM / 2
-        draw_curve(ax, [point - stem, point + stem], (None, None), colour, "-")
-        for node, sign in [(n, -1) for n in substrates] + [
-            (n, 1) for n in products
-        ]:
-            end = point + sign * stem
-            position = np.asarray(POSITIONS[node], dtype=float)
-            reach = max(direction @ (position - end) * sign, 0.0)
-            control = end + sign * direction * reach * FORK_CONTROL
-            style = "-|>" if sign > 0 or rapid else "-"
-            draw_curve(
-                ax,
-                [end, control, position],
-                (None, boxes[node]),
-                colour,
-                style,
-            )
-    else:
-        start = np.asarray(
-            spec.get("start", POSITIONS[substrates[0]] if substrates else None),
-            dtype=float,
-        )
-        end = np.asarray(
-            spec.get("end", POSITIONS[products[0]] if products else None),
-            dtype=float,
-        )
-        if "offset" in spec:
-            along = end - start
-            normal = np.array([-along[1], along[0]]) / np.linalg.norm(along)
-            start = start + normal * spec["offset"]
-            end = end + normal * spec["offset"]
-        if "controls" in spec:
-            controls = [np.asarray(c, dtype=float) for c in spec["controls"]]
-        else:
-            along = end - start
-            normal = np.array([-along[1], along[0]]) / np.linalg.norm(along)
-            controls = [(start + end) / 2 + normal * spec.get("bend", 0.0)]
-        start_box = None if "start" in spec else boxes[substrates[0]]
-        end_box = None if "end" in spec else boxes[products[0]]
-        style = "<|-|>" if rapid else "-|>"
-        draw_curve(
-            ax,
-            [start, *controls, end],
-            (start_box, end_box),
-            colour,
-            style,
-        )
-    text = spec.get("text", reaction_id)
-    cofactors = get_cofactor_text(stoichiometry, legs)
-    if cofactors and "text" not in spec:
-        text += ("  " if spec.get("inline") else "\n") + cofactors
-    ax.text(
-        *spec["label"],
-        text,
-        fontsize=LABEL_SIZE,
-        color=colour if rapid else MUTED,
-        ha=spec.get("ha", "center"),
-        va=spec.get("va", "bottom"),
-        linespacing=0.95,
-    )
-
-
-def draw_species(ax):
-    clamped = set(MODEL.parameter_labelling["log_conc_unbalanced"])
-    texts = {}
-    for node, position in POSITIONS.items():
-        species = get_species(node)
-        texts[node] = ax.text(
-            *position,
-            SPECIES_NAMES[species],
-            fontsize=SPECIES_SIZE,
-            color=CLAMPED_COLOUR if species in clamped else TEXT,
-            ha="center",
-            va="center",
-            zorder=3,
-        )
-    return texts
-
-
-def get_boxes(ax, texts):
-    renderer = ax.figure.canvas.get_renderer()
-    to_data = ax.transData.inverted()
-    return {
-        node: text.get_window_extent(renderer)
-        .padded(LABEL_PAD)
-        .transformed(to_data)
-        for node, text in texts.items()
-    }
-
-
 def draw_annotations(ax):
-    x, y, width, height = CELL
-    ax.add_patch(
-        FancyBboxPatch(
-            (x, y),
-            width,
-            height,
-            boxstyle="round,pad=0,rounding_size=2.5",
-            facecolor="none",
-            edgecolor=MEMBRANE_COLOUR,
-            linewidth=1.2,
-        ),
-    )
-    ax.text(
-        60,
-        y + 1,
-        "Cell",
-        fontsize=SPECIES_SIZE,
-        color=MEMBRANE_COLOUR,
-        style="italic",
-        va="bottom",
-    )
-    ax.text(
-        99.5,
-        1.2,
-        "Plasma",
-        fontsize=SPECIES_SIZE,
-        color=MEMBRANE_COLOUR,
-        style="italic",
-        ha="right",
-        va="center",
-    )
+    draw_cell(ax, CELL, XLIM, "Plasma")
     ax.text(
         25,
         23,
@@ -544,7 +389,13 @@ def plot_network(ax):
     if missing:
         raise ValueError(f"Reactions drawn and modelled differ: {missing}")
     draw_annotations(ax)
-    texts = draw_species(ax)
+    texts = draw_species(
+        ax,
+        POSITIONS,
+        DUPLICATES,
+        SPECIES_NAMES,
+        set(MODEL.parameter_labelling["log_conc_unbalanced"]),
+    )
     ax.set_xlim(*XLIM)
     ax.set_ylim(*YLIM)
     ax.axis("off")
@@ -555,13 +406,19 @@ def draw_reactions(ax, texts):
     boxes = get_boxes(ax, texts)
     reactions = MODEL.reactions | MODEL.rapid_equilibrium_network.reactions
     for reaction_id, spec in REACTIONS.items():
+        rapid = reaction_id in MODEL.rapid_equilibrium_network.reactions
         draw_reaction(
             ax,
             reaction_id,
-            reactions[reaction_id],
+            reactions[reaction_id].stoichiometry,
             spec,
-            reaction_id in MODEL.rapid_equilibrium_network.reactions,
+            POSITIONS,
+            DUPLICATES,
+            SPECIES_NAMES,
             boxes,
+            colour=RAPID_COLOUR if rapid else KINETIC_COLOUR,
+            label_colour=RAPID_COLOUR if rapid else MUTED,
+            reversible=rapid,
         )
 
 
