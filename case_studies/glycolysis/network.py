@@ -1,3 +1,11 @@
+"""Draw the glycolysis network for panel A of the regulator-finding figure.
+
+Species and reactions sit at hand-placed positions, and their effectors come
+from the model's rate laws. Drawing a network that differs from the model,
+in its reactions or its effectors, raises an error. Running the module
+directly saves results/network.png.
+"""
+
 import sys
 from pathlib import Path
 

@@ -1,9 +1,10 @@
-"""Plot panels B to E of the glycolysis regulator-finding figure.
+"""Plot the glycolysis regulator-finding figure.
 
-Panel A, a map of the pathway showing its reactions and PFKM's regulation, is
-drawn separately. B shows sedoheptulose 7-phosphate against external glucose,
-as predicted by the round-one fits of the PEP and lactate hypotheses, with the
-measurements from rounds one and two. C shows the design screens after rounds
+A maps the pathway's reactions, cofactors and known regulation, with PFKM's
+candidate inhibitors coloured by hypothesis. B shows sedoheptulose
+7-phosphate against external glucose, as predicted by the round-one fits of
+the PEP and lactate hypotheses, with the measurements from rounds one and
+two. C shows the design screens after rounds
 one and two, for the pair of hypotheses each round leaves open. D shows each
 hypothesis's cumulative log predictive density of each new round's data, from
 the previous round's fits, relative to the best hypothesis. E shows how five

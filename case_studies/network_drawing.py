@@ -1,3 +1,12 @@
+"""Draw reaction network maps for the case studies' figures.
+
+Each case study's network module places its species and reactions by hand
+and calls these functions to draw them. Species appear as text and
+reactions as arrows trimmed to stop short of the species' labels. A
+reaction that joins or splits several drawn species becomes a fork, and
+cofactors sit on a small side arc.
+"""
+
 import numpy as np
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from matplotlib.path import Path
@@ -229,6 +238,11 @@ def draw_species(ax, positions, duplicates, names, clamped):
 
 
 def get_boxes(ax, texts, pad=LABEL_PAD):
+    """Find each text's padded box in data coordinates.
+
+    Label sizes are only known once the figure has its layout, so call this
+    after fixing the layout.
+    """
     renderer = ax.figure.canvas.get_renderer()
     to_data = ax.transData.inverted()
     return {
