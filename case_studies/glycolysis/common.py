@@ -70,6 +70,9 @@ HYPOTHESES = {
     "both": ("lac_c", "pep_c"),
 }
 TRUE_HYPOTHESIS = "pep"
+COLOURS = dict(
+    zip(HYPOTHESES, ("#2a78d6", "#eb6834", "#1baf7a", "#eda100"), strict=True),
+)
 TC_FACTOR = 30.0
 REFERENCE_EXPERIMENT = "glc_30"
 SERIES = ("glc_30", "glc_4.5", "glc_1.5", "glc_0.45")

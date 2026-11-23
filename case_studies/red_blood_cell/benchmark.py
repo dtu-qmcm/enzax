@@ -7,7 +7,6 @@ import os
 os.environ.setdefault("EQX_ON_ERROR", "nan")
 
 import csv
-import sys
 import time
 from pathlib import Path
 
@@ -19,17 +18,33 @@ import numpy as np
 from diffrax_bdf import BDF, BDFController, SemiExplicitDAETerm
 
 from enzax.examples import red_blood_cell as rbc
+from enzax.examples import red_blood_cell_volume as rbcv
+from enzax.kinetic_model import KineticModel
+from enzax.rapid_equilibrium import RapidEquilibriumNetwork
 from enzax.steady_state import get_steady_state_hybrid
 
 RATIOS = np.logspace(1, 8, 15)
-TOLERANCES = [1e-12, 1e-9]
+TOLERANCES = [1e-9]
 PERTURBATION = 0.8
 REPEATS = 3
 MAX_STEPS = 4000
-OUT_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("benchmark")
-MIN_RATIO = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0
-STIFF_METHODS = ["kvaerno5", "bdf"]
-RAPID_EQUILIBRIUM_METHODS = ["kvaerno5", "bdf", "dae", "dae_include"]
+RESULTS_DIR = Path(__file__).parent / "results"
+BENCHMARK_FILE = RESULTS_DIR / "benchmark.csv"
+METHODS = ["bdf", "dae"]
+
+stiff_model = KineticModel(
+    reactions=rbc.SLOW_REACTIONS
+    | {"leak_Na": rbcv.LEAK_NA}
+    | rbc.MASS_ACTION_REACTIONS,
+    rapid_equilibrium_network=RapidEquilibriumNetwork(
+        reactions=rbc.MG_BINDING_REACTIONS | rbcv.ANION_EXCHANGE,
+    ),
+    balanced_species=rbcv.BALANCED_SPECIES,
+    moiety_label_species=list(rbc.MOIETY_TOTALS),
+    compound_to_species=rbcv.COMPOUND_TO_SPECIES,
+    algebraic_constraints=rbcv.improved.algebraic_constraints,
+    compartments=rbcv.COMPARTMENTS,
+)
 
 
 def make_ode_solve(model, method):
@@ -179,7 +194,14 @@ def describe(row):
 
 def conc_and_flux(model, state, parameters):
     conc = model.get_balanced_conc(state, parameters)
-    flux = dict(zip(model.reaction_ids, model.flux(conc, parameters).tolist()))
+    variables = model.get_algebraic_variables(state, parameters)
+    flux = dict(
+        zip(
+            model.reaction_ids,
+            model.flux(conc, parameters, variables).tolist(),
+            strict=True,
+        ),
+    )
     return dict(zip(model.balanced_species, conc.tolist())), flux
 
 
@@ -195,15 +217,19 @@ def errors(approx, truth):
 
 
 def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    re_model = rbc.rapid_equilibrium_model
-    re_parameters = rbc.rapid_equilibrium_parameters
+    RESULTS_DIR.mkdir(exist_ok=True)
+    re_model = rbcv.improved
+    re_parameters = rbcv.improved_parameters
     re_rows = run(
         re_model,
         re_parameters,
-        rbc.rapid_equilibrium_steady_state,
+        get_steady_state_hybrid(
+            re_model,
+            rbcv.improved_initial_state,
+            re_parameters,
+        ),
         "rapid equilibrium",
-        RAPID_EQUILIBRIUM_METHODS,
+        METHODS,
     )
     re_good = next(
         r for r in re_rows if r["method"] == "hybrid" and r["success"]
@@ -225,18 +251,27 @@ def main():
             f"conc {conc_error:.2e}",
             flush=True,
         )
+    stiff_guess = get_steady_state_hybrid(
+        stiff_model,
+        rbcv.get_initial_state(stiff_model),
+        rbcv.get_parameters(stiff_model, rbcv.improved_values),
+    )
     failures = {tol: 0 for tol in TOLERANCES}
-    for ratio in RATIOS[RATIOS >= MIN_RATIO]:
+    for ratio in RATIOS:
         active = [tol for tol in TOLERANCES if failures[tol] < 2]
         if not active:
             break
-        parameters = rbc.get_parameters(rbc.model, float(ratio))
+        parameters = rbcv.get_parameters(
+            stiff_model,
+            rbcv.improved_values,
+            float(ratio),
+        )
         rows = run(
-            rbc.model,
+            stiff_model,
             parameters,
-            rbc.steady_state,
+            stiff_guess,
             "stiff",
-            STIFF_METHODS,
+            METHODS,
             active,
         )
         for tol in active:
@@ -248,7 +283,7 @@ def main():
             state = row.pop("state")
             conc_error = flux_error = np.nan
             if row["success"]:
-                truth = conc_and_flux(rbc.model, state, parameters)
+                truth = conc_and_flux(stiff_model, state, parameters)
                 conc_error, flux_error = errors(re_solution, truth)
             records.append(
                 row
@@ -263,11 +298,7 @@ def main():
                 f"conc {conc_error:.2e} flux {flux_error:.2e}",
                 flush=True,
             )
-    with open(
-        OUT_DIR / f"rapid_equilibrium_benchmark_from_{MIN_RATIO:g}.csv",
-        "w",
-        newline="",
-    ) as f:
+    with open(BENCHMARK_FILE, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(records[0]))
         writer.writeheader()
         writer.writerows(records)
