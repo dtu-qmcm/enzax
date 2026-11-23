@@ -96,7 +96,7 @@ One measurement can cover several species and several time points. `gdp_fucose.l
 
 ## Fitting time courses
 
-`log_density_time_course` is the time-course counterpart of `log_density`. Besides the usual arguments it takes the time grids. Here the five fitting experiments share their kinetic parameters, while each has its own enzyme loadings and initial amounts, and the free parameters and prior are those of `scripts/cascade_demo.py`:
+`log_density_time_course` is the time-course counterpart of `log_density`. Besides the usual arguments it takes the time grids. Here the five fitting experiments share their kinetic parameters, while each has its own enzyme loadings and initial amounts, and the free parameters and prior are those of `case_studies/cascade/common.py`:
 
 ```python
 from enzax.experiments import (
@@ -181,13 +181,13 @@ The figures below compare experiment FE13's measurements with its time course at
 ??? example "Code for these figures"
 
     ```python
-    --8<-- "scripts/cascade_demo.py:plots"
+    --8<-- "case_studies/cascade/docs_figures.py"
     ```
 
-    `scripts/cascade_demo.py` calls `plot_fit` with the prior mean and the MAP after fitting, and saves the figures: `uv run --group plot python scripts/cascade_demo.py`.
+    `case_studies/cascade/mode.py` calls `plot_fit` with the prior mean and the MAP after fitting, and saves the figures: `cd case_studies/cascade && uv run --group plot python mode.py`.
 
 ![FE13's measured GMP, ATP, GTP and GDP-fucose against the model's time courses at the prior mean](img/time_course_prior_mean.png)
 
 ![FE13's measured GMP, ATP, GTP and GDP-fucose against the model's time courses at the MAP](img/time_course_map.png)
 
-`scripts/mcmc_demo.py` shows how to sample from a log density like this one. `scripts/cascade_demo.py` fits the cascade's free parameters to the five experiments by maximum a posteriori optimisation and compares the fit with two validation experiments.
+`scripts/mcmc_demo.py` shows how to sample from a log density like this one. `case_studies/cascade/mode.py` fits the cascade's free parameters to the five experiments by maximum a posteriori optimisation and compares the fit with two validation experiments.
