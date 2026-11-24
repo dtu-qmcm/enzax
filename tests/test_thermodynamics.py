@@ -61,3 +61,25 @@ def test_one_way_fluxes_have_finite_gradients():
     assert all(
         jnp.all(jnp.isfinite(leaf)) for leaf in jax.tree.leaves(gradient)
     )
+
+
+def test_a_reaction_at_equilibrium_leaves_other_gradients_finite():
+    pgi = MODEL.reaction_ids.index("PGI")
+    g6p, f6p = (MODEL.balanced_species.index(s) for s in ("g6p_c", "f6p_c"))
+    conc = STEADY_STATE.at[g6p].set(STEADY_STATE[f6p])
+    dgf_ix = [
+        MODEL.species_to_dgf_ix[MODEL.species.index(s)]
+        for s in ("g6p_c", "f6p_c")
+    ]
+    dgf = PARAMETERS["dgf"].at[dgf_ix[0]].set(PARAMETERS["dgf"][dgf_ix[1]])
+    parameters = PARAMETERS | {"dgf": dgf}
+
+    def others(p):
+        return get_one_way_fluxes(MODEL, conc, p)[1].at[pgi].set(0.0).sum()
+
+    forward, _ = get_one_way_fluxes(MODEL, conc, parameters)
+    gradient = jax.grad(others)(parameters)
+    assert jnp.isnan(forward[pgi])
+    assert all(
+        jnp.all(jnp.isfinite(leaf)) for leaf in jax.tree.leaves(gradient)
+    )

@@ -250,7 +250,9 @@ def get_one_way_fluxes(
     RT = parameters["temperature"] * GAS_CONSTANT
     log_q = S.T @ jnp.log(jnp.clip(conc, min=1e-12))
     log_qk = jnp.where(reversible, dgr_std / RT + log_q, -jnp.inf)
-    forward = flux / -jnp.expm1(log_qk)
+    at_equilibrium = log_qk == 0
+    safe_log_qk = jnp.where(at_equilibrium, -1.0, log_qk)
+    forward = jnp.where(at_equilibrium, jnp.nan, flux / -jnp.expm1(safe_log_qk))
     return forward, forward - flux
 
 
