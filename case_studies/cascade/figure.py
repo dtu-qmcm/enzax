@@ -1,12 +1,14 @@
 """Plot the cascade figure.
 
-A maps the network, with GMPK's rapid equilibrium in orange. B shows the
-fitting runs and C the validation runs: medians and 90% bands of the readings
-from predict.py, with the median of Huber et al.'s parameter ensemble from
-huber.py dashed. D compares the baseline design, Huber et al.'s O3 design and
-the optimum from optimise.py: their GDP-fucose at 24 h, with the probability
-of reaching the target above each, their enzyme mass, and their enzyme levels
-within Huber et al.'s bounds. Saves results/figure.png and results/figure.pdf.
+A maps the network, colouring GMPK's rapid equilibrium, the reactions added
+to Huber et al.'s model and the postulated hydrolase. B shows the fitting
+runs and C the validation runs: medians and 90% bands of the readings from
+predict.py, with the median of Huber et al.'s parameter ensemble from huber.py
+dashed. D compares the baseline design, Huber et al.'s O3 design and the
+optimum from optimise.py: their GDP-fucose at 24 h, with the probability of
+reaching the target above each, their enzyme mass, and their enzyme levels
+within Huber et al.'s bounds and the range the runs tested. Saves
+results/figure.png and results/figure.pdf.
 """
 
 import matplotlib.pyplot as plt

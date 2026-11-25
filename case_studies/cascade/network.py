@@ -1,9 +1,11 @@
 """Draw the cascade network for panel A of the cascade figure.
 
 Species and reactions sit at hand-placed positions, with GMPK's rapid
-equilibrium in orange and measured species in bold. Drawing reactions or
-inhibitions that differ from the model's raises an error. Running the module
-directly saves results/network.png.
+equilibrium in orange, the reactions added to Huber et al.'s model (PPK3_M
+and ATP_HYDROLYSIS) in violet, the postulated hydrolase in aqua and measured
+species in bold. Drawing reactions or inhibitions that differ from the
+model's raises an error. Running the module directly saves
+results/network.png.
 """
 
 import sys
