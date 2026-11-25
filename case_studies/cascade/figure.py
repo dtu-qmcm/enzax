@@ -1,10 +1,23 @@
+"""Plot the cascade figure.
+
+A maps the network, with GMPK's rapid equilibrium in orange. B shows the
+fitting runs and C the validation runs: medians and 90% bands of the readings
+from predict.py, with the median of Huber et al.'s parameter ensemble from
+huber.py dashed. D compares the baseline design, Huber et al.'s O3 design and
+the optimum from optimise.py: their GDP-fucose at 24 h, with the probability
+of reaching the target above each, their enzyme mass, and their enzyme levels
+within Huber et al.'s bounds. Saves results/figure.png and results/figure.pdf.
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common import RESULTS_DIR
+from matplotlib.lines import Line2D
+
+from common import FITTING_EXPERIMENTS, HUBER_FILE, RESULTS_DIR
 from enzax.examples import gdp_fucose
 from network import draw_reactions, plot_network
-from optimise import DESIGNS_FILE, LOWER, UPPER
+from optimise import DESIGNS_FILE, LOWER, UPPER, get_mass
 from predict import PREDICTIONS_FILE
 
 MODEL_COLOUR = "#2a78d6"
@@ -12,9 +25,11 @@ VALIDATION_COLOUR = "#eb6834"
 MEASURED_COLOUR = "#0b0b0b"
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
+HUBER_COLOUR = MUTED
 GRID = "#e4e3df"
+TESTED = "#c3c2b7"
 BAND = (5, 95)
-TITRE_QUANTILES = (1, 99)
+TITRE_QUANTILES = (10, 90)
 SPECIES_NAMES = {
     "amp": "AMP",
     "adp": "ADP",
@@ -25,7 +40,6 @@ SPECIES_NAMES = {
     "gdp_fucose": "GDP-fucose",
 }
 EXPERIMENT_NAMES = {
-    "FE13": "FE13",
     "FE17_1FKP": "FE17\n1 FKP",
     "FE17_07FKP": "FE17\n0.7 FKP",
     "FE18_1FKP": "FE18\n1 FKP",
@@ -64,10 +78,10 @@ def get_measured(experiments):
 
 def plot_time_courses(axes):
     predictions = np.load(PREDICTIONS_FILE)
+    huber = np.load(HUBER_FILE)
+    huber_species = list(huber["species"])
     species = list(predictions["species"])
-    experiments = (
-        gdp_fucose.FITTING_EXPERIMENTS + gdp_fucose.VALIDATION_EXPERIMENTS
-    )
+    experiments = FITTING_EXPERIMENTS + gdp_fucose.VALIDATION_EXPERIMENTS
     measured = get_measured(experiments)
     for column, experiment in enumerate(experiments):
         validation = experiment in gdp_fucose.VALIDATION_EXPERIMENTS
@@ -81,6 +95,17 @@ def plot_time_courses(axes):
             low, high = np.nanpercentile(course, BAND, axis=0)
             ax.fill_between(ts, low, high, color=colour, alpha=0.25, lw=0)
             ax.plot(ts, np.nanmedian(course, axis=0), color=colour, lw=0.8)
+            if name in huber_species:
+                ax.plot(
+                    huber[f"{experiment}_time"],
+                    np.median(
+                        huber[experiment][:, :, huber_species.index(name)],
+                        axis=0,
+                    ),
+                    color=HUBER_COLOUR,
+                    linestyle="--",
+                    lw=0.8,
+                )
             points = measured.get((experiment, name))
             if points:
                 t, value = zip(*points)
@@ -116,28 +141,56 @@ def plot_titres(ax):
         s=8,
         zorder=3,
     )
-    ax.set_xlim(0.5, len(names) + 0.5)
-    ax.set_xticks(positions)
-    ax.set_xticklabels(
-        [DESIGN_NAMES[name].replace(" et", "\net") for name in names],
-        fontsize=6,
+    ax.axhline(designs["target"], color=MUTED, linewidth=0.6, linestyle=":")
+    ax.text(
+        0.55,
+        designs["target"],
+        "Target",
+        fontsize=5,
+        color=MUTED,
+        ha="left",
+        va="bottom",
     )
+    for position, t, top in zip(positions, titres, high):
+        ax.text(
+            position,
+            top,
+            f"{np.mean(t >= designs['target']):.0%}",
+            fontsize=5,
+            color=MUTED,
+            ha="center",
+            va="bottom",
+        )
+    label_designs(ax, names)
     ax.set_ylabel("GDP-fucose at 24 h (mM)")
     style(ax)
 
 
-def plot_improvement(ax):
+def label_designs(ax, names):
+    ax.set_xlim(0.5, len(names) + 0.5)
+    ax.set_xticks(range(1, len(names) + 1))
+    ax.set_xticklabels(
+        [DESIGN_NAMES[name] for name in names],
+        fontsize=6,
+        rotation=30,
+        ha="right",
+        rotation_mode="anchor",
+    )
+
+
+def plot_masses(ax):
     designs = np.load(DESIGNS_FILE)
-    improvement = designs["optimum_titre"] - designs["huber_titre"]
-    improvement = improvement[np.isfinite(improvement)]
-    low, high = np.percentile(improvement, TITRE_QUANTILES)
-    ax.axhline(0, color=MUTED, linewidth=0.6)
-    ax.vlines(1, low, high, color=MODEL_COLOUR, linewidth=1.2)
-    ax.scatter(1, np.median(improvement), color=MODEL_COLOUR, s=8, zorder=3)
-    ax.set_xlim(0.5, 1.5)
-    ax.set_xticks([1])
-    ax.set_xticklabels(["Optimum\n− Huber et al."], fontsize=6)
-    ax.set_ylabel("Titre gain (mM)")
+    names = list(DESIGN_NAMES)
+    positions = np.arange(1, len(names) + 1)
+    masses = [get_mass(designs[f"{name}_design"]) for name in names]
+    ax.bar(
+        positions,
+        masses,
+        width=0.5,
+        color=[MODEL_COLOUR if name == "optimum" else MUTED for name in names],
+    )
+    label_designs(ax, names)
+    ax.set_ylabel("Enzyme (g/l)")
     style(ax)
 
 
@@ -152,6 +205,20 @@ def plot_designs(ax):
         width=0.5,
         color=GRID,
         label="Bounds",
+    )
+    levels = np.array(
+        [
+            gdp_fucose.ENZYME_LEVELS[e][: len(ENZYME_NAMES)]
+            for e in EXPERIMENT_NAMES
+        ],
+    )
+    ax.bar(
+        positions,
+        levels.max(axis=0) - levels.min(axis=0),
+        bottom=levels.min(axis=0),
+        width=0.5,
+        color=TESTED,
+        label="Tested",
     )
     for name, offset in offsets.items():
         ax.plot(
@@ -193,31 +260,57 @@ def main():
     top, bottom = fig.subfigures(2, 1, height_ratios=[2.1, 6.7])
     network_fig, design_fig = top.subfigures(1, 2, width_ratios=[3.4, 4.1])
     network_ax = network_fig.subplots()
-    titre_ax, improvement_ax, design_ax = design_fig.subplots(
+    titre_ax, mass_ax, design_ax = design_fig.subplots(
         1,
         3,
-        width_ratios=[1.4, 0.55, 1.1],
+        width_ratios=[1.2, 1.0, 1.1],
     )
     n_species = len(gdp_fucose.MEASURED_SPECIES)
     grid = bottom.subplots(
         n_species,
-        8,
-        width_ratios=[1, 1, 1, 1, 1, 0.15, 1, 1],
+        7,
+        width_ratios=[1, 1, 1, 1, 0.15, 1, 1],
         sharex="col",
         sharey="row",
     )
-    for ax in grid[:, 5]:
+    for ax in grid[:, 4]:
         ax.set_visible(False)
-    axes = np.delete(grid, 5, axis=1)
+    axes = np.delete(grid, 4, axis=1)
     texts = plot_network(network_ax)
     plot_time_courses(axes)
+    bottom.legend(
+        handles=[
+            Line2D([], [], color=MODEL_COLOUR, label="Fitted"),
+            Line2D([], [], color=VALIDATION_COLOUR, label="Predicted"),
+            Line2D(
+                [],
+                [],
+                color=HUBER_COLOUR,
+                linestyle="--",
+                label="Huber et al.",
+            ),
+            Line2D(
+                [],
+                [],
+                color=MEASURED_COLOUR,
+                linestyle="none",
+                marker="o",
+                markersize=1.8,
+                label="Measured",
+            ),
+        ],
+        loc="outside lower center",
+        ncol=4,
+        frameon=False,
+        fontsize=6,
+    )
     plot_titres(titre_ax)
-    plot_improvement(improvement_ax)
+    plot_masses(mass_ax)
     plot_designs(design_ax)
     for ax, letter in (
         (network_ax, "A"),
         (axes[0, 0], "B"),
-        (axes[0, 5], "C"),
+        (axes[0, len(FITTING_EXPERIMENTS)], "C"),
         (titre_ax, "D"),
     ):
         ax.text(

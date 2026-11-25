@@ -3,26 +3,31 @@
 The cascade, the data and the experiment design come from Huber et al. (2023),
 Metabolic Engineering 81:10-25, https://doi.org/10.1016/j.ymben.2023.10.007.
 The model is the one in https://github.com/dtu-qmcm/gdp_fucose_enzax, which
-fixes problems with the model as published, with two changes. It leaves out
-that implementation's competitive inhibition of FKP_fk by pyrophosphate. And
-PPK3's two reactions share one active site: each has the other's reactants as
-competitive inhibitors, with the other's Michaelis constants as their
-inhibition constants, and both share one Michaelis constant for
-polyphosphate. The other parameters are that implementation's prior means.
+fixes problems with the model as published, with these changes. It leaves out
+that implementation's competitive inhibition of FKP_fk by pyrophosphate:
+pyrophosphate inhibition of FKP_fk or of FKP_gt fits the fitting runs better
+but predicts the validation runs worse. PPK3 also phosphorylates AMP
+(PPK3_M), as class III PPK2 enzymes do, and its three reactions share one
+active site: each has another's reactants as competitive inhibitors, with
+that reaction's Michaelis constants as inhibition constants, and all share
+one Michaelis constant for polyphosphate. ATP_HYDROLYSIS, a first-order loss
+of ATP, stands for slow non-enzymatic and contaminant ATPase activity. Each
+run's ATP stock carries ATP_STOCK_IMPURITY of its ATP as AMP and as ADP. The
+other parameters are that implementation's prior means.
 
 Polyphosphate, which PPK3 uses to regenerate ATP and GTP, is loaded in large
 excess (Mahour et al. 2021, ChemCatChem), and Huber et al. treat it as an
 unlimited supply. Here it is an unbalanced species, polyp, held at
-POLYP_CONCENTRATION mM of phosphate residues. Its concentration only enters
-PPK3's saturation terms, as the next paragraph explains, so its exact value
-matters little as long as it is well above PPK3's Michaelis constant.
+POLYP_CONCENTRATION mM of phosphate residues. Its exact value matters little
+as long as it is well above PPK3's Michaelis constant, since the next
+paragraph's correction cancels it from PPK3's equilibrium.
 
-PPK3's reactions are SymbolicReactions with the same form as MichaelisMenten
-apart from their driving force. Taking a residue off a polyphosphate chain
-leaves the number of chains unchanged, so the residues' concentration does not
-enter the mass action ratio: a residue in a chain has unit activity, as water
-does, and the driving force is 1 - [NTP] / ([NDP] K). The formation energy of
-polyp is then the free energy of one residue in a chain. Its prior mean puts
+PPK3's reactions are MichaelisMenten, so polyp's concentration enters their
+mass action ratios. Taking a residue off a polyphosphate chain leaves the
+number of chains unchanged, so in fact a residue in a chain has unit
+activity, as water does. Since polyp is held fixed, its concentration only
+multiplies each equilibrium constant by a constant, which polyp's formation
+energy cancels by including -RT ln(POLYP_CONCENTRATION). Its prior mean puts
 the equilibrium ATP/ADP ratio at 3, the middle of the 2.3 to 4 measured for
 polyphosphate kinases (https://www.beilstein-journals.org/bjoc/articles/18/134
 and https://pubmed.ncbi.nlm.nih.gov/39257778/), with a standard deviation of
@@ -58,11 +63,7 @@ can make AMP, which the data show building up. Its rate is linear in ATP and
 saturating in AMP, written as forward minus reverse so that it makes AMP from
 ADP even when there is no AMP yet. Its two parameters are guesses. Mahour et
 al. (2021) attribute the AMP to ADP being converted into ATP and AMP, the
-reverse of this reaction. This rate law fits the data better than reversible
-mass action (one parameter) and than the reversible Michaelis-Menten rate law
-of our implementation (four parameters): with scripts/cascade_demo.py's
-settings the MAP log densities are 91.8, 85.0 and 82.7, and the root mean
-square residuals of AMP on the log scale are 0.29, 0.34 and 0.31.
+reverse of this reaction.
 
 The measurements in gdp_fucose_measurements.csv are the time courses in
 https://github.com/klamt-lab/GDP-Fucose_OptMet2023_Paper (Apache-2.0), as
@@ -76,7 +77,8 @@ GMP's, as Huber et al. did.
 Times are in hours, and amounts in mM in a pot of volume 1, so amounts and
 concentrations are the same numbers. The formation energies are eQuilibrator's
 estimates, converted from a 1 M to a 1 mM standard state. The pot is closed, so
-five conserved moieties follow from the initial amounts.
+three conserved moieties, adenine, fucose and guanine, follow from the initial
+amounts.
 """
 
 import csv
@@ -138,14 +140,22 @@ ENZYME_LEVELS = {
     "FE20_Validation2": (0.007145, 0.007279, 0.00104, 0.002413),
 }
 UNKNOWN_HYDROLASE_LEVEL = 0.0001
+ATP_STOCK_IMPURITY = 0.03
 INITIAL_AMOUNTS = {
-    "FE13": {"gmp": 21.5, "fucose": 21.5, "atp": 6.0},
-    "FE17_1FKP": {"gmp": 21.0, "fucose": 21.0, "atp": 5.6},
-    "FE17_07FKP": {"gmp": 21.0, "fucose": 21.0, "atp": 5.6},
-    "FE18_1FKP": {"gmp": 25.7, "fucose": 25.7, "atp": 6.0},
-    "FE18_07FKP": {"gmp": 25.7, "fucose": 25.7, "atp": 6.0},
-    "FE20_Validation1": {"gmp": 22.0, "fucose": 22.0, "atp": 5.0},
-    "FE20_Validation2": {"gmp": 22.0, "fucose": 22.0, "atp": 5.0},
+    experiment: amounts
+    | {
+        "amp": ATP_STOCK_IMPURITY * amounts["atp"],
+        "adp": ATP_STOCK_IMPURITY * amounts["atp"],
+    }
+    for experiment, amounts in {
+        "FE13": {"gmp": 21.5, "fucose": 21.5, "atp": 6.0},
+        "FE17_1FKP": {"gmp": 21.0, "fucose": 21.0, "atp": 5.6},
+        "FE17_07FKP": {"gmp": 21.0, "fucose": 21.0, "atp": 5.6},
+        "FE18_1FKP": {"gmp": 25.7, "fucose": 25.7, "atp": 6.0},
+        "FE18_07FKP": {"gmp": 25.7, "fucose": 25.7, "atp": 6.0},
+        "FE20_Validation1": {"gmp": 22.0, "fucose": 22.0, "atp": 5.0},
+        "FE20_Validation2": {"gmp": 22.0, "fucose": 22.0, "atp": 5.0},
+    }.items()
 }
 KCAT = {
     "FKP_fk": 1404.0,
@@ -153,7 +163,9 @@ KCAT = {
     "PPA": 558000.0,
     "PPK3_A": 18780.0,
     "PPK3_G": 15048.0,
+    "PPK3_M": 1000.0,
     "UNKNOWN_HYDROLASE": 0.1,
+    "ATP_HYDROLYSIS": 0.05,
 }
 SATURATION_CONSTANTS = {
     "km|FKP_fk|atp": 1.08,
@@ -170,6 +182,8 @@ SATURATION_CONSTANTS = {
     "km|PPK3_A|atp": 2.0,
     "km|PPK3_G|gdp": 1.2,
     "km|PPK3_G|gtp": 0.1,
+    "km|PPK3_M|amp": 1.0,
+    "km|PPK3_M|adp": 1.0,
     "km|UNKNOWN_HYDROLASE|amp": 0.5,
     "km|PPK3|polyp": 3.0,
 }
@@ -190,13 +204,12 @@ DGF = {
         "gmp": -1019.27507,
     }.items()
 }
-DGF["polyp"] = DGF["atp"] - DGF["adp"] + 0.008314 * TEMPERATURE * np.log(3.0)
 POLYP_CONCENTRATION = 50.0
-PPK3_RATE = (
-    "kcat * enzyme * (ndp / km_ndp) * (polyp / km_polyp)"
-    " * (1 - (1 - reversibility) * polyp)"
-    " / ((1 + ndp / km_ndp) * (1 + polyp / km_polyp) + (1 + ntp / km_ntp) - 1"
-    " + other_ndp / km_other_ndp + other_ntp / km_other_ntp)"
+DGF["polyp"] = (
+    DGF["atp"]
+    - DGF["adp"]
+    + 0.008314 * TEMPERATURE * np.log(3.0)
+    - 0.008314 * TEMPERATURE * np.log(POLYP_CONCENTRATION)
 )
 
 model = KineticModel(
@@ -226,74 +239,31 @@ model = KineticModel(
             water_stoichiometry=-1.0,
             reversible=False,
         ),
-        "PPK3_A": SymbolicReaction(
+        "PPK3_A": MichaelisMenten(
             stoichiometry={"adp": -1.0, "polyp": -1.0, "atp": 1.0},
-            expression=PPK3_RATE,
-            species={
-                "ndp": "adp",
-                "ntp": "atp",
-                "polyp": "polyp",
-                "other_ndp": "gdp",
-                "other_ntp": "gtp",
-            },
-            parameters={
-                "kcat": "log_kcat",
-                "enzyme": {"kind": "log_enzyme", "label": "ppk3"},
-                "km_ndp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_A|adp",
-                },
-                "km_ntp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_A|atp",
-                },
-                "km_polyp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3|polyp",
-                },
-                "km_other_ndp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_G|gdp",
-                },
-                "km_other_ntp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_G|gtp",
-                },
+            enzyme="ppk3",
+            michaelis_constants={"polyp": "km|PPK3|polyp"},
+            competitive_inhibitors={
+                "gdp": "km|PPK3_G|gdp",
+                "gtp": "km|PPK3_G|gtp",
             },
         ),
-        "PPK3_G": SymbolicReaction(
+        "PPK3_G": MichaelisMenten(
             stoichiometry={"gdp": -1.0, "polyp": -1.0, "gtp": 1.0},
-            expression=PPK3_RATE,
-            species={
-                "ndp": "gdp",
-                "ntp": "gtp",
-                "polyp": "polyp",
-                "other_ndp": "adp",
-                "other_ntp": "atp",
+            enzyme="ppk3",
+            michaelis_constants={"polyp": "km|PPK3|polyp"},
+            competitive_inhibitors={
+                "adp": "km|PPK3_A|adp",
+                "atp": "km|PPK3_A|atp",
             },
-            parameters={
-                "kcat": "log_kcat",
-                "enzyme": {"kind": "log_enzyme", "label": "ppk3"},
-                "km_ndp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_G|gdp",
-                },
-                "km_ntp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_G|gtp",
-                },
-                "km_polyp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3|polyp",
-                },
-                "km_other_ndp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_A|adp",
-                },
-                "km_other_ntp": {
-                    "kind": "log_saturation_constant",
-                    "label": "km|PPK3_A|atp",
-                },
+        ),
+        "PPK3_M": MichaelisMenten(
+            stoichiometry={"amp": -1.0, "polyp": -1.0, "adp": 1.0},
+            enzyme="ppk3",
+            michaelis_constants={"polyp": "km|PPK3|polyp"},
+            competitive_inhibitors={
+                "gdp": "km|PPK3_G|gdp",
+                "gtp": "km|PPK3_G|gtp",
             },
         ),
         "UNKNOWN_HYDROLASE": SymbolicReaction(
@@ -307,6 +277,12 @@ model = KineticModel(
                     "label": "km|UNKNOWN_HYDROLASE|amp",
                 },
             },
+        ),
+        "ATP_HYDROLYSIS": SymbolicReaction(
+            stoichiometry={"atp": -1.0, "adp": 1.0, "p": 1.0},
+            expression="kcat * atp",
+            species={"atp": "atp"},
+            parameters={"kcat": "log_kcat"},
         ),
     },
     rapid_equilibrium_network=RapidEquilibriumNetwork(
@@ -323,7 +299,7 @@ model = KineticModel(
         fast_moiety_label_species=["gmp", "atp"],
     ),
     balanced_species=BALANCED_SPECIES,
-    moiety_label_species=["p", "amp", "fucose", "gmp"],
+    moiety_label_species=["amp", "fucose", "gmp"],
 )
 labelling = model.parameter_labelling | get_initial_state_labelling(model)
 

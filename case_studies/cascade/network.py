@@ -1,3 +1,11 @@
+"""Draw the cascade network for panel A of the cascade figure.
+
+Species and reactions sit at hand-placed positions, with GMPK's rapid
+equilibrium in orange and measured species in bold. Drawing reactions or
+inhibitions that differ from the model's raises an error. Running the module
+directly saves results/network.png.
+"""
+
 import sys
 from pathlib import Path
 
@@ -11,7 +19,6 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from network_drawing import (  # noqa: E402
     KINETIC_COLOUR,
-    LABEL_SIZE,
     MUTED,
     draw_curve,
     draw_reaction,
@@ -21,6 +28,15 @@ from network_drawing import (  # noqa: E402
 
 MODEL = gdp_fucose.model
 RAPID_COLOUR = "#eb6834"
+ADDED_COLOUR = "#6250d6"
+POSTULATED_COLOUR = "#1baf7a"
+REACTION_COLOURS = {
+    "PPK3_M": ADDED_COLOUR,
+    "ATP_HYDROLYSIS": ADDED_COLOUR,
+    "UNKNOWN_HYDROLASE": POSTULATED_COLOUR,
+}
+COFACTOR_SCALE = 1.6
+REACTION_LABEL_SIZE = 4.5
 REGULATION_COLOUR = "#52514e"
 INHIBITION = "-[,widthB=0.8,lengthB=0"
 TARGET_PAD = 3
@@ -76,8 +92,8 @@ REACTIONS = {
     },
     "PPK3_A": {
         "legs": ["adp", "atp"],
-        "controls": [(24, 47)],
-        "label": (24, 40.6),
+        "controls": [(24, 53)],
+        "label": (24, 43.7),
         "va": "center",
         "side": -1,
     },
@@ -88,14 +104,27 @@ REACTIONS = {
         "va": "center",
         "side": -1,
     },
+    "PPK3_M": {
+        "legs": ["amp", "adp"],
+        "bend": -5.5,
+        "label": (27.5, 30.2),
+        "va": "top",
+        "side": 1,
+    },
+    "ATP_HYDROLYSIS": {
+        "legs": ["atp", "adp"],
+        "controls": [(24, 43.5)],
+        "text": "ATPase",
+        "label": (24, 41.9),
+        "va": "center",
+    },
     "UNKNOWN_HYDROLASE": {
         "legs": ["atp", "amp", "adp"],
         "point": (25, 38),
         "direction": (1, 0),
-        "text": "Unknown",
-        "label": (27, 36.5),
-        "ha": "left",
-        "va": "top",
+        "text": "Hydrolase",
+        "label": (27, 39.2),
+        "va": "center",
     },
     "GMPK": {
         "legs": ["gmp", "atp", "gdp", "adp"],
@@ -120,10 +149,10 @@ def get_inhibitions():
 
 def draw_annotations(ax):
     ax.text(
-        60,
-        19.5,
+        51,
+        20.5,
         "Measured species in bold",
-        fontsize=LABEL_SIZE,
+        fontsize=REACTION_LABEL_SIZE,
         color=MUTED,
         va="top",
     )
@@ -131,6 +160,13 @@ def draw_annotations(ax):
         handles=[
             Line2D([], [], color=KINETIC_COLOUR, label="Kinetic reaction"),
             Line2D([], [], color=RAPID_COLOUR, label="Rapid equilibrium"),
+            Line2D([], [], color=ADDED_COLOUR, label="Added reaction"),
+            Line2D(
+                [],
+                [],
+                color=POSTULATED_COLOUR,
+                label="Postulated hydrolase",
+            ),
             Line2D(
                 [],
                 [],
@@ -141,11 +177,13 @@ def draw_annotations(ax):
             ),
         ],
         loc="upper left",
-        bbox_to_anchor=(59.5, 29),
+        bbox_to_anchor=(50, 29),
         bbox_transform=ax.transData,
+        ncol=2,
         frameon=False,
-        fontsize=LABEL_SIZE,
+        fontsize=REACTION_LABEL_SIZE,
         handlelength=1.5,
+        columnspacing=1.0,
     )
 
 
@@ -180,6 +218,8 @@ def draw_reactions(ax, texts):
     labels = {}
     for reaction_id, spec in REACTIONS.items():
         rapid = reaction_id in MODEL.rapid_equilibrium_network.reactions
+        colour = RAPID_COLOUR if rapid else KINETIC_COLOUR
+        colour = REACTION_COLOURS.get(reaction_id, colour)
         labels[reaction_id] = draw_reaction(
             ax,
             reaction_id,
@@ -189,21 +229,19 @@ def draw_reactions(ax, texts):
             DUPLICATES,
             SPECIES_NAMES,
             boxes,
-            colour=RAPID_COLOUR if rapid else KINETIC_COLOUR,
-            label_colour=RAPID_COLOUR if rapid else MUTED,
+            colour=colour,
+            label_colour=MUTED if colour == KINETIC_COLOUR else colour,
             reversible=rapid,
+            cofactor_scale=COFACTOR_SCALE,
+            label_size=REACTION_LABEL_SIZE,
         )
     label_boxes = get_boxes(ax, labels, TARGET_PAD)
     for (reaction_id, species), controls in INHIBITION_CONTROLS.items():
-        label_box = label_boxes[reaction_id]
+        (x0, _), (x1, top) = label_boxes[reaction_id].get_points()
         draw_curve(
             ax,
-            [
-                POSITIONS[species],
-                *controls,
-                label_box.get_points().mean(axis=0),
-            ],
-            (boxes[species], label_box),
+            [POSITIONS[species], *controls, ((x0 + x1) / 2, top)],
+            (boxes[species], None),
             REGULATION_COLOUR,
             INHIBITION,
         )

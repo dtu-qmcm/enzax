@@ -1,3 +1,13 @@
+"""Sample the posterior with NUTS, one chain per core.
+
+Launches each chain as its own process pinned to one core, sampling in
+coordinates whitened by the Laplace approximation from mode.py. The pilot
+run (200 warmup and 100 sampling iterations per chain) uses cores 0 to 3 and
+the full run (1000 and 1000) cores 4 to 7. Then gathers the draws and sampler
+statistics into an arviz netCDF file and prints convergence diagnostics.
+Saves to results/<run>/.
+"""
+
 import os
 import subprocess
 import sys
@@ -21,7 +31,7 @@ RUNS = {"pilot": (200, 100), "full": (1000, 1000)}
 MAX_TREEDEPTH = 8
 INIT_SD = 0.3
 INITIAL_STEP_SIZE = 0.5
-TARGET_ACCEPTANCE = 0.9
+TARGET_ACCEPTANCE = 0.99
 IMM_PSEUDO_COUNT = 200.0
 MIN_PRECISION = 1.0
 SINGLE_THREADED_XLA = (

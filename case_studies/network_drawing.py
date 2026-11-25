@@ -100,23 +100,21 @@ def draw_curve(
     return points
 
 
-def draw_cofactors(ax, curve, cofactors, side):
+def draw_cofactors(ax, curve, cofactors, side, scale=1.0):
     middle = evaluate(curve, 0.5)
     along = evaluate(curve, 0.55) - evaluate(curve, 0.45)
     along /= np.linalg.norm(along)
     normal = side * np.array([-along[1], along[0]])
-    ends = [
-        middle + sign * along * COFACTOR_LENGTH + normal * COFACTOR_WIDTH
-        for sign in (-1, 1)
-    ]
+    length, width = scale * COFACTOR_LENGTH, scale * COFACTOR_WIDTH
+    ends = [middle + sign * along * length + normal * width for sign in (-1, 1)]
     draw_curve(
         ax,
-        [ends[0], middle - normal * COFACTOR_WIDTH, ends[1]],
+        [ends[0], middle - normal * width, ends[1]],
         (None, None),
         CLAMPED_COLOUR,
         "-|>",
         linewidth=0.5,
-        mutation_scale=3.5,
+        mutation_scale=3.5 * scale,
     )
     if abs(normal[0]) > abs(normal[1]):
         alignments = [("left" if normal[0] > 0 else "right", "center")] * 2
@@ -146,6 +144,8 @@ def draw_reaction(
     colour=KINETIC_COLOUR,
     label_colour=MUTED,
     reversible=False,
+    cofactor_scale=1.0,
+    label_size=LABEL_SIZE,
 ):
     legs = spec["legs"]
     shown = {duplicates.get(node, node) for node in legs}
@@ -209,11 +209,11 @@ def draw_reaction(
         )
     cofactors = get_cofactors(stoichiometry, shown, names)
     if any(cofactors) and "text" not in spec:
-        draw_cofactors(ax, curve, cofactors, spec["side"])
+        draw_cofactors(ax, curve, cofactors, spec["side"], cofactor_scale)
     return ax.text(
         *spec["label"],
         spec.get("text", reaction_id),
-        fontsize=LABEL_SIZE,
+        fontsize=label_size,
         color=label_colour,
         ha=spec.get("ha", "center"),
         va=spec.get("va", "bottom"),

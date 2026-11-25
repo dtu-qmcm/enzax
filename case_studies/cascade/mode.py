@@ -1,3 +1,13 @@
+"""Find the posterior mode and the Hessian there.
+
+Runs BFGS from the prior mean, then takes the Hessian by central differences
+of the gradient. Prints the fitted bias and artefact fraction for each day,
+each free parameter against its prior mean, and the predicted against the
+measured final GDP-fucose of every run. Saves the mode, the Hessian and the
+parameter labels to results/mode.npz, for fit.py to whiten with, and the
+time course plots at the prior mean and at the mode to docs/img.
+"""
+
 import os
 
 os.environ.setdefault("EQX_ON_ERROR", "nan")
@@ -14,6 +24,7 @@ from common import (  # noqa: E402
     DOCS_IMG_DIR,
     RESULTS_DIR,
     get_days,
+    get_fractions,
     get_labels,
     get_posterior,
     get_problem,
@@ -104,12 +115,9 @@ def main():
     print("Measurement bias by day, exponentiated:")
     for day, value in zip(days, np.exp(mode["bias"])):
         print(f"  {day} {value:.3f}")
-    print("Measurement noise by species (standard deviation, log scale):")
-    for species, value in zip(
-        gdp_fucose.MEASURED_SPECIES,
-        np.exp(mode["log_noise"]),
-    ):
-        print(f"  {species:10} {value:.3f}")
+    print("Fraction of GDP-fucose read as GMP by day:")
+    for day, value in get_fractions(mode, days).items():
+        print(f"  {day} {value:.3f}")
     print("Free parameters, exponentiated if on the log scale:")
     for parameter in start["model"]:
         transform = (lambda x: x) if parameter == "dgf" else np.exp
@@ -164,13 +172,17 @@ def main():
         labels=np.array(get_labels(split, mode)),
     )
     print(f"Saved the mode to {MODE_FILE}")
+    day = gdp_fucose.MEASUREMENT_DAY[PLOT_EXPERIMENT]
     figures = plot_fit(
         layout,
         split,
         times,
         measurements,
         {"prior mean": start["model"], "MAP": mode["model"]},
-        {"prior mean": 0.0, "MAP": bias[PLOT_EXPERIMENT]},
+        {
+            "prior mean": (get_fractions(start, [day])[day], 0.0),
+            "MAP": (get_fractions(mode, [day])[day], bias[PLOT_EXPERIMENT]),
+        },
     )
     figures["prior mean"].savefig(
         DOCS_IMG_DIR / "time_course_prior_mean.png",

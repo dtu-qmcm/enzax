@@ -1,11 +1,18 @@
+"""Plot a fitted time course for the documentation.
+
+Plots GMP, ATP, GTP and GDP-fucose in PLOT_EXPERIMENT against its
+measurements, at one or more sets of free parameters on shared axes.
+mode.py uses it to save the plots at the prior mean and at the mode.
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from jax import numpy as jnp
 
-from common import get_time_course
+from common import get_reading, get_time_course
 from enzax.examples import gdp_fucose
 
-PLOT_EXPERIMENT = "FE13"
+PLOT_EXPERIMENT = "FE18_07FKP"
 PLOT_SPECIES = ["gmp", "atp", "gtp", "gdp_fucose"]
 COLOUR = "#2a78d6"
 GRID = "#e4e3df"
@@ -34,7 +41,7 @@ def plot_time_course(conc, ts, times, measurements, title, y_max):
     for ax, species in zip(axes, PLOT_SPECIES):
         ax.plot(
             ts,
-            conc[:, gdp_fucose.model.species.index(species)],
+            conc[:, gdp_fucose.MEASURED_SPECIES.index(species)],
             color=COLOUR,
             linewidth=2,
             solid_capstyle="round",
@@ -72,22 +79,38 @@ def plot_time_course(conc, ts, times, measurements, title, y_max):
     return fig
 
 
-def plot_fit(layout, split, times, measurements, free_by_label, bias_by_label):
+def plot_fit(
+    layout,
+    split,
+    times,
+    measurements,
+    free_by_label,
+    reading_by_label,
+):
     """Plot PLOT_EXPERIMENT at each set of free parameters, on shared axes.
 
     free_by_label maps a title, such as "MAP", to a set of free parameters,
-    and bias_by_label maps the same titles to the bias of PLOT_EXPERIMENT's
-    measurements, so that the curves show what the measurements should read.
+    and reading_by_label maps the same titles to the fraction of GDP-fucose
+    read as GMP and the bias of PLOT_EXPERIMENT's measurements, so that the
+    curves show what the instrument would read.
     """
     ts = jnp.linspace(0.0, max(times[PLOT_EXPERIMENT].values()), 200)
+    measured = [
+        gdp_fucose.model.species.index(species)
+        for species in gdp_fucose.MEASURED_SPECIES
+    ]
     conc_by_label = {
-        label: get_time_course(layout, split, free, PLOT_EXPERIMENT, ts)
-        * np.exp(bias_by_label[label])
+        label: get_reading(
+            np.asarray(
+                get_time_course(layout, split, free, PLOT_EXPERIMENT, ts),
+            )[:, measured],
+            *reading_by_label[label],
+        )
         for label, free in free_by_label.items()
     }
     y_max = {}
     for species in PLOT_SPECIES:
-        i = gdp_fucose.model.species.index(species)
+        i = gdp_fucose.MEASURED_SPECIES.index(species)
         _, measured = get_measured(
             times,
             measurements,

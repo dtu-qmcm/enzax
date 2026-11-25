@@ -1,3 +1,13 @@
+"""Simulate every run's time courses at posterior draws.
+
+Takes 200 draws from fit.py and solves each run on a grid of 120 times,
+converting the concentrations into what the instrument would read: GDP and
+GTP calibrated, and a fraction of GDP-fucose read as GMP. Fitting runs use
+their fitted enzyme levels, initial amounts, bias and fraction. Validation
+runs use their recorded enzyme levels and initial amounts, no bias, and the
+fraction shared across days. Saves results/predictions.npz.
+"""
+
 import os
 
 os.environ.setdefault("EQX_ON_ERROR", "nan")
@@ -11,10 +21,13 @@ from jax import numpy as jnp  # noqa: E402
 from jax.flatten_util import ravel_pytree  # noqa: E402
 
 from common import (  # noqa: E402
+    FITTING_EXPERIMENTS,
     RESULTS_DIR,
     get_days,
+    get_fractions,
     get_posterior,
     get_problem,
+    get_reading,
     get_time_course,
 )
 from enzax.examples import gdp_fucose  # noqa: E402
@@ -44,7 +57,7 @@ def predict(experiments, fitted_split, draws, fitted):
         if get_free_labels(split, parameter)
         == get_free_labels(fitted_split, parameter)
     ]
-    days = get_days(gdp_fucose.FITTING_EXPERIMENTS)
+    days = get_days(FITTING_EXPERIMENTS)
     measured = np.array(
         [
             gdp_fucose.model.species.index(species)
@@ -58,13 +71,13 @@ def predict(experiments, fitted_split, draws, fitted):
             lambda free: get_time_course(layout, split, free, experiment, ts),
         )
         courses = []
+        day = gdp_fucose.MEASUREMENT_DAY[experiment]
         for values in draws:
             free = nominal | {p: values["model"][p] for p in shared}
             conc = np.asarray(solve(free))[:, measured]
-            if fitted:
-                day = days.index(gdp_fucose.MEASUREMENT_DAY[experiment])
-                conc = conc * np.exp(float(values["bias"][day]))
-            courses.append(conc)
+            bias = float(values["bias"][days.index(day)]) if fitted else 0.0
+            fraction = get_fractions(values, [day])[day]
+            courses.append(get_reading(conc, fraction, bias))
         predictions[experiment] = np.stack(courses)
         predictions[f"{experiment}_time"] = np.asarray(ts)
         failed = int(np.isnan(predictions[experiment]).any(axis=(1, 2)).sum())
@@ -77,7 +90,7 @@ def main(run):
     _, unflatten = ravel_pytree(start)
     draws = get_draws(run, unflatten)
     predictions = predict(
-        gdp_fucose.FITTING_EXPERIMENTS,
+        FITTING_EXPERIMENTS,
         split,
         draws,
         fitted=True,
