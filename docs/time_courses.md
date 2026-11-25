@@ -139,8 +139,6 @@ split = split_parameters_by_freeing(
             "km|PPK3_G|gdp",
             "km|PPK3_G|gtp",
             "km|PPK3|polyp",
-            "km|PPK3_M|amp",
-            "km|PPK3_M|adp",
         ],
         "dgf": ["atp", "gdp", "gmp"],
     },

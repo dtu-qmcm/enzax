@@ -1,8 +1,8 @@
 """Draw the cascade network for panel A of the cascade figure.
 
 Species and reactions sit at hand-placed positions, with GMPK's rapid
-equilibrium in orange, the reactions added to Huber et al.'s model (PPK3_M
-and ATP_HYDROLYSIS) in violet, the postulated hydrolase in aqua and measured
+equilibrium in orange, the reaction added to Huber et al.'s model
+(ATP_HYDROLYSIS) in violet, the postulated hydrolase in aqua and measured
 species in bold. Drawing reactions or inhibitions that differ from the
 model's raises an error. Running the module directly saves
 results/network.png.
@@ -33,7 +33,6 @@ RAPID_COLOUR = "#eb6834"
 ADDED_COLOUR = "#6250d6"
 POSTULATED_COLOUR = "#1baf7a"
 REACTION_COLOURS = {
-    "PPK3_M": ADDED_COLOUR,
     "ATP_HYDROLYSIS": ADDED_COLOUR,
     "UNKNOWN_HYDROLASE": POSTULATED_COLOUR,
 }
@@ -105,13 +104,6 @@ REACTIONS = {
         "ha": "right",
         "va": "center",
         "side": -1,
-    },
-    "PPK3_M": {
-        "legs": ["amp", "adp"],
-        "bend": -5.5,
-        "label": (27.5, 30.2),
-        "va": "top",
-        "side": 1,
     },
     "ATP_HYDROLYSIS": {
         "legs": ["atp", "adp"],

@@ -52,7 +52,7 @@ FITTING_EXPERIMENTS = [
 ]
 PRIOR_SD = 1.0
 WIDE_PRIOR_SD = {
-    "log_kcat": {"PPK3_M": 3.0, "ATP_HYDROLYSIS": 3.0},
+    "log_kcat": {"ATP_HYDROLYSIS": 3.0},
     "log_saturation_constant": {"ki|FKP_fk|gdp_fucose": 3.0},
 }
 INITIAL_AMOUNT_SD = {
@@ -96,8 +96,6 @@ FREE_PARAMETERS = {
         "km|PPK3_G|gdp",
         "km|PPK3_G|gtp",
         "km|PPK3|polyp",
-        "km|PPK3_M|amp",
-        "km|PPK3_M|adp",
     ],
     "dgf": ["atp", "gdp", "gmp"],
 }

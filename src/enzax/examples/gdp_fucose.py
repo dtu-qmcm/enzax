@@ -6,10 +6,9 @@ The model is the one in https://github.com/dtu-qmcm/gdp_fucose_enzax, which
 fixes problems with the model as published, with these changes. It leaves out
 that implementation's competitive inhibition of FKP_fk by pyrophosphate:
 pyrophosphate inhibition of FKP_fk or of FKP_gt fits the fitting runs better
-but predicts the validation runs worse. PPK3 also phosphorylates AMP
-(PPK3_M), as class III PPK2 enzymes do, and its three reactions share one
-active site: each has another's reactants as competitive inhibitors, with
-that reaction's Michaelis constants as inhibition constants, and all share
+but predicts the validation runs worse. PPK3's two reactions share one
+active site: each has the other's reactants as competitive inhibitors, with
+that reaction's Michaelis constants as inhibition constants, and both share
 one Michaelis constant for polyphosphate. ATP_HYDROLYSIS, a first-order loss
 of ATP, stands for slow non-enzymatic and contaminant ATPase activity. Each
 run's ATP stock carries ATP_STOCK_IMPURITY of its ATP as AMP and as ADP. The
@@ -163,7 +162,6 @@ KCAT = {
     "PPA": 558000.0,
     "PPK3_A": 18780.0,
     "PPK3_G": 15048.0,
-    "PPK3_M": 1000.0,
     "UNKNOWN_HYDROLASE": 0.1,
     "ATP_HYDROLYSIS": 0.05,
 }
@@ -182,8 +180,6 @@ SATURATION_CONSTANTS = {
     "km|PPK3_A|atp": 2.0,
     "km|PPK3_G|gdp": 1.2,
     "km|PPK3_G|gtp": 0.1,
-    "km|PPK3_M|amp": 1.0,
-    "km|PPK3_M|adp": 1.0,
     "km|UNKNOWN_HYDROLASE|amp": 0.5,
     "km|PPK3|polyp": 3.0,
 }
@@ -255,15 +251,6 @@ model = KineticModel(
             competitive_inhibitors={
                 "adp": "km|PPK3_A|adp",
                 "atp": "km|PPK3_A|atp",
-            },
-        ),
-        "PPK3_M": MichaelisMenten(
-            stoichiometry={"amp": -1.0, "polyp": -1.0, "adp": 1.0},
-            enzyme="ppk3",
-            michaelis_constants={"polyp": "km|PPK3|polyp"},
-            competitive_inhibitors={
-                "gdp": "km|PPK3_G|gdp",
-                "gtp": "km|PPK3_G|gtp",
             },
         ),
         "UNKNOWN_HYDROLASE": SymbolicReaction(
