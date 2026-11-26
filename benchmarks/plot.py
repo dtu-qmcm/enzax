@@ -37,16 +37,12 @@ STYLES = {
     "BDF": ("-", "o"),
     "Kvaerno5": ("--", "s"),
     "adjoint, Newton": ("-", "^"),
-    "BDF, hybrid": (":", "o"),
-    "adjoint, Newton, hybrid": (":", "^"),
 }
 SERIES = [
     ("enzax", "BDF"),
     ("enzax", "Kvaerno5"),
-    ("enzax", "BDF, hybrid"),
     ("amici_jax", "Kvaerno5"),
     ("amici_cpp", "adjoint, Newton"),
-    ("amici_cpp", "adjoint, Newton, hybrid"),
 ]
 MEASURES = {
     "time": "Time per gradient (ms)",
@@ -209,7 +205,7 @@ def plot(results_dir: Path) -> plt.Figure:
         frameon=False,
         labelcolor=TEXT,
     )
-    fig.tight_layout(rect=(0, 0.13, 1, 1))
+    fig.tight_layout(rect=(0, 0.1, 1, 1))
     return fig
 
 

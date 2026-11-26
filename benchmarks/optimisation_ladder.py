@@ -20,6 +20,9 @@ Compilation time is not included. The table also reports how far each
 configuration's gradient is from the fully optimised one's: the differences
 are small, and come from the steady state tolerances rather than the
 differentiation method.
+
+With `plot` as its only argument, the script redraws the figures from the
+saved summaries without timing anything.
 """
 
 # Two environment variables have to be set before the libraries that read them
@@ -37,6 +40,7 @@ import csv
 import functools
 import shutil
 import sys
+import textwrap
 import time
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -767,7 +771,8 @@ GRID = "#e1e0d9"
 BASELINE = "#c3c2b7"
 SURFACE = "#fcfcfb"
 COMPARISON = "#eb6834"
-COMPARISON_LABEL_DECADES = 0.6
+COMPARISON_LABEL_DECADES = 0.3
+LABEL_WIDTH = 13
 
 
 def plot(rows: list[dict], path: str) -> None:
@@ -785,38 +790,39 @@ def plot(rows: list[dict], path: str) -> None:
     n_ladder = len(CONFIGURATIONS)
     ladder, comparisons = rows[:n_ladder], rows[n_ladder:]
     seconds = [row["seconds_per_iteration"] for row in ladder]
-    labels = [row["configuration"] for row in ladder]
-    height = list(range(n_ladder))
-    figure, axes = plt.subplots(figsize=(8.4, 0.72 * n_ladder + 1.4))
+    labels = [
+        textwrap.fill(row["configuration"], LABEL_WIDTH) for row in ladder
+    ]
+    position = list(range(n_ladder))
+    figure, axes = plt.subplots(figsize=(8.4, 4.6))
     figure.patch.set_facecolor(SURFACE)
     axes.set_facecolor(SURFACE)
-    axes.plot(seconds, height, color=BASELINE, linewidth=2, zorder=1)
+    axes.plot(position, seconds, color=BASELINE, linewidth=2, zorder=1)
     comparisons = sorted(comparisons, key=lambda r: r["seconds_per_iteration"])
-    for position, row in enumerate(comparisons):
-        x = row["seconds_per_iteration"]
-        following = comparisons[position + 1 :]
-        on_left = bool(following) and (
-            np.log10(following[0]["seconds_per_iteration"] / x)
+    for index, row in enumerate(comparisons):
+        y = row["seconds_per_iteration"]
+        following = comparisons[index + 1 :]
+        below = bool(following) and (
+            np.log10(following[0]["seconds_per_iteration"] / y)
             < COMPARISON_LABEL_DECADES
         )
-        axes.axvline(x, color=COMPARISON, linewidth=1.5, zorder=1)
+        axes.axhline(y, color=COMPARISON, linewidth=1.5, zorder=1)
         axes.annotate(
-            "\n+ ".join(row["configuration"].rsplit(" + ", 1))
-            + f"\n{format_seconds(x)}",
-            (x, -0.95),
-            xytext=(-5 if on_left else 5, 0),
+            f"{row['configuration']}: {format_seconds(y)}",
+            (n_ladder - 0.6, y),
+            xytext=(0, -3 if below else 3),
             textcoords="offset points",
-            ha="right" if on_left else "left",
-            va="center",
+            ha="right",
+            va="top" if below else "bottom",
             fontsize=8.5,
             color=COMPARISON,
             alpha=0.8,
         )
-    for position, (row, x, y) in enumerate(zip(ladder, seconds, height)):
-        last = position == n_ladder - 1
+    for index, (row, x, y) in enumerate(zip(ladder, position, seconds)):
+        last = index == n_ladder - 1
         axes.plot(
+            [x, x],
             [row["fastest_iteration"], row["slowest_iteration"]],
-            [y, y],
             color=SERIES_EMPHASIS if last else SERIES,
             linewidth=2,
             solid_capstyle="round",
@@ -833,24 +839,22 @@ def plot(rows: list[dict], path: str) -> None:
             zorder=3,
         )
         axes.annotate(
-            format_seconds(x) + ("  (all four)" if last else ""),
-            (row["slowest_iteration"], y),
-            xytext=(14, 0),
+            format_seconds(y) + ("\n(all four)" if last else ""),
+            (x, row["slowest_iteration"]),
+            xytext=(0, 12),
             textcoords="offset points",
-            va="center",
+            ha="center",
+            va="bottom",
             fontsize=10,
             color=TEXT_PRIMARY,
             fontweight="bold" if last else "normal",
             bbox=dict(boxstyle="square,pad=0.1", fc=SURFACE, ec="none"),
             zorder=2,
         )
-    for position in range(1, n_ladder):
+    for index in range(1, n_ladder):
         axes.annotate(
-            f"{ladder[position]['factor']:.1f}x faster",
-            (
-                np.sqrt(seconds[position] * seconds[position - 1]),
-                position - 0.5,
-            ),
+            f"{ladder[index]['factor']:.1f}x faster",
+            (index - 0.5, np.sqrt(seconds[index] * seconds[index - 1])),
             xytext=(0, 0),
             textcoords="offset points",
             ha="center",
@@ -860,33 +864,33 @@ def plot(rows: list[dict], path: str) -> None:
             bbox=dict(boxstyle="round,pad=0.25", fc=SURFACE, ec="none"),
             zorder=2,
         )
-    axes.set_xscale("log")
-    axes.set_yticks(height, labels, fontsize=11, color=TEXT_PRIMARY)
-    axes.invert_yaxis()
-    axes.set_ylim(n_ladder - 0.4, -1.4)
+    axes.set_yscale("log")
+    axes.set_xticks(position, labels, fontsize=10, color=TEXT_PRIMARY)
+    axes.set_xlim(-0.5, n_ladder - 0.5)
     every = [row["fastest_iteration"] for row in ladder] + [
         row["seconds_per_iteration"] for row in comparisons
     ]
     most = [row["slowest_iteration"] for row in ladder] + [
         row["seconds_per_iteration"] for row in comparisons
     ]
-    # Room on the right for the value labels, which are drawn outside the
-    # marks and so outside the data's own range.
-    axes.set_xlim(min(every) / 2.5, max(most) * 5)
-    axes.set_xlabel(
+    # Room at the top for the value labels, which are drawn above the marks
+    # and so outside the data's own range.
+    axes.set_ylim(min(every) / 2, max(most) * 4)
+    axes.set_ylabel(
         "wall time for one NUTS iteration (s, log scale)",
         fontsize=10,
         color=TEXT_SECONDARY,
     )
-    axes.grid(axis="x", color=GRID, linewidth=0.8)
+    axes.grid(axis="y", color=GRID, linewidth=0.8)
     axes.set_axisbelow(True)
-    for side in ("top", "right", "left"):
+    for side in ("top", "right", "bottom"):
         axes.spines[side].set_visible(False)
-    axes.spines["bottom"].set_color(BASELINE)
+    axes.spines["left"].set_color(BASELINE)
     axes.tick_params(axis="both", length=0, colors=MUTED)
-    # The row labels are the chart's categories rather than axis furniture,
-    # so they keep the primary ink `tick_params` has just overridden.
-    for label in axes.get_yticklabels():
+    # The configuration labels are the chart's categories rather than axis
+    # furniture, so they keep the primary ink `tick_params` has just
+    # overridden.
+    for label in axes.get_xticklabels():
         label.set_color(TEXT_PRIMARY)
     figure.tight_layout()
     figure.savefig(path, dpi=200)
@@ -1039,5 +1043,26 @@ def main() -> None:
         )
 
 
+def replot() -> None:
+    for suffix in ("", "_amici"):
+        with open(f"{OUT_PREFIX}{suffix}_summary.csv") as handle:
+            rows = [
+                {
+                    key: value
+                    if key in ("problem", "configuration")
+                    else float(value)
+                    for key, value in row.items()
+                }
+                for row in csv.DictReader(handle)
+            ]
+        plot(
+            [row for row in rows if row["configuration"] != WITHOUT_PYMC],
+            f"{OUT_PREFIX}{suffix}.png",
+        )
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["plot"]:
+        replot()
+    else:
+        main()
