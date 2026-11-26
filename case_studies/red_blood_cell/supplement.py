@@ -1,9 +1,9 @@
-"""Plot the red cell's sensitivities for the supplement.
+"""Plot the improved red cell model's sensitivities for the supplement.
 
-Shows the largest log sensitivities of volume and Donnan ratio at 37 °C and
-pH 7.4 from sensitivities.py, by implicit differentiation through the DAE
-steady state (bars) and central finite differences (ticks), for the eight
-largest of each output, external pH excluded. Saves
+Shows the log sensitivities of volume and Donnan ratio from sensitivities.py
+at 37 °C and pH 7.4, for every parameter among the eight with the largest
+effect on either output, external pH excluded. Bars show the derivatives
+through the DAE steady state and ticks the central finite differences. Saves
 results/sensitivities.png and results/sensitivities.pdf.
 """
 

@@ -1,26 +1,29 @@
 """Plot the red cell figure.
 
-A maps the network, with rapid equilibria in orange. B shows the Donnan ratio
-and the volume relative to pH 7.4 against external pH, from ph_sweep.py, for
-the improved and faithful variants, with Joshi and Palsson's (1990) model
-curves and Gunn et al.'s (1973) regression lines. C shows the time each
-solver takes to reach steady state: for the stiff formulation across
-forward-to-net flux ratios, and for the rapid equilibrium formulation as
-horizontal lines. Below it, C shows the largest relative difference between
-the two formulations' steady-state concentrations. D compares the ATP demand
-the improved variant can meet, from atp_demand.py, with Joshi and Palsson's
-(1990) Part IV: on the left, the ATP generation rate against ATP along the
-stable branch at two total Mg levels, ending at the limit point, against
-their generation curves (Fig. 10); on the right, ATP consumption at the limit
-point against total Mg, against their Fig. 9, also for a variant of the
-improved model whose ATP demand is all linear in ATP, as theirs is. Saves
-results/figure.png and results/figure.pdf.
+Panel A maps the network, with rapid equilibria in orange. Panel B shows the
+Donnan ratio and the volume relative to pH 7.4 against external pH, from
+ph_sweep.py, for the improved and faithful variants, with Joshi and Palsson's
+(1990) model curves and Gunn et al.'s (1973) regression lines. Panel C shows
+the time each solver takes to reach steady state: for the stiff formulation
+across forward-to-net flux ratios, and for the rapid equilibrium formulation
+as horizontal lines. Below it, panel C shows the largest relative difference
+between the two formulations' steady-state concentrations. Panel D compares
+the ATP demand the improved variant can meet, from atp_demand.py, with Joshi
+and Palsson's (1990) Part IV. On the left, it plots the ATP generation rate
+against ATP at the steady states each sweep passes through, at 1.7 and 2.0 mM
+total Mg, ending at the limit point, together with the curves of their
+Fig. 10 at 1.0, 1.7 and 2.0 mM. At steady state, ATP generation equals ATP
+consumption. On the right, it plots ATP consumption at the limit point
+against total Mg, for the improved variant and for a variant whose ATP demand
+is all linear in ATP, as theirs is, together with their Fig. 9. A dotted line
+marks the pump's in vivo ATP use. Saves results/figure.png and
+results/figure.pdf.
 
 data/joshi_palsson.csv holds Joshi and Palsson's model curves, read off
 Figs. 5 and 6 of their 1991 erratum, which replace Part IV's, to within about
 2% of each axis. data/joshi_palsson_magnesium.csv holds their Part IV
-Figs. 9 and 10, read off a 400 dpi render to within about 0.02 in each
-axis's units. Gunn et al.'s lines come from the regressions in their
+Figs. 9 and 10, read off a 400 dpi image of the paper to within about 0.02
+in each axis's units. Gunn et al.'s lines come from the regressions in their
 Fig. 3, of chloride ratio and of water content on pH over pH 5.7 to 9.6,
 with the published standard deviations of intercept and slope. The bands
 cover 95% of lines drawn from those estimates, correlated as an even spread

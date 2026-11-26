@@ -1,13 +1,13 @@
 """Screen candidate next experiments for the glycolysis case study.
 
 For each hypothesis, predicts the steady state at every candidate condition
-from 200 posterior draws of one fit. The candidates are five external glucose
-levels and six enzyme interventions: PFKM knockdown, DCA (a faster pyruvate
-drain) and PKM2 overexpression. For each candidate and each pair of
-hypotheses, scores how far apart the pair's predictions are. The score sums,
-over balanced log concentrations and measured fluxes, the squared difference of
-the two posterior means divided by twice the measurement variance plus both
-posterior variances. Runs after the fit to the realistic glucose levels, saving
+from 200 posterior draws of its fit to realistic glucose. The candidates are
+five external glucose levels and six enzyme interventions: PFKM knockdown, DCA
+(a faster pyruvate drain) and PKM2 overexpression. For each candidate and each
+pair of hypotheses, scores how far apart the pair's predictions are. The score
+sums, over balanced log concentrations and measured fluxes, the squared
+difference of the two posterior means divided by twice the measurement variance
+plus both posterior variances. Runs after the fits to realistic glucose, saving
 to results/design_<phase>.npz.
 """
 

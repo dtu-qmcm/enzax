@@ -2,12 +2,12 @@
 
 For every posterior draw, finds each fitted experiment's steady state. Records
 its concentrations, fluxes, pool MIDs, the largest real part of its Jacobian's
-eigenvalues and each measurement's log likelihood. For the fit to the
-realistic glucose levels, also predicts the held-out experiments and records
-each of their measurements' log likelihoods and which experiment it belongs
-to. Then prints the log predictive density of those experiments, which sums,
-over measurements, the log of the likelihood averaged over draws. Runs once
-for each fit in common.FITS, saving to results/<fit>/derived.npz.
+eigenvalues and each measurement's log likelihood. For the fits to realistic
+glucose, also predicts the held-out experiments, recording each measurement's
+log likelihood and the experiment it belongs to. Then prints the log predictive
+density of those experiments, which sums, over measurements, the log of the
+likelihood averaged over draws. Runs once for each fit in common.FITS, saving
+to results/<fit>/derived.npz.
 """
 
 import sys

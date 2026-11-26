@@ -2,16 +2,16 @@
 
 Builds one version of the example glycolysis model for each hypothesis about
 which metabolites inhibit PFKM by binding its tense state: none,
-phosphoenolpyruvate, lactate, or both. The truth is phosphoenolpyruvate alone.
-Each hypothesis gets a reference parameter set adapted from the example's. The
-true model drops the example's lactate site and multiplies PFKM's transfer
-constant thirtyfold, and every other model adjusts the transfer constant so
-that it reproduces the true model's reference steady state. Defines five
-experiments: four external glucose levels (30, 4.5, 1.5 and 0.45 mM), and DCA
-at 30 mM, which triples the pyruvate drain. Also defines the two fits: one to
-the realistic glucose levels (30 and 4.5 mM), which holds out the low glucose
-levels and DCA, and one to all five experiments. Also provides the prior, the
-measurement loader and the MID simulator that the other scripts use.
+phosphoenolpyruvate, lactate, or both. In the true model, phosphoenolpyruvate
+alone inhibits PFKM. Each hypothesis gets a reference parameter set adapted
+from the example's. The true model drops the example's lactate site and
+multiplies PFKM's transfer constant thirtyfold, and every other model adjusts
+the transfer constant so that it reproduces the true model's reference steady
+state. Defines five experiments: four external glucose levels (30, 4.5, 1.5 and
+0.45 mM), and DCA at 30 mM, which triples the pyruvate drain. Also defines the
+two sets of fits: to realistic glucose (30 and 4.5 mM), holding out the low
+glucose levels and DCA, and to all five experiments. Also provides the prior,
+the measurement loader and the MID simulator that the other scripts use.
 """
 
 import csv

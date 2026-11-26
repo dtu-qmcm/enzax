@@ -1,18 +1,18 @@
 """Plot the glycolysis regulator-finding figure.
 
-A maps the pathway's reactions, cofactors and known regulation, with PFKM's
-candidate inhibitors coloured by hypothesis. B shows sedoheptulose
+Panel A maps the pathway's reactions, cofactors and known regulation, with
+PFKM's candidate inhibitors coloured by hypothesis. Panel B shows sedoheptulose
 7-phosphate against external glucose, as predicted by the PEP and lactate
-hypotheses' fits to the realistic glucose levels, with the fitted and
-held-out measurements. C shows the design screen after those fits, below the
-realistic glucose levels, for PEP against lactate and PEP against
-PEP-plus-lactate. D shows each hypothesis's log predictive density of each
-held-out experiment and of all of them, from those fits, relative to the best
-hypothesis. E shows how five concentrations change under DCA x3, for the same
-two pairs of hypotheses, comparing the predictions from the fits to the
-realistic glucose levels and the estimates from the fits to all experiments
-with the measurements. Saves results/figure.png and
-results/figure.pdf.
+hypotheses' fits to realistic glucose (30 and 4.5 mM), with the fitted and
+held-out measurements. Panel C shows the design screen after the fits to
+realistic glucose for two pairs of hypotheses, PEP and lactate, and PEP and PEP
+plus lactate, leaving out candidate glucose levels of 4.5 mM and above. Panel D
+shows how well each hypothesis's fit to realistic glucose predicts each
+held-out experiment, and all of them together, as log predictive density
+relative to the best hypothesis. Panel E shows how five concentrations change
+under DCA x3 for the same two pairs, comparing the predictions from the fits to
+realistic glucose, the estimates from the fits to all experiments and the
+measurements. Saves results/figure.png and results/figure.pdf.
 """
 
 import csv

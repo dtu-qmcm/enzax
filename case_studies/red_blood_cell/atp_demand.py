@@ -4,21 +4,25 @@ Joshi and Palsson (1990, Part IV, Figs. 2, 3, 9 and 10) raise a linear
 ATPase's rate constant until the stable steady state disappears at a limit
 point, and show that the limit falls with total Mg. This script does the same
 with the improved variant at 37 °C and pH 7.4, where the Na⁺/K⁺ pump consumes
-ATP alongside the ATPase. It reaches each total Mg level by continuation from
-the in vivo 1.7 mM with the ATPase nearly off, then raises the ATPase's rate
-constant, starting each solve from the previous steady state, until no live
-steady state is found, and bisects for the limit. Beyond the limit, solves
-either fail or land on a state with almost no ATP, and both count as no live
-steady state. Only the stable branch is traced. Also bisects for the lowest
-total Mg with a live steady state when the ATPase is nearly off.
+ATP alongside the ATPase. It reaches each total Mg level in steps of 0.025 mM
+from the in vivo 1.7 mM, starting each solve from the previous steady state,
+with the ATPase nearly off. It then raises the ATPase's rate constant, again
+warm-started, until no live steady state is found, and repeatedly halves the
+interval between the last factor with a live steady state and the first
+without, to find the limit more precisely. Beyond the limit, solves either
+fail or land on a state with almost no ATP, and both count as no live steady
+state. Each solve integrates until the state settles, so the sweep only finds
+stable steady states. Also finds the lowest total Mg with a live steady state
+when the ATPase is nearly off, by the same halving.
 
 Joshi and Palsson lump the pump into their linear ATPase, so all their ATP
 demand is linear in ATP, whereas the pump's ATP use hardly depends on ATP.
 For comparison, the script repeats the sweep with a variant whose pump moves
 the same ions without using ATP and whose ATPase takes over the pump's in vivo
 ATP use, so that the in vivo steady state stays the same. Saves ATP, the
-energy charge and the ATP consumption along each branch to
-results/atp_demand.npz, the variant's under keys starting with "linear".
+energy charge and the ATP consumption at every steady state along each sweep,
+and the lowest total Mg, to results/atp_demand.npz, with the variant's results
+under keys that start with "linear".
 """
 
 import os
