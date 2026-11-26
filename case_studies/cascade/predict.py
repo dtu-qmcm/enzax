@@ -2,11 +2,13 @@
 
 Takes 200 draws from fit.py and solves each run on a grid of 120 times,
 converting the concentrations into what the instrument would read: GDP and
-GTP calibrated, and a fraction of GDP-fucose read as GMP. Each draw's
-readings then get 25 draws of measurement noise. Fitting runs use their
-fitted enzyme levels, initial amounts, bias and fraction. Validation runs use
-their recorded enzyme levels and initial amounts, with a new day's bias and
-fraction drawn from their priors. Saves results/predictions.npz.
+GTP calibrated, and a fraction of GDP-fucose read as GMP. Fitting runs use
+their fitted enzyme levels, initial amounts, bias and fraction. Validation
+runs use their recorded enzyme levels and initial amounts, a new day's bias
+drawn from its prior, and the shared fraction times a new day's factor drawn
+from its prior. Each draw's readings are then multiplied by 25 draws of
+lognormal measurement noise, with a new day's bias and factor for each in
+validation runs. Saves results/predictions.npz.
 """
 
 import os
