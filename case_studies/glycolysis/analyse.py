@@ -2,12 +2,12 @@
 
 For every posterior draw, finds each fitted experiment's steady state. Records
 its concentrations, fluxes, pool MIDs, the largest real part of its Jacobian's
-eigenvalues and each measurement's log likelihood. For fits from the first two
-rounds, also predicts the next round's experiments and records each of their
-measurements' log likelihoods. Then prints the log predictive density of those
-experiments, which sums, over measurements, the log of the likelihood averaged
-over draws. Runs once for each fit in common.FITS, saving to
-results/<fit>/derived.npz.
+eigenvalues and each measurement's log likelihood. For the fit to the
+realistic glucose levels, also predicts the held-out experiments and records
+each of their measurements' log likelihoods and which experiment it belongs
+to. Then prints the log predictive density of those experiments, which sums,
+over measurements, the log of the likelihood averaged over draws. Runs once
+for each fit in common.FITS, saving to results/<fit>/derived.npz.
 """
 
 import sys
@@ -106,8 +106,8 @@ def get_held_out_likelihood(hypothesis, mid_simulator, experiments):
     measurements = load_measurements(experiments)
 
     def likelihood(cells, guess):
-        terms = []
-        for experiment in experiments:
+        terms, positions = [], []
+        for position, experiment in enumerate(experiments):
             parameters = get_experiment_parameters(cells, experiment)
             _, solved = solve_with_mids(
                 model,
@@ -116,16 +116,16 @@ def get_held_out_likelihood(hypothesis, mid_simulator, experiments):
                 parameters,
                 guess,
             )
-            terms.extend(
-                score_experiment(
-                    model,
-                    measurements,
-                    experiment,
-                    parameters,
-                    solved,
-                ),
+            scored = score_experiment(
+                model,
+                measurements,
+                experiment,
+                parameters,
+                solved,
             )
-        return jnp.concatenate(terms)
+            terms.extend(scored)
+            positions.extend(jnp.full(jnp.shape(t), position) for t in scored)
+        return jnp.concatenate(terms), jnp.concatenate(positions)
 
     return likelihood
 
@@ -184,7 +184,10 @@ def derive(
     derived["log_likelihood"] = jnp.concatenate(terms)
     if held_out is not None:
         reference = layout.experiments.index(REFERENCE_EXPERIMENT)
-        derived["held_out_log_likelihood"] = held_out(
+        (
+            derived["held_out_log_likelihood"],
+            derived["held_out_experiment"],
+        ) = held_out(
             jax.tree.map(lambda leaf: leaf[reference], by_experiment),
             derived[f"steady|{REFERENCE_EXPERIMENT}"],
         )

@@ -2,9 +2,9 @@
 
 Simulates the measurements, then for each fit in common.FITS finds the
 posterior mode, samples the posterior and computes derived quantities. Then
-screens candidate experiments after the first two rounds and plots the figure.
-There are twelve fits, one per hypothesis per round, and each round adds
-experiments to the one before. Sampling needs four free cores per fit.
+screens candidate experiments after the fit to the realistic glucose levels
+and plots the figure. There are eight fits, one per hypothesis for each of the
+two sets of experiments. Sampling needs four free cores per fit.
 """
 
 import analyse
