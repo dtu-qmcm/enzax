@@ -7,13 +7,20 @@ curves and Gunn et al.'s (1973) regression lines. C shows the time each
 solver takes to reach steady state: for the stiff formulation across
 forward-to-net flux ratios, and for the rapid equilibrium formulation as
 horizontal lines. Below it, C shows the largest relative difference between
-the two formulations' steady-state concentrations. D shows the largest log
-sensitivities of volume and Donnan ratio from sensitivities.py, with finite
-differences as ticks. Saves results/figure.png and results/figure.pdf.
+the two formulations' steady-state concentrations. D compares the ATP demand
+the improved variant can meet, from atp_demand.py, with Joshi and Palsson's
+(1990) Part IV: on the left, the ATP generation rate against ATP along the
+stable branch at two total Mg levels, ending at the limit point, against
+their generation curves (Fig. 10); on the right, ATP consumption at the limit
+point against total Mg, against their Fig. 9, also for a variant of the
+improved model whose ATP demand is all linear in ATP, as theirs is. Saves
+results/figure.png and results/figure.pdf.
 
 data/joshi_palsson.csv holds Joshi and Palsson's model curves, read off
 Figs. 5 and 6 of their 1991 erratum, which replace Part IV's, to within about
-2% of each axis. Gunn et al.'s lines come from the regressions in their
+2% of each axis. data/joshi_palsson_magnesium.csv holds their Part IV
+Figs. 9 and 10, read off a 400 dpi render to within about 0.02 in each
+axis's units. Gunn et al.'s lines come from the regressions in their
 Fig. 3, of chloride ratio and of water content on pH over pH 5.7 to 9.6,
 with the published standard deviations of intercept and slope. The bands
 cover 95% of lines drawn from those estimates, correlated as an even spread
@@ -31,9 +38,10 @@ import numpy as np
 from benchmark import BENCHMARK_FILE
 from network import draw_reactions, plot_network
 from ph_sweep import HERE, REFERENCE_PH, RESULTS_DIR, SWEEP_FILE
-from sensitivities import SENSITIVITY_FILE
+from atp_demand import COLUMNS, DEMAND_FILE, LINEAR_PREFIX
 
 JOSHI_PALSSON_FILE = HERE / "data" / "joshi_palsson.csv"
+JOSHI_PALSSON_MG_FILE = HERE / "data" / "joshi_palsson_magnesium.csv"
 GUNN_PH_RANGE = (5.7, 9.6)
 GUNN_DONNAN_RATIO = {"intercept": (3.18, 0.05), "slope": (-0.312, 0.007)}
 GUNN_WATER_CONTENT = {"intercept": (3.56, 0.09), "slope": (-0.241, 0.012)}
@@ -46,7 +54,7 @@ VARIANT_STYLES = {"improved": "-", "faithful": "--"}
 VARIANT_NAMES = {"improved": "Improved", "faithful": "Faithful"}
 BENCHMARK_TOLERANCE = 1e-9
 METHODS = {
-    "bdf": ("ODE", "#2a78d6"),
+    "bdf": ("ODE with nested solving", "#2a78d6"),
     "dae": ("DAE", "#eb6834"),
     "hybrid": ("Hybrid", "#1baf7a"),
 }
@@ -56,27 +64,21 @@ FORMULATIONS = {
 }
 ERROR_GUIDE_RATIO = 1e4
 TIME_AXIS_TOP = 1e5
-SENSITIVITY_OUTPUTS = {
-    "volume": "volume",
-    "donnan_ratio": "Donnan ratio",
-}
-N_SENSITIVITY = 8
-EXCLUDED_PARAMETERS = {"cu|plasma|ph"}
-PARAMETER_NAMES = {
-    "cu|cell|k": "Intracellular K⁺",
-    "na_e": "External Na⁺",
-    "cl_e": "External Cl⁻",
-    "cu|pump|vm": "Na⁺/K⁺ pump $V_{max}$",
-    "cu|cell|other": "Other impermeant solutes",
-    "cu|leak_Na|vm": "Na⁺ carrier $V_{max}$",
-    "cu|leak_Na|k_perm": "Na⁺ permeability",
-    "cu|cell|hb": "Haemoglobin",
-    "cu|HK|k_mgatp": "Hexokinase $K_{MgATP}$",
-    "mg": "Total Mg",
-}
+DEMAND_MG = ("1.7", "2")
+JOSHI_PALSSON_MG = ("1.0", "1.7", "2.0")
+MG_STYLES = {1.0: ":", 1.7: "--", 2.0: "-"}
+PUMP_RATE = 0.93
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
+RC_PARAMS = {
+    "font.size": 8,
+    "axes.edgecolor": MUTED,
+    "axes.labelcolor": TEXT,
+    "xtick.color": MUTED,
+    "ytick.color": MUTED,
+    "legend.fontsize": 7,
+}
 
 
 def style(ax):
@@ -262,71 +264,145 @@ def plot_benchmark(time_ax, error_ax):
     error_ax.set_ylabel("Relative error")
     error_ax.set_xlabel("Forward-to-net flux ratio")
     time_ax.set_ylim(top=TIME_AXIS_TOP)
-    time_ax.legend(handles=handles, frameon=False, ncols=2, loc="upper left")
-
-
-def read_sensitivities():
-    with open(SENSITIVITY_FILE) as f:
-        return [
-            row
-            for row in csv.DictReader(f)
-            if row["label"] not in EXCLUDED_PARAMETERS
-        ]
-
-
-def plot_sensitivities(axes):
-    rows = read_sensitivities()
-    shown = []
-    for output in SENSITIVITY_OUTPUTS:
-        ranked = sorted(
-            rows,
-            key=lambda row: -abs(float(row[f"{output}_implicit"])),
-        )
-        shown += [row for row in ranked[:N_SENSITIVITY] if row not in shown]
-    positions = np.arange(len(shown))[::-1]
-    for ax, (output, name) in zip(
-        axes,
-        SENSITIVITY_OUTPUTS.items(),
-        strict=True,
-    ):
-        ax.barh(
-            positions,
-            [float(row[f"{output}_implicit"]) for row in shown],
-            color=MODEL_COLOUR,
-            height=0.6,
-            label="Implicit differentiation",
-        )
-        ax.plot(
-            [float(row[f"{output}_finite_difference"]) for row in shown],
-            positions,
-            color=TEXT,
-            linestyle="none",
-            marker="|",
-            markersize=8,
-            label="Finite differences",
-        )
-        ax.axvline(0, color=MUTED, linewidth=0.8)
-        ax.set_xlabel(f"Log sensitivity of {name}")
-        style(ax)
-        ax.grid(axis="y", visible=False)
-    axes[0].set_yticks(
-        positions,
-        [PARAMETER_NAMES[row["label"]] for row in shown],
+    time_ax.legend(
+        handles=handles,
+        frameon=False,
+        ncols=2,
+        loc="upper left",
+        handlelength=1.5,
+        columnspacing=1.0,
     )
-    axes[0].legend(frameon=False, loc="lower right")
+
+
+def read_joshi_palsson_magnesium():
+    generation = defaultdict(lambda: ([], []))
+    limits = ([], [])
+    with open(JOSHI_PALSSON_MG_FILE) as f:
+        for row in csv.DictReader(f):
+            if row["figure"] == "9":
+                limits[0].append(float(row["mg"]))
+                limits[1].append(float(row["rate"]))
+            else:
+                atp, rate = generation[row["mg"]]
+                atp.append(float(row["atp"]))
+                rate.append(float(row["rate"]))
+    return generation, limits
+
+
+def get_demand_columns(branch):
+    columns = dict(zip(COLUMNS, branch.T, strict=True))
+    return columns["atp"], columns["consumption"]
+
+
+def get_limits(demand, prefix):
+    levels = sorted(
+        (
+            float(key.removeprefix(prefix))
+            for key in demand.files
+            if key.startswith(prefix) and key.removeprefix(prefix)[0].isdigit()
+        ),
+    )
+    return levels, [
+        get_demand_columns(demand[f"{prefix}{mg:g}"])[1][-1] for mg in levels
+    ]
+
+
+def plot_atp_demand(generation_ax, limit_ax):
+    demand = np.load(DEMAND_FILE)
+    generation, limits = read_joshi_palsson_magnesium()
+    for mg in JOSHI_PALSSON_MG:
+        atp, rate = generation[mg]
+        generation_ax.plot(
+            atp,
+            rate,
+            color=JOSHI_PALSSON_COLOUR,
+            linestyle=MG_STYLES[float(mg)],
+            marker="o",
+            markersize=2.5,
+            markerfacecolor="white",
+            linewidth=0.8,
+        )
+    for mg in DEMAND_MG:
+        atp, rate = get_demand_columns(demand[mg])
+        generation_ax.plot(
+            atp,
+            rate,
+            color=MODEL_COLOUR,
+            linestyle=MG_STYLES[float(mg)],
+            linewidth=1.5,
+        )
+        generation_ax.plot(
+            atp[-1],
+            rate[-1],
+            "o",
+            color=MODEL_COLOUR,
+            markersize=4,
+        )
+    generation_ax.legend(
+        handles=[
+            Line2D(
+                [],
+                [],
+                color=MUTED,
+                linestyle=linestyle,
+                linewidth=1.0,
+                label=f"{mg:.1f} mM Mg",
+            )
+            for mg, linestyle in MG_STYLES.items()
+        ],
+        frameon=False,
+        loc="lower right",
+    )
+    generation_ax.set_xlabel("ATP (mM)")
+    generation_ax.set_ylabel("ATP generation rate (mM/h)")
+    generation_ax.set_xlim(left=0)
+    generation_ax.set_ylim(bottom=0)
+    style(generation_ax)
+    limit_ax.plot(
+        *get_limits(demand, ""),
+        color=MODEL_COLOUR,
+        marker="o",
+        markersize=3,
+        linewidth=1.5,
+        label="Improved",
+    )
+    limit_ax.plot(
+        *get_limits(demand, f"{LINEAR_PREFIX}_"),
+        color=MODEL_COLOUR,
+        linestyle="--",
+        marker="o",
+        markersize=3,
+        markerfacecolor="white",
+        linewidth=1.5,
+        label="Improved, all ATP demand\nlinear in ATP",
+    )
+    limit_ax.plot(
+        *limits,
+        color=JOSHI_PALSSON_COLOUR,
+        marker="o",
+        markersize=2.5,
+        markerfacecolor="white",
+        linewidth=0.8,
+        label="Joshi and Palsson (1990)",
+    )
+    limit_ax.axhline(PUMP_RATE, color=MUTED, linewidth=0.6, linestyle=":")
+    limit_ax.annotate(
+        "Na⁺/K⁺ pump",
+        (limit_ax.get_xlim()[1], PUMP_RATE),
+        xytext=(-2, 2),
+        textcoords="offset points",
+        ha="right",
+        fontsize=6,
+        color=MUTED,
+    )
+    limit_ax.set_xlabel("Total Mg (mM)")
+    limit_ax.set_ylabel("ATP consumption at\nthe limit point (mM/h)")
+    limit_ax.legend(frameon=False, loc="upper left", handlelength=1.5)
+    style(limit_ax)
 
 
 def main():
-    plt.rcParams.update(
-        {
-            "font.size": 8,
-            "axes.edgecolor": MUTED,
-            "axes.labelcolor": TEXT,
-            "xtick.color": MUTED,
-            "ytick.color": MUTED,
-            "legend.fontsize": 7,
-        },
-    )
+    plt.rcParams.update(RC_PARAMS)
     fig = plt.figure(figsize=(7.5, 8.7), layout="constrained")
     network, top, bottom = fig.subfigures(3, 1, height_ratios=[3.6, 3.1, 2.0])
     network_ax = network.subplots()
@@ -336,13 +412,13 @@ def main():
     time_ax, error_ax = right.subplots(2, 1, sharex=True)
     plot_ph_response(ratio_ax, volume_ax)
     plot_benchmark(time_ax, error_ax)
-    sensitivity_axes = bottom.subplots(1, 2, sharey=True)
-    plot_sensitivities(sensitivity_axes)
+    demand_axes = bottom.subplots(1, 2)
+    plot_atp_demand(*demand_axes)
     for ax, letter in (
         (network_ax, "A"),
         (ratio_ax, "B"),
         (time_ax, "C"),
-        (sensitivity_axes[0], "D"),
+        (demand_axes[0], "D"),
     ):
         ax.set_title(letter, loc="left", fontweight="bold")
     fig.canvas.draw()
