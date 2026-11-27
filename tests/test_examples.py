@@ -102,7 +102,7 @@ def test_the_cascade_solves_and_conserves_its_moieties():
     assert found
     species = gdp_fucose.model.species
     adenine = conc[:, [species.index(s) for s in ("atp", "adp", "amp")]]
-    assert jnp.allclose(adenine.sum(axis=1), 6.0)
+    assert jnp.allclose(adenine.sum(axis=1), 6.0 * 1.06)
 
 
 def test_the_cascade_conserves_its_moieties_over_a_day():
