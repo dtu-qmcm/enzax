@@ -191,7 +191,7 @@ def plot_work_precision(fig, results_dir: Path) -> None:
             markerfacecolor="none",
             markeredgecolor=FAILURE,
             markeredgewidth=1.5,
-            label="Failed on at least one draw",
+            label="Failed on at least one parameter set",
         ),
     )
     n_rows = max(len(column) for column in tool_columns)
