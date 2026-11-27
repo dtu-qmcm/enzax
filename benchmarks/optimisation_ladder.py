@@ -776,17 +776,31 @@ LABEL_WIDTH = 13
 
 
 def plot(rows: list[dict], path: str) -> None:
-    """Draw the figure: where each optimisation gets you, in order.
-
-    A dot plot rather than bars, because the axis is logarithmic and a bar's
-    length would then encode nothing. The connector carries the factor gained
-    at each step, which is the quantity the figure is about.
-    """
+    """Draw the ladder on its own and save it to `path`."""
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    with plt.rc_context({"font.size": 10}):
+        figure, axes = plt.subplots(figsize=(8.4, 4.6))
+        figure.patch.set_facecolor(SURFACE)
+        axes.set_facecolor(SURFACE)
+        plot_ladder(axes, rows)
+        figure.tight_layout()
+        figure.savefig(path, dpi=200)
+    print(f"figure written to {path}")
+
+
+def plot_ladder(axes, rows: list[dict]) -> None:
+    """Draw where each optimisation gets you, in order.
+
+    A dot plot rather than bars, because the axis is logarithmic and a bar's
+    length would then encode nothing. The connector carries the factor gained
+    at each step, which is the quantity the figure is about.
+    """
+    rows = [row for row in rows if row["configuration"] != WITHOUT_PYMC]
+    surface = axes.get_facecolor()
     n_ladder = len(CONFIGURATIONS)
     ladder, comparisons = rows[:n_ladder], rows[n_ladder:]
     seconds = [row["seconds_per_iteration"] for row in ladder]
@@ -794,9 +808,6 @@ def plot(rows: list[dict], path: str) -> None:
         textwrap.fill(row["configuration"], LABEL_WIDTH) for row in ladder
     ]
     position = list(range(n_ladder))
-    figure, axes = plt.subplots(figsize=(8.4, 4.6))
-    figure.patch.set_facecolor(SURFACE)
-    axes.set_facecolor(SURFACE)
     axes.plot(position, seconds, color=BASELINE, linewidth=2, zorder=1)
     comparisons = sorted(comparisons, key=lambda r: r["seconds_per_iteration"])
     for index, row in enumerate(comparisons):
@@ -814,9 +825,8 @@ def plot(rows: list[dict], path: str) -> None:
             textcoords="offset points",
             ha="right",
             va="top" if below else "bottom",
-            fontsize=8.5,
+            fontsize="small",
             color=COMPARISON,
-            alpha=0.8,
         )
     for index, (row, x, y) in enumerate(zip(ladder, position, seconds)):
         last = index == n_ladder - 1
@@ -832,23 +842,22 @@ def plot(rows: list[dict], path: str) -> None:
             [x],
             [y],
             marker="o",
-            markersize=13 if last else 11,
+            markersize=10 if last else 8,
             color=SERIES_EMPHASIS if last else SERIES,
-            markeredgecolor=SURFACE,
-            markeredgewidth=2,
+            markeredgecolor=surface,
+            markeredgewidth=1.5,
             zorder=3,
         )
         axes.annotate(
             format_seconds(y) + ("\n(all four)" if last else ""),
             (x, row["slowest_iteration"]),
-            xytext=(0, 12),
+            xytext=(0, 10),
             textcoords="offset points",
             ha="center",
             va="bottom",
-            fontsize=10,
             color=TEXT_PRIMARY,
             fontweight="bold" if last else "normal",
-            bbox=dict(boxstyle="square,pad=0.1", fc=SURFACE, ec="none"),
+            bbox=dict(boxstyle="square,pad=0.1", fc=surface, ec="none"),
             zorder=2,
         )
     for index in range(1, n_ladder):
@@ -859,13 +868,12 @@ def plot(rows: list[dict], path: str) -> None:
             textcoords="offset points",
             ha="center",
             va="center",
-            fontsize=9.5,
             color=TEXT_SECONDARY,
-            bbox=dict(boxstyle="round,pad=0.25", fc=SURFACE, ec="none"),
+            bbox=dict(boxstyle="round,pad=0.25", fc=surface, ec="none"),
             zorder=2,
         )
     axes.set_yscale("log")
-    axes.set_xticks(position, labels, fontsize=10, color=TEXT_PRIMARY)
+    axes.set_xticks(position, labels, color=TEXT_PRIMARY)
     axes.set_xlim(-0.5, n_ladder - 0.5)
     every = [row["fastest_iteration"] for row in ladder] + [
         row["seconds_per_iteration"] for row in comparisons
@@ -876,11 +884,7 @@ def plot(rows: list[dict], path: str) -> None:
     # Room at the top for the value labels, which are drawn above the marks
     # and so outside the data's own range.
     axes.set_ylim(min(every) / 2, max(most) * 4)
-    axes.set_ylabel(
-        "wall time for one NUTS iteration (s, log scale)",
-        fontsize=10,
-        color=TEXT_SECONDARY,
-    )
+    axes.set_ylabel("Time per NUTS iteration (s)")
     axes.grid(axis="y", color=GRID, linewidth=0.8)
     axes.set_axisbelow(True)
     for side in ("top", "right", "bottom"):
@@ -892,9 +896,6 @@ def plot(rows: list[dict], path: str) -> None:
     # overridden.
     for label in axes.get_xticklabels():
         label.set_color(TEXT_PRIMARY)
-    figure.tight_layout()
-    figure.savefig(path, dpi=200)
-    print(f"figure written to {path}")
 
 
 def format_seconds(seconds: float) -> str:
@@ -1037,28 +1038,25 @@ def main() -> None:
         suffix = "" if problem == "case study" else "_amici"
         write_csv(records, f"{OUT_PREFIX}{suffix}.csv")
         write_csv(rows, f"{OUT_PREFIX}{suffix}_summary.csv")
-        plot(
-            [row for row in rows if row["configuration"] != WITHOUT_PYMC],
-            f"{OUT_PREFIX}{suffix}.png",
-        )
+        plot(rows, f"{OUT_PREFIX}{suffix}.png")
+
+
+def read_summary(suffix: str) -> list[dict]:
+    with open(f"{OUT_PREFIX}{suffix}_summary.csv") as handle:
+        return [
+            {
+                key: value
+                if key in ("problem", "configuration")
+                else float(value)
+                for key, value in row.items()
+            }
+            for row in csv.DictReader(handle)
+        ]
 
 
 def replot() -> None:
     for suffix in ("", "_amici"):
-        with open(f"{OUT_PREFIX}{suffix}_summary.csv") as handle:
-            rows = [
-                {
-                    key: value
-                    if key in ("problem", "configuration")
-                    else float(value)
-                    for key, value in row.items()
-                }
-                for row in csv.DictReader(handle)
-            ]
-        plot(
-            [row for row in rows if row["configuration"] != WITHOUT_PYMC],
-            f"{OUT_PREFIX}{suffix}.png",
-        )
+        plot(read_summary(suffix), f"{OUT_PREFIX}{suffix}.png")
 
 
 if __name__ == "__main__":
