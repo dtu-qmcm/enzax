@@ -23,4 +23,4 @@ uv run --group benchmark python benchmarks/glycolysis.py
 uv run --group benchmark python benchmarks/plot.py
 ```
 
-The first two write `results/<problem>.csv`, one row per tool, solver, tolerance and parameter set. The third draws time and gradient error against tolerance for every problem, as `results/work_precision.pdf` and `.png`. A full run takes about an hour.
+The first two write `results/<problem>.csv`, one row per tool, solver, tolerance and parameter set. The third draws time and gradient error against tolerance for every problem, as `results/work_precision.pdf` and `.png`. It leaves out the hybrid runs, which perform about the same in enzax and AMICI. A full run takes about an hour.

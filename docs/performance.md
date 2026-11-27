@@ -28,7 +28,7 @@ To quantify the benefit from enzax's performance optimisations, we ran an optimi
 
 ![What each of enzax's optimisations is worth](img/optimisation_benchmark.png)
 
-With all four optimisations, one NUTS iteration of 63 leapfrog steps took 754 ms, compared with 48 s with no optimisations: the optimised sampler was 64 times faster. Extrapolating these results to the one-million-gradient run described above, an unoptimised run would take over a week, compared with just over three hours for the optimised run.
+With all four optimisations, one NUTS iteration of 63 leapfrog steps took 1.6 s, compared with 76 s with no optimisations: the optimised sampler was 47 times faster. Extrapolating these results to the one-million-gradient run described above, an unoptimised run would take about two weeks, compared with about seven hours for the optimised run.
 
 !!! note
 
@@ -40,7 +40,7 @@ To rerun the measurement, run this command from the root of the enzax repository
 uv run --group benchmark --extra mcmc python benchmarks/optimisation_ladder.py
 ```
 
-This writes a figure to `benchmarks/results/optimisation_ladder.png` and, alongside it, a csv file with one row per timed leapfrog step and a summary csv file. The script also times AMICI, pyPESTO and PyMC, so it needs the `benchmark` dependency group, which builds AMICI from source.
+This writes a figure to `benchmarks/results/optimisation_ladder.png` and, alongside it, a csv file with one row per timed leapfrog step and a summary csv file. The script also times AMICI, pyPESTO and PyMC, so it needs the `benchmark` dependency group, which builds AMICI from source. To redraw the figure from the saved summary without timing anything, add `plot` to the command.
 
 ## Comparison with other frameworks
 

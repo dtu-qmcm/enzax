@@ -353,19 +353,29 @@ REACTIONS = {
 }
 
 
+CONSTRAINT_TEXT = (
+    r"Osmotic balance sets the cell volume:"
+    r" $\Sigma_i \varphi_i c_i = \Sigma_e \varphi_e c_e$"
+    "\n"
+    r"Electroneutrality sets the membrane potential:"
+    r" $\Sigma_i z_i(\mathrm{pH}_i)\, c_i = 0$"
+    "\n"
+    "Conserved: NAD⁺ + NADH, NADP⁺ + NADPH, GSH + 2 GSSG,"
+    " Mg²⁺ + MgATP + MgADP + MgAMP\n"
+    "F6P appears twice"
+)
+
+
 def draw_annotations(ax):
     draw_cell(ax, CELL, XLIM, "Plasma")
     ax.text(
         25,
         23,
-        "Osmotic balance sets the cell volume\n"
-        "Electroneutrality sets the membrane potential\n"
-        "Moieties: NAD⁺ + NADH, NADP⁺ + NADPH, GSH + 2 GSSG, total Mg²⁺\n"
-        "F6P appears twice",
+        CONSTRAINT_TEXT,
         fontsize=LABEL_SIZE,
         color=MUTED,
         va="top",
-        linespacing=1.3,
+        linespacing=1.4,
     )
     ax.legend(
         handles=[

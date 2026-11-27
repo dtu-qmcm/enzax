@@ -1,14 +1,14 @@
 """Screen candidate next experiments for the glycolysis case study.
 
 For each hypothesis, predicts the steady state at every candidate condition
-from 200 posterior draws of one round's fit. The candidates are eight external
-glucose levels and six enzyme interventions: PFKM knockdown, DCA (a faster
-pyruvate drain) and PKM2 overexpression. For each candidate and each pair of
-hypotheses, scores how far apart the pair's predictions are. The score sums,
-over balanced log concentrations and measured fluxes, the squared difference of
-the two posterior means divided by twice the measurement variance plus both
-posterior variances. Runs after rounds one and two, saving to
-results/design_<phase>.npz.
+from 200 posterior draws of its fit to realistic glucose. The candidates are
+five external glucose levels and six enzyme interventions: PFKM knockdown, DCA
+(a faster pyruvate drain) and PKM2 overexpression. For each candidate and each
+pair of hypotheses, scores how far apart the pair's predictions are. The score
+sums, over balanced log concentrations and measured fluxes, the squared
+difference of the two posterior means divided by twice the measurement variance
+plus both posterior variances. Runs after the fits to realistic glucose, saving
+to results/design_<phase>.npz.
 """
 
 import itertools
@@ -37,10 +37,10 @@ from common import (
 from enzax.experiments import gather_parameters_by_experiment
 from enzax.parameter_split import combine_parameters
 
-SCREENED_PHASES = ("high_glucose", "series")
+SCREENED_PHASES = ("high_glucose",)
 N_DRAW = 200
 N_SUBSTEP = 9
-GLUCOSE_MM = (30, 10, 4.5, 1.5, 0.45, 0.15, 0.045, 0.015)
+GLUCOSE_MM = (30, 10, 4.5, 1.5, 0.45)
 REFERENCE_GLUCOSE_MM = 30
 INTERVENTIONS = {
     "PFKM x0.3": {"PFKM": 0.3},

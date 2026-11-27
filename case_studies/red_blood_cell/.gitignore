@@ -1,1 +1,5 @@
-results/
+results/*
+!results/figure.png
+!results/figure.pdf
+!results/sensitivities.png
+!results/sensitivities.pdf

@@ -112,16 +112,16 @@ def make_hybrid_solve(model):
 
 
 def timed(f, *args):
-    start = time.perf_counter()
-    out = jax.block_until_ready(f(*args))
-    first = time.perf_counter() - start
-    if not all(bool(jnp.all(jnp.isfinite(x))) for x in jax.tree.leaves(out)):
-        return out, first
+    jax.block_until_ready(f(*args))
     times = []
     for _ in range(REPEATS):
         start = time.perf_counter()
         out = jax.block_until_ready(f(*args))
         times.append(time.perf_counter() - start)
+        if not all(
+            bool(jnp.all(jnp.isfinite(x))) for x in jax.tree.leaves(out)
+        ):
+            break
     return out, float(np.median(times))
 
 
@@ -139,7 +139,12 @@ def run(model, parameters, guess, label, methods, tolerances=TOLERANCES):
     rows = []
     for tol in tolerances:
         tol_ = float(tol)
-        state, seconds = timed(hybrid, guess, parameters, tol_)
+        state, seconds = timed(
+            hybrid,
+            PERTURBATION * guess,
+            parameters,
+            tol_,
+        )
         success, residual = check(model, state, parameters)
         rows.append(
             dict(
