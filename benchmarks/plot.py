@@ -55,6 +55,16 @@ FAILURE = "#d1242f"
 TEXT = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
+RC_PARAMS = {
+    "font.size": 8,
+    "font.family": "sans-serif",
+    "axes.edgecolor": MUTED,
+    "axes.labelcolor": TEXT,
+    "xtick.color": MUTED,
+    "ytick.color": MUTED,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+}
 
 
 def summarise(results: pd.DataFrame) -> pd.DataFrame:
@@ -83,24 +93,14 @@ def summarise(results: pd.DataFrame) -> pd.DataFrame:
 
 
 def plot(results_dir: Path) -> plt.Figure:
-    plt.rcParams.update(
-        {
-            "font.size": 8,
-            "font.family": "sans-serif",
-            "axes.edgecolor": MUTED,
-            "axes.labelcolor": TEXT,
-            "xtick.color": MUTED,
-            "ytick.color": MUTED,
-            "axes.spines.top": False,
-            "axes.spines.right": False,
-        },
-    )
-    fig, axes = plt.subplots(
-        len(MEASURES),
-        len(PROBLEMS),
-        figsize=(7.5, 4.8),
-        sharex=True,
-    )
+    plt.rcParams.update(RC_PARAMS)
+    fig = plt.figure(figsize=(7.5, 4.8), layout="constrained")
+    plot_work_precision(fig, results_dir)
+    return fig
+
+
+def plot_work_precision(fig, results_dir: Path) -> None:
+    axes = fig.subplots(len(MEASURES), len(PROBLEMS), sharex=True)
     for column, (problem, title) in zip(
         axes.T,
         PROBLEMS.items(),
@@ -200,13 +200,11 @@ def plot(results_dir: Path) -> plt.Figure:
         columns += column + [Line2D([], [], alpha=0)] * (n_rows - len(column))
     fig.legend(
         handles=columns,
-        loc="lower center",
+        loc="outside lower center",
         ncol=len(tools),
         frameon=False,
         labelcolor=TEXT,
     )
-    fig.tight_layout(rect=(0, 0.1, 1, 1))
-    return fig
 
 
 if __name__ == "__main__":
